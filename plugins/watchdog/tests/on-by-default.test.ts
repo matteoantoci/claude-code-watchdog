@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { DESKTOP_DROP_WARNING } from '../hooks/lifecycle/on-order';
 import { DESKTOP_ATTACH, DESKTOP_START, ON_STORE_KEY, PROMPT, storedOn, stubOnState } from './fixtures/on-state';
-import { START, stubSession, typed } from './fixtures/session';
+import { NOW, START, stubSession, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { OnStateStubs } from './fixtures/on-state';
 
@@ -81,9 +81,9 @@ describe('on order at session.start', () => {
     stubOnState(on);
     await $.session.start(START);
     await $.command.run(typed('on'));
-    expect(seen.store.get(ON_STORE_KEY)).toEqual({ ...BY_COMMAND, lastUsed: expect.any(Number) });
+    expect(seen.store.get(ON_STORE_KEY)).toEqual({ ...BY_COMMAND, lastUsed: NOW });
     await $.command.run(typed('off'));
-    expect(seen.store.get(ON_STORE_KEY)).toEqual({ isOn: false, lastUsed: expect.any(Number) });
+    expect(seen.store.get(ON_STORE_KEY)).toEqual({ isOn: false, lastUsed: NOW });
   });
 });
 

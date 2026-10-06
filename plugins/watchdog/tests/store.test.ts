@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { REVIEW_SPAWN, sendNote, stubDelivery } from './fixtures/delivery';
 import { stubState } from './fixtures/on-state';
-import { SESSION_ID, START, mainRow, turnEnd, typed } from './fixtures/session';
+import { NOW, SESSION_ID, START, mainRow, turnEnd, typed } from './fixtures/session';
 import { stubSwitch } from './fixtures/switch';
 import type { DeliveryStubs } from './fixtures/delivery';
 import type { StateStubs } from './fixtures/on-state';
@@ -92,14 +92,36 @@ describe('§14.2 the $.store prune', () => {
     expect(seen.store.has('on:s4')).toBe(true);
     expect(seen.store.has('legacy')).toBe(true);
 
-    // Once for each session: a later write of the same session prunes nothing.
+    // Once for each session: a later write of the same session prunes nothing, though it reached `$.store`.
     seen.store.set('on:s0', { isOn: false, lastUsed: 0 });
+    await seen.clock.advance(1000);
     await $.command.run(typed('off'));
+    expect(seen.store.get(`on:${SESSION_ID}`)).toEqual({ isOn: false, lastUsed: NOW + 1000 });
     expect(seen.storeDeletes).toHaveLength(5);
 
     // The first write of the next session prunes again.
     await ids.switchTo('branch', NEW_ID);
     expect(seen.storeDeletes.slice(5).toSorted()).toEqual(['on:s0', 'on:s4']);
     expect(seen.store.has(`notes:${NEW_ID}`)).toBe(true);
+  });
+
+  test('the on flag takes lastUsed from $.clock, and the next session prunes it by that time', async ($, on: Stubs) => {
+    const ids = stubSwitch($, on);
+    // 50 other sessions, the newest 50 s after the clock now; `s1` the oldest.
+    const others = Array.from({ length: 50 }, (_, index): [string, unknown] => [
+      `on:s${index + 1}`,
+      { isOn: false, lastUsed: NOW + (index + 1) * 1000 },
+    ]);
+    const seen = stubDelivery(on, { sessionId: () => ids.current, store: new Map(others) });
+    stubState(on, { sessionId: () => ids.current });
+    await $.session.start(START);
+    await seen.clock.advance(1500);
+    await $.command.run(typed('on'));
+    expect(seen.store.get(`on:${SESSION_ID}`)).toEqual({ isOn: true, source: '/watchdog on', lastUsed: NOW + 1500 });
+    expect(seen.storeDeletes).toEqual(['on:s1']);
+
+    // The first write of the next session: the old session (1.5 s) is now older than s2 (2 s).
+    await ids.switchTo('branch', NEW_ID);
+    expect(seen.storeDeletes.slice(1)).toEqual([`on:${SESSION_ID}`]);
   });
 });

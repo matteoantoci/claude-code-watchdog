@@ -164,7 +164,7 @@ const turnOff = async ($: EngineInterface): Promise<void> => {
 // §5.4: the person's toggle follows the session id into a new process (`claude -r`), with `lastUsed` (§14.2).
 const storeOnFlag = async ($: EngineInterface, flag: OnFlag): Promise<void> => {
   const sessionId = await $.session.id();
-  await $.store.set(onStoreKey(sessionId), { ...flag, lastUsed: Date.now() });
+  await $.store.set(onStoreKey(sessionId), { ...flag, lastUsed: await $.clock.now() });
 };
 
 const toggle = async ($: EngineInterface, isOn: boolean): Promise<void> => {
