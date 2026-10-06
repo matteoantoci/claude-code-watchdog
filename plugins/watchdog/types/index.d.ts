@@ -2,14 +2,34 @@
 // wants this file self-contained and each key named inside `watchdog: { … }`. A hook module names a
 // value type as `PluginState['watchdog']['<key>']`. A ticket that adds a key adds one property there.
 
+// §7.6: one feed row in the omp markdown form, with the caps applied.
+export type WatchdogFeedRow = {
+  readonly uuid: string;
+  // The row as a full update shows it.
+  readonly text: string;
+  // The omp watched-role label (`**user**:` the person, `**agent**:` the primary agent); a row without one
+  // is a one-line row and ends a run of one label.
+  readonly role?: 'user' | 'agent';
+  // §7.6 batch cap: the row in a collapsed update (a tool call's one line, or the person's text); a row
+  // without one leaves a collapsed update.
+  readonly brief?: string;
+  // The id of a tool call, which its result row names.
+  readonly call?: string;
+};
+
+// §7.5: how a boundary closed an update: mid-turn (`step`), at the end of a turn, or at an Esc.
+export type WatchdogUpdateClose = 'step' | 'turn' | 'interrupted';
+
 // §7.1: the primary agent's feed.
 export type WatchdogFeed = {
   // Rendered rows, oldest first; rows behind the oldest cursor are dropped.
-  readonly rows: readonly { readonly uuid: string; readonly text: string }[];
+  readonly rows: readonly WatchdogFeedRow[];
   // §7.2: the last row of each update that a boundary closed, oldest first.
-  readonly ends: readonly string[];
+  readonly ends: readonly { readonly uuid: string; readonly close: WatchdogUpdateClose }[];
   // Watchdog slug → the uuid of its last reviewed row; null before the first row.
   readonly cursors: Readonly<Record<string, string | null>>;
+  // §7.7 part 2: the person prompts since `/watchdog on`.
+  readonly prompts: number;
 };
 
 // §13.4: one note of a review, as the dump shows it.
@@ -47,6 +67,28 @@ export type WatchdogLogRecord =
     }
   | { readonly kind: 'error'; readonly watchdog: string; readonly time: number; readonly error: string };
 
+// §10.3: a late note of the nudge that waits, as the note hook admitted it: the watchdog slug, the review
+// agent, and the main-loop turn when it came (§10.7).
+export type WatchdogNudgeNote = {
+  readonly watchdog: string;
+  readonly agentId: string;
+  readonly severity: 'nit' | 'concern' | 'blocker';
+  readonly text: string;
+  readonly turn: number;
+};
+
+// §10.3, §10.4: the nudge budget of the current person prompt, the cooldown start and the nudge that waits.
+export type WatchdogNudge = {
+  // Nudges sent since the last person prompt.
+  readonly nudges: number;
+  // The `turns` counter at the last nudge turn, where the cooldown starts; null before the first nudge.
+  readonly nudgeTurn: number | null;
+  // When the 2 s wait of the nudge that waits ends, ms since the epoch; null when no nudge waits.
+  readonly dueAt: number | null;
+  // The late notes of the nudge that waits: a reload loses the held list, and sets the wait again from here.
+  readonly notes: readonly WatchdogNudgeNote[];
+};
+
 declare module 'claude-code' {
   interface PluginState {
     watchdog: {
@@ -65,6 +107,8 @@ declare module 'claude-code' {
       allow: readonly string[];
       // §6.5 item 8: the read-scope denies of each watchdog slug.
       denies: Readonly<Record<string, number>>;
+      // §10.3, §10.4, §14.1: the nudge budget, the cooldown and the nudge that waits.
+      nudge: WatchdogNudge;
     };
   }
 }

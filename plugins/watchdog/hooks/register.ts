@@ -23,6 +23,6 @@ export const register: Register = (on, options) => {
   installReview(on);
   installLog(on);
   installNote(on);
-  installDelivery(on);
+  installDelivery(on, options);
   installTools(on);
 };

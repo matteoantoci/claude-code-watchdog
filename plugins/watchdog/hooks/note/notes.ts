@@ -66,12 +66,26 @@ export const replaceHeldNote = (note: HeldNote, replacement?: HeldNote): void =>
   }
 };
 
-// A delivery takes the held notes in one state out of the list, oldest first.
-export const takeNotes = (delivery: DeliveryState): HeldNote[] => {
-  const taken = held.filter((note) => note.delivery === delivery);
-  const kept = held.filter((note) => note.delivery !== delivery);
+// A delivery takes the held notes in the given states out of the list, oldest first.
+export const takeNotes = (...deliveries: readonly DeliveryState[]): HeldNote[] => {
+  const taken = held.filter((note) => deliveries.includes(note.delivery));
+  const kept = held.filter((note) => !deliveries.includes(note.delivery));
   held.splice(0, held.length, ...kept);
   return taken;
+};
+
+// The held notes, oldest first, as they wait now.
+export const heldNotes = (): readonly HeldNote[] => held;
+
+// §10.3: a late note changes its route in place (a steer with no tool result before the turn ended, a nudge
+// whose wait a new turn ended).
+export const rerouteNotes = (route: (note: HeldNote) => DeliveryState): void => {
+  held.forEach((note, index) => {
+    const delivery = route(note);
+    if (delivery !== note.delivery) {
+      held[index] = { ...note, delivery };
+    }
+  });
 };
 
 // §5.2: `/watchdog off` clears the held notes.

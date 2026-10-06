@@ -59,7 +59,8 @@ const agentStep = async ($: Engine, index: number): Promise<void> => {
   await stream.result;
 };
 
-// One whole review: a main turn, the spawn, one note, two agent steps, the agent's own `turn.complete`.
+// One whole review: a main turn, the spawn, one nit (an aside, so no nudge waits), two agent steps, the
+// agent's own `turn.complete`.
 const runReview = async ($: Engine): Promise<void> => {
   await $.session.start(START);
   await $.command.run(typed('on'));
@@ -70,7 +71,7 @@ const runReview = async ($: Engine): Promise<void> => {
     tool: 'mcp__watchdog__note',
     agentId: REVIEW_AGENT,
     note: 'Check the null branch.',
-    severity: 'concern',
+    severity: 'nit',
   });
   await agentStep($, 0);
   await agentStep($, 1);
@@ -94,7 +95,7 @@ describe('review log', () => {
         '- cost: $?',
         '- error: none',
         '- notes: 1',
-        '  - [concern] Check the null branch. (steered)',
+        '  - [nit] Check the null branch. (aside on next prompt)',
         '- answer:',
         '',
         '> done',
@@ -151,8 +152,9 @@ describe('/watchdog dump', () => {
     const path = `/home/me/.claude/watchdog/dumps/${SESSION_ID}-20261006-090503.md`;
     expect(reply.text).toBe(`watchdog dump: ${path}`);
     expect(dumped.writes[0]?.path).toBe(path);
-    expect(dumped.writes[0]?.text).toContain('## Prompts of the last reviews\n\n### default\n\n> New updates');
-    expect(dumped.writes[0]?.text).toContain('> user: Fix the date parser.');
+    expect(dumped.writes[0]?.text).toContain(
+      '## Prompts of the last reviews\n\n### default\n\n> ### Session update\n>\n> **user**:\n> Fix the date parser.'
+    );
   });
 
   test('a refused write replies with the error', async ($, on: Stubs) => {

@@ -37,7 +37,7 @@ describe('the note tool', () => {
     });
 
     expect(answer).toEqual({ result: 'Queued. Do not re-raise.' });
-    expect(seen.logs.slice(logsBefore)).toEqual(['[concern] default: missing null check (steered)']);
+    expect(seen.logs.slice(logsBefore)).toEqual(['[concern] default: missing null check (nudged)']);
     expect(seen.coreToolCalls).toEqual([]);
   });
 
