@@ -24,6 +24,7 @@ import {
 } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { DeliveryEvents, DeliverySeen, DeliveryStubs } from './fixtures/delivery';
+import type { StateStubs } from './fixtures/on-state';
 import type { SessionEvents } from './fixtures/session';
 import type { Engine } from 'claude-code/testing';
 
@@ -249,6 +250,22 @@ describe('late note and nudge', () => {
     expect(nudges(seen)).toEqual([]);
     await seen.clock.advance(1);
     expect(nudges(seen)).toEqual([wrapped(`<note severity="concern" turns_ago="1">${CONCERN}</note>`)]);
+  });
+});
+
+describe('§5.2 `/watchdog off` and a nudge that waits', () => {
+  test('the off clears the nudge in $.state too, so a reload inside the 2 s wait sends nothing', async ($, on: DeliveryStubs &
+    StateStubs) => {
+    const seen = stubDelivery(on);
+    const state = stubState(on);
+    await startReview($);
+    await lateBlocker($, BLOCKER);
+    expect(stateIn(state, SESSION_ID, 'nudge')).toMatchObject({ dueAt: NOW + 2000 });
+
+    await $.command.run(typed('off'));
+    expect(stateIn(state, SESSION_ID, 'nudge')).toMatchObject({ dueAt: null, notes: [] });
+    await seen.clock.advance(2000);
+    expect(nudges(seen)).toEqual([]);
   });
 });
 

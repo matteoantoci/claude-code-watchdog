@@ -4,6 +4,7 @@ import { setRoster } from '../agents/roster';
 import { agentSpec } from '../agents/spec';
 import { systemPrompt } from '../agents/system-prompt';
 import { COMMAND_LOG_DELAY_MS } from '../constants';
+import { currentNudgeClock, nudgeValue, setNudgeClock } from '../delivery/nudge';
 import { addDumpLines } from '../dump/sections';
 import { errorText } from '../errors';
 import { EMPTY_FEED, currentFeed, setFeed, startFeed } from '../feed/feed';
@@ -152,13 +153,15 @@ const turnOn = async ($: EngineInterface, source: OnSource): Promise<void> => {
   logWarnings($, roster.warnings.length);
 };
 
-// §5.2: stop feed recording, clear the backlog and the held notes.
+// §5.2: stop feed recording; clear the backlog, the held notes and a waiting nudge, in `$.state` too.
 const turnOff = async ($: EngineInterface): Promise<void> => {
   setMode('off');
   setOnSource(undefined);
   setFeed(EMPTY_FEED);
   clearHeldNotes();
+  setNudgeClock({ ...currentNudgeClock(), dueAt: null });
   await saveOnState($);
+  await $.state.set({ plugin: 'watchdog', key: 'nudge' }, nudgeValue([])).catch(() => undefined);
 };
 
 // §5.4: the person's toggle follows the session id into a new process (`claude -r`), with `lastUsed` (§14.2).
@@ -186,10 +189,7 @@ const applyOnFlag = async ($: EngineInterface, flag: OnFlag): Promise<void> => {
 };
 
 const readOnState = async ($: EngineInterface): Promise<unknown> =>
-  $.state.get({ plugin: 'watchdog', key: 'on' }).then(
-    (read) => read.value,
-    () => undefined
-  );
+  (await $.state.get({ plugin: 'watchdog', key: 'on' }).catch(() => undefined))?.value;
 
 const readStoredFlag = async ($: EngineInterface): Promise<unknown> => {
   const sessionId = await $.session.id();
