@@ -12,6 +12,12 @@ export const MAX_TURNS = 12;
 // §5.2: the preflight asks each distinct model for one token.
 export const PREFLIGHT_MAX_TOKENS = 1;
 
+// §4.2: `maxNotesPerReview` is an integer from 1 to this value.
+export const MAX_NOTES_PER_REVIEW = 32;
+
+// §4.2: the most characters of a watchdog slug.
+export const SLUG_MAX_LENGTH = 64;
+
 // §14.2: the guard keys of one watchdog in `notes:<sessionId>`, oldest out first.
 export const NOTE_KEY_CAP = 200;
 

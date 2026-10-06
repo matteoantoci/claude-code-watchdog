@@ -5,7 +5,10 @@ import type { SessionEvents } from './fixtures/session';
 import type { AgentSpawnInput, RenderSurface } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
-type Stubs = OnEvents<SessionEvents | 'env.get' | 'session.surfaces' | 'fs.write' | 'ui.copy' | 'clock.after'>;
+type Stubs = OnEvents<SessionEvents | 'session.surfaces' | 'fs.write' | 'ui.copy' | 'clock.after'>;
+
+// The environment of the dump tests: the dump goes under `CLAUDE_CONFIG_DIR`.
+const DUMP_ENV = { CLAUDE_CONFIG_DIR: '/cfg', HOME: '/home/me' };
 
 type Dumped = { writes: { path: string; text: string }[]; copies: string[]; delays: number[] };
 
@@ -21,13 +24,11 @@ const SPAWN: AgentSpawnInput = {
   fork: false,
 };
 
-type DumpOptions = { env?: Readonly<Record<string, string>>; surfaces?: readonly RenderSurface[] };
+type DumpOptions = { surfaces?: readonly RenderSurface[] };
 
 // The `$` calls of `/watchdog dump`. `clock.after` resolves at once: the stub keeps the wait it was asked for.
 const stubDump = (on: Stubs, options: DumpOptions = {}): Dumped => {
   const dumped: Dumped = { writes: [], copies: [], delays: [] };
-  const env = options.env ?? { CLAUDE_CONFIG_DIR: '/cfg', HOME: '/home/me' };
-  on('env.get', (_$, e) => ({ value: env[e.name] }));
   on('session.surfaces', () => ({ value: options.surfaces ?? ['terminal'] }));
   on('fs.write', (_$, e) => {
     dumped.writes.push({ path: e.path, text: e.text });
@@ -77,7 +78,7 @@ const runReview = async ($: Engine): Promise<void> => {
 };
 describe('review log', () => {
   test('a review end writes one log record with its reason, steps, answer length and notes', async ($, on: Stubs) => {
-    stubSession(on);
+    stubSession(on, { env: DUMP_ENV });
     const dumped = stubDump(on);
     await runReview($);
     await $.command.run(typed('dump'));
@@ -104,7 +105,7 @@ describe('review log', () => {
 
 describe('/watchdog dump', () => {
   test('fs.write gets <config>/watchdog/dumps/<sessionId>-<time>.md and the records; the reply shows the path', async ($, on: Stubs) => {
-    stubSession(on);
+    stubSession(on, { env: DUMP_ENV });
     const dumped = stubDump(on);
     await runReview($);
     const reply = await $.command.run(typed('dump'));
@@ -118,7 +119,7 @@ describe('/watchdog dump', () => {
   });
 
   test('the terminal copies the dump text, and the log row waits 300 ms', async ($, on: Stubs) => {
-    const seen = stubSession(on);
+    const seen = stubSession(on, { env: DUMP_ENV });
     const dumped = stubDump(on);
     await runReview($);
     const logsBefore = seen.logs.length;
@@ -130,7 +131,7 @@ describe('/watchdog dump', () => {
   });
 
   test('the desktop gets the file only', async ($, on: Stubs) => {
-    const seen = stubSession(on);
+    const seen = stubSession(on, { env: DUMP_ENV });
     const dumped = stubDump(on, { surfaces: ['desktop'] });
     await runReview($);
     const logsBefore = seen.logs.length;
@@ -142,8 +143,8 @@ describe('/watchdog dump', () => {
   });
 
   test('dump raw adds the review prompts; with no CLAUDE_CONFIG_DIR the path is under $HOME/.claude', async ($, on: Stubs) => {
-    stubSession(on);
-    const dumped = stubDump(on, { env: { HOME: '/home/me' } });
+    stubSession(on, { env: { HOME: '/home/me' } });
+    const dumped = stubDump(on);
     await runReview($);
     const reply = await $.command.run(typed('dump raw'));
 
@@ -157,7 +158,6 @@ describe('/watchdog dump', () => {
 
   test('a refused write replies with the error', async ($, on: Stubs) => {
     stubSession(on);
-    on('env.get', (_$, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }));
     on('fs.write', () => ({ deny: 'read-only file system' }));
     await $.session.start(START);
     const reply = await $.command.run(typed('dump'));

@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { REVIEW_AGENT, START, stubSession, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
-import type { SessionStubs } from './fixtures/session';
+import type { SessionEvents } from './fixtures/session';
 import type { AgentSpawnInput, ToolCallArgs, ToolCheckDecision } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
-type Stubs = SessionStubs & OnEvents<'tool.check'>;
+type Stubs = OnEvents<SessionEvents | 'tool.check'>;
 
 // A subagent of the primary agent: not in the watchdog id set.
 const SUBAGENT = 'asub0001';
@@ -107,7 +107,7 @@ describe('the fork deny', () => {
       plugins: [
         {
           name: 'other',
-          register(on) {
+          register(on: OnEvents<'command.run'>) {
             on('command.run', { command: 'other' }, async ($) => {
               const call = { tool: 'Read', agentId: 'afork0001', file_path: '/repo/a.ts' } as ToolCallArgs;
               const answer = await $.tool.call(call);

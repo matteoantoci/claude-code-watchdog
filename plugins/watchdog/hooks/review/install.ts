@@ -1,5 +1,6 @@
 import { beginSpawn, endSpawn, watchdogIds } from '../agents/ids';
-import { currentRoster } from '../agents/roster';
+import { registeredSpec, setRegisteredSpec } from '../agents/registered';
+import { currentRoster, rosterStatusLines } from '../agents/roster';
 import { agentType, reviewDescription } from '../agents/spec';
 import { addStatusLines } from '../command/status';
 import { errorText } from '../errors';
@@ -15,6 +16,8 @@ import {
 import { currentMode } from '../lifecycle/mode';
 import { rememberPrompt } from '../log/log';
 import { liveHistory, notesKey, readHistory, watchdogNotes } from '../note/history';
+import { resolveEffort, sessionEffort, setSessionEffort } from '../roster/model';
+import { cadenceOf, countBoundary, setCadence } from './cadence';
 import { reviewPrompt } from './prompt';
 import { IDLE, learnReviewAgent, reviewOf, setSlot, slotLine, slotOf } from './slots';
 import type { Watchdog } from '../agents/roster';
@@ -50,16 +53,33 @@ const recapOf = async ($: EngineInterface, slug: string): Promise<Omit<ReviewInp
   return { notes, messages, prompts: feed.prompts, skip: unreviewedCalls(feed, slug) };
 };
 
-// §7.2, §7.5: a free watchdog takes all updates that wait into one review, with its recap (§7.7). The spawn
+// §4.5, §6.2: before each spawn, the `:auto` effort of now; the type registers again only when it changed.
+// A register reject keeps the type as it was (§6.1).
+const refreshAgent = async ($: EngineInterface, watchdog: Watchdog): Promise<void> => {
+  const registered = registeredSpec(watchdog.slug);
+  const effort = resolveEffort(watchdog.effort, sessionEffort());
+  if (registered === undefined || registered.effort === effort) {
+    return;
+  }
+  const spec = { ...registered, effort };
+  await $.agent.register(spec).then(
+    () => setRegisteredSpec(spec),
+    () => undefined
+  );
+};
+
+// §7.2, §7.4, §7.5: a free watchdog with a due review takes all updates that wait into one review, with its
+// recap (§7.7). The spawn
 // is awaited inside a live hook, and the in-flight window spans it (§7.3). A reject or a deny started no
 // agent: the slot is free again and the batch waits for the next boundary. The agent id may come only from
 // the `agent.spawn` hook (§16.2), so a resolve without one keeps the slot.
 const spawnReview = async ($: EngineInterface, watchdog: Watchdog): Promise<void> => {
   const batch = pendingBatch(currentFeed(), watchdog.slug);
-  if (batch === undefined || slotOf(watchdog.slug).state !== 'idle') {
+  if (batch === undefined || slotOf(watchdog.slug).state !== 'idle' || !cadenceOf(watchdog.slug).isDue) {
     return;
   }
   setSlot(watchdog.slug, { state: 'reviewing', agentId: null, batchEnd: batch.end });
+  await refreshAgent($, watchdog);
   const prompt = reviewPrompt({ updates: batch.updates, ...(await recapOf($, watchdog.slug)) });
   beginSpawn();
   const spawned = await $.agent
@@ -74,6 +94,7 @@ const spawnReview = async ($: EngineInterface, watchdog: Watchdog): Promise<void
     setSlot(watchdog.slug, IDLE);
     return;
   }
+  setCadence(watchdog.slug, { ...cadenceOf(watchdog.slug), isDue: false });
   rememberPrompt({ watchdog: watchdog.name, prompt });
   if (spawned.agentId !== undefined) {
     learnReviewAgent(watchdog.slug, spawned.agentId);
@@ -86,10 +107,14 @@ const reviewAll = async ($: EngineInterface, watchdogs: readonly Watchdog[]): Pr
 };
 
 // §7.2: a main-loop boundary closes an update before `next(e)`, so the rows of the next step stay out.
+// §7.4: each watchdog counts the boundary by its cadence; a `step` close is mid-turn.
 const closeMainUpdate = (agentId: string | undefined, close: UpdateClose): boolean => {
   const isBoundary = agentId === undefined && currentMode() === 'on';
   if (isBoundary) {
     setFeed(closeUpdate(currentFeed(), close));
+    currentRoster().forEach((watchdog) => {
+      setCadence(watchdog.slug, countBoundary(cadenceOf(watchdog.slug), watchdog, close !== 'step'));
+    });
   }
   return isBoundary;
 };
@@ -111,8 +136,12 @@ const finishReview = (e: TurnCompleteInput): string | undefined => {
 };
 
 // §7.2: main-loop `turn.step` with index ≥ 1 is a boundary; the reviews spawn after the step's stream.
-// §7.6: the step's server tool calls that no row named join the open update.
+// §6.2: the main loop's step names the session effort. §7.6: the step's server tool calls that no row named
+// join the open update.
 const onStep: Hook<'turn.step'> = async function* ($, e, next) {
+  if (e.agentId === undefined) {
+    setSessionEffort(e.effort);
+  }
   const isBoundary = e.index >= 1 && closeMainUpdate(e.agentId, 'step');
   const response = yield* next(e);
   if (e.agentId === undefined && currentMode() === 'on') {
@@ -140,7 +169,18 @@ const onComplete: Hook<'turn.complete'> = async ($, e, next) => {
 export const installReview = (on: OnEvents<'turn.step' | 'turn.complete'>): void => {
   on('turn.step', onStep);
   on('turn.complete', onComplete);
+  // §13.3: each watchdog with its state and the file that added it, then the roster lines (§4.5, §4.6).
   addStatusLines(() =>
-    currentMode() === 'on' ? currentRoster().map((watchdog) => slotLine(watchdog.name, slotOf(watchdog.slug))) : []
+    currentMode() === 'on'
+      ? [
+          ...currentRoster().map((watchdog) =>
+            [
+              slotLine(watchdog.name, slotOf(watchdog.slug)),
+              ...(watchdog.source === null ? [] : [watchdog.source]),
+            ].join(' · ')
+          ),
+          ...rosterStatusLines(),
+        ]
+      : []
   );
 };

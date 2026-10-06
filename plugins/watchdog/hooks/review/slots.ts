@@ -1,9 +1,11 @@
 import { addWatchdogId } from '../agents/ids';
+import type { Watchdog } from '../agents/roster';
 
 // §7.5, §12.4: each watchdog runs one review at a time. `reviewing` keeps the agent (null until its id
 // arrives) and the last row of its batch. `no_model` and `blocked` make no review until `/watchdog on`.
+// `disabled` is a roster entry with `enabled: false` (§4.2).
 export type Slot =
-  | { readonly state: 'idle' }
+  | { readonly state: 'idle' | 'disabled' }
   | { readonly state: 'reviewing'; readonly agentId: string | null; readonly batchEnd: string }
   | { readonly state: 'no_model' | 'blocked'; readonly reason: string };
 
@@ -30,8 +32,15 @@ export const learnReviewAgent = (slug: string, agentId: string): void => {
   addWatchdogId(agentId, slug);
 };
 
-// §5.2 steps 1, 2 and 5: `/watchdog on` tries each watchdog again; a running review keeps its slot.
-export const slotAfterOn = (slot: Slot, problems: { blocked?: string; noModel?: string }): Slot => {
+// §5.2 steps 1, 2 and 5: `/watchdog on` tries each watchdog again; a running review keeps its slot, unless the
+// roster now disables its watchdog.
+const slotAfterOn = (
+  slot: Slot,
+  problems: { isDisabled: boolean; blocked: string | undefined; noModel: string | undefined }
+): Slot => {
+  if (problems.isDisabled) {
+    return { state: 'disabled' };
+  }
   if (slot.state === 'reviewing') {
     return slot;
   }
@@ -39,6 +48,27 @@ export const slotAfterOn = (slot: Slot, problems: { blocked?: string; noModel?: 
     return { state: 'blocked', reason: problems.blocked };
   }
   return problems.noModel === undefined ? IDLE : { state: 'no_model', reason: problems.noModel };
+};
+
+// §5.2: the slot of each watchdog after `/watchdog on`, from its roster entry (§4.2, §6.2), the register
+// problem of its slug and the preflight problem of its model. Returns the slugs that keep a feed cursor: a
+// disabled, `no_model` or `blocked` watchdog makes no review until `/watchdog on` starts the feed again.
+export const slotsAfterOn = (
+  watchdogs: readonly Watchdog[],
+  blocked: ReadonlyMap<string, string | undefined>,
+  noModel: ReadonlyMap<string, string | undefined>
+): string[] => {
+  watchdogs.forEach((watchdog) => {
+    const problems = {
+      isDisabled: !watchdog.isEnabled,
+      blocked: blocked.get(watchdog.slug),
+      noModel: watchdog.noModel ?? noModel.get(watchdog.model),
+    };
+    setSlot(watchdog.slug, slotAfterOn(slotOf(watchdog.slug), problems));
+  });
+  return watchdogs
+    .filter((watchdog) => ['idle', 'reviewing'].includes(slotOf(watchdog.slug).state))
+    .map((watchdog) => watchdog.slug);
 };
 
 // The status line of one watchdog.
