@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'claude-code/testing';
+import { DESKTOP_DROP_WARNING } from '../hooks/lifecycle/on-order';
 import { DESKTOP_ATTACH, DESKTOP_START, PROMPT, SESSION_ID, stubOnState } from './fixtures/on-state';
 import { START, stubSession, typed } from './fixtures/session';
+import type { OnEvents } from '../hooks/on';
 import type { OnStateStubs } from './fixtures/on-state';
+
+// The `$` calls of `/watchdog dump` on the Desktop: no clipboard, so only the file.
+type DumpStubs = OnStateStubs & OnEvents<'env.get' | 'session.surfaces' | 'fs.write'>;
 
 const ON_BY_DEFAULT = { options: { onByDefault: true } };
 const STORE_KEY = `on:${SESSION_ID}`;
@@ -104,14 +109,23 @@ describe('Desktop attach', () => {
   test(
     'the attach drops an on state from CLAUDE_WATCHDOG with a dump warning; the stored flag wins',
     ON_BY_DEFAULT,
-    async ($, on: OnStateStubs) => {
+    async ($, on: DumpStubs) => {
       stubSession(on);
       const state = stubOnState(on, { state: BY_ENV, stored: { isOn: false, lastUsed: 1 } });
+      const dumps: string[] = [];
+      on('env.get', (_$, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }));
+      on('session.surfaces', () => ({ value: ['desktop'] as const }));
+      on('fs.write', (_$, e) => {
+        dumps.push(e.text);
+        return { value: undefined };
+      });
       await $.session.start(DESKTOP_START);
       expect((await $.command.run(typed('status'))).text).toBe('watchdog on\non source: CLAUDE_WATCHDOG\ndefault idle');
       await $.session.attach(DESKTOP_ATTACH);
       expect((await $.command.run(typed('status'))).text).toBe('watchdog off');
       expect(state.onWrites.at(-1)).toEqual({ isOn: false });
+      await $.command.run(typed('dump'));
+      expect(dumps[0]).toContain(`warning: ${DESKTOP_DROP_WARNING}`);
     }
   );
 

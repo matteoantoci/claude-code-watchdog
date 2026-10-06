@@ -5,6 +5,7 @@ import { addStatusLines } from '../command/status';
 import { errorText } from '../errors';
 import { closeUpdate, currentFeed, moveCursor, pendingBatch, setFeed } from '../feed/feed';
 import { currentMode } from '../lifecycle/mode';
+import { rememberPrompt } from '../log/log';
 import { reviewPrompt } from './prompt';
 import { IDLE, learnReviewAgent, reviewOf, setSlot, slotLine, slotOf } from './slots';
 import type { Watchdog } from '../agents/roster';
@@ -29,11 +30,12 @@ const spawnReview = async ($: EngineInterface, watchdog: Watchdog): Promise<void
   }
   setSlot(watchdog.slug, { state: 'reviewing', agentId: null, batchEnd: batch.end });
   beginSpawn();
+  const prompt = reviewPrompt(batch.rows);
   const spawned = await $.agent
     .spawn({
       subagentType: agentType(watchdog.slug),
       description: reviewDescription(watchdog),
-      prompt: reviewPrompt(batch.rows),
+      prompt,
     })
     .catch((error: unknown) => ({ deny: errorText(error) }))
     .finally(endSpawn);
@@ -41,6 +43,7 @@ const spawnReview = async ($: EngineInterface, watchdog: Watchdog): Promise<void
     setSlot(watchdog.slug, IDLE);
     return;
   }
+  rememberPrompt({ watchdog: watchdog.name, prompt });
   if (spawned.agentId !== undefined) {
     learnReviewAgent(watchdog.slug, spawned.agentId);
   }

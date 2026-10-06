@@ -2,6 +2,7 @@ import { watchdogOf } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
 import { currentTurn } from '../delivery/turns';
 import { errorText } from '../errors';
+import { traceNote } from '../log/log';
 import { deliveryFor, guardNote, holdNote, logRow } from './notes';
 import { parseNote } from './tool';
 import type { OnEvents } from '../on';
@@ -33,6 +34,7 @@ const admitNote = ($: EngineInterface, e: NoteCall): ToolCallResult => {
   }
   const held = { ...note, delivery: deliveryFor(note) };
   holdNote(held);
+  traceNote(held);
   $.ui.log(logRow(held, watchdogBySlug(watchdog)?.name ?? watchdog));
   return { result: ADMITTED };
 };

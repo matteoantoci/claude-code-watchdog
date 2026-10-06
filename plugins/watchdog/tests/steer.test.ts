@@ -1,15 +1,14 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { REVIEW_AGENT, START, stubSession, typed } from './fixtures/session';
+import { NOW, REVIEW_AGENT, START, stubSession, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { SessionStubs } from './fixtures/session';
 import type { AgentSpawnInput, PluginState } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
-type Stubs = SessionStubs & OnEvents<'turn.start' | 'clock.now' | 'state.set'>;
+type Stubs = SessionStubs & OnEvents<'turn.start' | 'state.set'>;
 
 const NOTE = 'mcp__watchdog__note';
 const GUIDANCE_PATH = '/prompts/boundary-guidance.md';
-const NOW = 1_700_000_000_000;
 
 // The engine's `agent.spawn` of a review, as the Agent tool fires it: the mod learns the id from `next(e)`.
 const SPAWN: AgentSpawnInput = {
@@ -30,7 +29,6 @@ const stubSteer = (on: Stubs) => {
   const seen = stubSession(on);
   const written: Written = { log: [] };
   on('turn.start', (_$, e) => ({ turnId: e.turnId }));
-  on('clock.now', () => ({ value: NOW }));
   on('state.set', (_$, e, next) => {
     if (e.key === 'log') {
       written.log = e.value;
