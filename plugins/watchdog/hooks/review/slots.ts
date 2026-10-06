@@ -1,12 +1,19 @@
 import { addWatchdogId } from '../agents/ids';
+import { setReviewTarget } from '../subagents/watch';
 import type { Watchdog } from '../agents/roster';
 
 // §7.5, §12.4: each watchdog runs one review at a time. `reviewing` keeps the agent (null until its id
-// arrives) and the last row of its batch. `no_model` and `blocked` make no review until `/watchdog on`.
-// `disabled` is a roster entry with `enabled: false` (§4.2).
+// arrives), the last row of its batch and, for a review of a subagent (§11.2), that subagent's `agentId`.
+// `no_model` and `blocked` make no review until `/watchdog on`. `disabled` is a roster entry with
+// `enabled: false` (§4.2).
 export type Slot =
   | { readonly state: 'idle' | 'disabled' }
-  | { readonly state: 'reviewing'; readonly agentId: string | null; readonly batchEnd: string }
+  | {
+      readonly state: 'reviewing';
+      readonly agentId: string | null;
+      readonly batchEnd: string;
+      readonly subagent?: string;
+    }
   | { readonly state: 'no_model' | 'blocked'; readonly reason: string };
 
 export const IDLE: Slot = { state: 'idle' };
@@ -23,11 +30,13 @@ export const setSlot = (slug: string, slot: Slot): void => {
 export const reviewOf = (agentId: string): string | undefined =>
   Array.from(slots).find(([, slot]) => slot.state === 'reviewing' && slot.agentId === agentId)?.[0];
 
-// §7.3: a review agent's id, from the first source that gives it.
+// §7.3: a review agent's id, from the first source that gives it; §11.4: the id maps to the subagent of a review
+// of a subagent, and to none for a review of the primary agent.
 export const learnReviewAgent = (slug: string, agentId: string): void => {
   const slot = slotOf(slug);
   if (slot.state === 'reviewing' && slot.agentId === null) {
     setSlot(slug, { ...slot, agentId });
+    setReviewTarget(agentId, slot.subagent);
   }
   addWatchdogId(agentId, slug);
 };

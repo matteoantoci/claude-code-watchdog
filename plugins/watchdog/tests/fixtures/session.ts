@@ -43,7 +43,7 @@ export type Seen = {
   agents: AgentSpec[];
   reads: string[];
   preflights: ModelCompleteRequest[];
-  spawns: { prompt: string; subagentType?: string; description?: string }[];
+  spawns: { prompt: string; subagentType: string; description?: string }[];
   logs: string[];
   coreToolCalls: string[];
   // What `$.store` holds (store key → value), as JSON round trips it.
@@ -72,6 +72,10 @@ export const NOW = Date.UTC(2026, 9, 6, 9, 5, 3);
 
 // The agent that the core `Agent` tool stub starts.
 export const AGENT_TOOL_AGENT = 'afake0002';
+
+// The agent that the engine starts for a spawn of another type than a review: `asub` and the last 4 chars of
+// its `tool_use_id`, so the subagents of one test get distinct ids.
+export const subagentId = (toolUseId: string): string => `asub${toolUseId.slice(-4)}`;
 
 export const USAGE = {
   input_tokens: 1200,
@@ -174,9 +178,10 @@ const stubEngine = (on: SessionStubs, seen: Seen, options: Options): void => {
   // The kit hands the mod's own `$.agent.spawn` to the hooks in the Agent tool's input shape
   // (`subagent_type`), and resolves it to the mod as `{ model: 'inherit' }` without the id (spec §16.2).
   on('agent.spawn', (_$, e) => {
-    const subagentType = 'subagent_type' in e ? e.subagent_type : e.subagentType;
-    seen.spawns.push({ prompt: e.prompt, subagentType: String(subagentType), description: e.description });
-    return { model: 'claude-opus-4-5', agentId: REVIEW_AGENT };
+    const subagentType = String('subagent_type' in e ? e.subagent_type : e.subagentType);
+    seen.spawns.push({ prompt: e.prompt, subagentType, description: e.description });
+    const isReview = subagentType.startsWith('watchdog:');
+    return { model: 'claude-opus-4-5', agentId: isReview ? REVIEW_AGENT : subagentId(e.tool_use_id) };
   });
   on('turn.step', async function* (_$, e) {
     yield* [];

@@ -63,6 +63,7 @@ const saveNudge = async ($: EngineInterface): Promise<void> => {
       severity: note.severity,
       text: note.text,
       turn: note.turn,
+      subagent: note.subagent,
     }));
   await $.state.set({ plugin: 'watchdog', key: 'nudge' }, nudgeValue(notes)).catch(() => undefined);
 };
