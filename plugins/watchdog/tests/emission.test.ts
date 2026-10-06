@@ -34,7 +34,7 @@ const note = async ($: Engine, text: string, severity: string) =>
   $.tool.call({ tool: NOTE, agentId: REVIEW_AGENT, note: text, severity });
 
 describe('the note hook: destructive check, emission guard and note history', () => {
-  test('one review: unsafe drop, admission, duplicate, a held nit raised in place to a steer, noise; the history is stored', async ($, on: SessionStubs) => {
+  test('one review after the turn: unsafe drop, admission, duplicate, a waiting nit raised in place to a late concern, noise; the history is stored', async ($, on: SessionStubs) => {
     const seen = stubSession(on);
     await reviewOf($, 'Speed up the build.');
     const logsBefore = seen.logs.length;
@@ -51,14 +51,14 @@ describe('the note hook: destructive check, emission guard and note history', ()
 
     expect(seen.logs.slice(logsBefore)).toEqual([
       UNSAFE_ROW,
-      '[nit] default: Missing null check in parse(). (held)',
-      '[concern] default: Missing null check in parse(). (steered)',
+      '[nit] default: Missing null check in parse(). (aside on next prompt)',
+      '[concern] default: Missing null check in parse(). (nudged)',
     ]);
     expect(seen.store.get(STORE_KEY)).toEqual({
       watchdogs: {
         default: {
           keys: [{ key: 'missing null check in parse', severity: 'concern' }],
-          notes: [{ text: 'Missing null check in parse().', severity: 'concern', delivery: 'steered' }],
+          notes: [{ text: 'Missing null check in parse().', severity: 'concern', delivery: 'nudged' }],
         },
       },
       lastUsed: NOW,
@@ -73,7 +73,7 @@ describe('the note hook: destructive check, emission guard and note history', ()
       result: 'Queued. Do not re-raise.',
     });
     expect(seen.logs.slice(logsBefore)).toEqual([
-      '[blocker] default: rm -rf dist also deletes the checked-in fixtures. (steered)',
+      '[blocker] default: rm -rf dist also deletes the checked-in fixtures. (nudged)',
     ]);
   });
 
@@ -119,11 +119,11 @@ describe('the note hook: destructive check, emission guard and note history', ()
     expect(notes.map(({ text, delivery }) => `${text} ${delivery}`)).toEqual([
       'Nit one. displaced',
       'Nit two. displaced',
-      'Nit three. held',
-      'Nit four. held',
-      'The parser drops the last token. steered',
-      'The cache key ignores the locale. steered',
-      'The build skips the parser tests. steered',
+      'Nit three. aside on next prompt',
+      'Nit four. aside on next prompt',
+      'The parser drops the last token. nudged',
+      'The cache key ignores the locale. nudged',
+      'The build skips the parser tests. nudged',
     ]);
   });
 });

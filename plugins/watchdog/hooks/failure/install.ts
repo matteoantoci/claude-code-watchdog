@@ -2,7 +2,7 @@ import { watchdogOf } from '../agents/ids';
 import { currentRoster } from '../agents/roster';
 import { parseSubcommand } from '../command/args';
 import { COMMAND_LOG_DELAY_MS } from '../constants';
-import { changedHealth, rememberErrorText, restoreHealth, stateRows } from './state';
+import { changedHealth, rememberErrorText, resetFailures, restoreHealth, stateRows } from './state';
 import type { OnEvents } from '../on';
 import type { EngineInterface, Hook } from 'claude-code';
 
@@ -58,10 +58,12 @@ const onPrompt: Hook<'prompt.submit'> = async ($, e, next) => {
   return result;
 };
 
-// §5.2: `/watchdog on` beneath sets the states again and tries each watchdog at once.
+// §5.2: `/watchdog on` beneath sets the states again and tries each watchdog at once, so the failure counts
+// of its roster go (§12.3 item 2).
 const onCommand: Hook<'command.run'> = async ($, e, next) => {
   const result = await next(e);
   if (parseSubcommand(e.args) === 'on') {
+    resetFailures(currentRoster());
     await report($, true);
   }
   return result;

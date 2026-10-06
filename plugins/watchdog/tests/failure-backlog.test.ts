@@ -1,12 +1,22 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { applyBacklog } from '../hooks/failure/backlog';
-import { addRow, closeUpdate, pendingBatch, startFeed } from '../hooks/feed/feed';
+import { closeUpdate, pendingBatch, recordRow, startFeed } from '../hooks/feed/feed';
 import type { Feed } from '../hooks/feed/feed';
 
-// One closed update of one row.
-const update = (feed: Feed, uuid: string): Feed => closeUpdate(addRow(feed, { uuid, text: `row ${uuid}` }));
+// One closed update of one agent row.
+const update = (feed: Feed, uuid: string): Feed =>
+  closeUpdate(
+    recordRow(feed, {
+      uuid,
+      door: 'response',
+      origin: { kind: 'model', model: 'claude-opus-4-5' },
+      message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text: `row ${uuid}` }] },
+    }),
+    'turn'
+  );
 
-const texts = (feed: Feed, slug: string): string[] => pendingBatch(feed, slug)?.rows.map((row) => row.text) ?? [];
+const texts = (feed: Feed, slug: string): string[] =>
+  pendingBatch(feed, slug)?.rows.map((row) => `row ${row.uuid}`) ?? [];
 
 // The feed of two watchdogs after the first review of `a` took updates u1 and u2.
 const reviewed = (): Feed => update(update(startFeed(['a', 'b']), 'u1'), 'u2');

@@ -41,10 +41,12 @@ const stubSteer = (on: Stubs) => {
   return { seen, written };
 };
 
+// `/watchdog on`, the review agent's id, and a main turn that runs: a steer waits only inside a turn (§10.1).
 const startReview = async ($: Engine): Promise<void> => {
   await $.session.start(START);
   await $.command.run(typed('on'));
   await $.agent.spawn(SPAWN);
+  await $.turn.start({ text: 'Fix the parser.', turnId: 't1' });
 };
 
 const sendNote = async ($: Engine, severity: string): Promise<void> => {
@@ -65,18 +67,19 @@ describe('steer delivery', () => {
     expect(seen.reads.filter((path) => path.endsWith(GUIDANCE_PATH)).length).toBe(1);
     expect(written.log.length).toBe(1);
     expect(written.log[0]).toMatchObject({ kind: 'error', watchdog: 'default', time: NOW });
-    expect(written.log[0]?.error).toContain('steer append failed');
+    const [record] = written.log;
+    expect(record?.kind === 'error' ? record.error : undefined).toContain('steer append failed');
 
     // Undelivered: the note left the steer route, so the next tool result appends nothing more.
     await mainBash($);
     expect(written.log.length).toBe(1);
   });
 
-  test('a nit stays held and no tool result appends it', async ($, on: Stubs) => {
+  test('a nit waits for the next person prompt and no tool result appends it', async ($, on: Stubs) => {
     const { seen, written } = stubSteer(on);
     await startReview($);
     await sendNote($, 'nit');
-    expect(seen.logs.at(-1)).toBe('[nit] default: parseDate drops the timezone (held)');
+    expect(seen.logs.at(-1)).toBe('[nit] default: parseDate drops the timezone (aside on next prompt)');
 
     await mainBash($);
     expect(written.log).toEqual([]);

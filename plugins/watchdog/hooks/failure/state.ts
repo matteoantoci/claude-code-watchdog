@@ -1,13 +1,15 @@
 import { MAX_FAILED_REVIEWS } from '../constants';
 import { currentFeed, setFeed } from '../feed/feed';
+import { traceError, traceOf } from '../log/log';
 import { setSlot, slotOf } from '../review/slots';
 import { applyBacklog } from './backlog';
+import { reviewOutcome } from './classify';
 import { NO_FAILURES, afterOutcome } from './health';
 import type { Watchdog } from '../agents/roster';
-import type { Problem, Slot } from '../review/slots';
+import type { Problem, RunningReview, Slot } from '../review/slots';
 import type { Outcome } from './classify';
 import type { Counters } from './health';
-import type { PluginState } from 'claude-code';
+import type { PluginState, TurnCompleteInput } from 'claude-code';
 
 // §12.3, §14.1: the failure state of every watchdog (its shape is the `health` key of the state contract).
 export type Health = PluginState['watchdog']['health'];
@@ -47,22 +49,35 @@ export const rememberSpawnModel = (agentId: string, model: string): void => {
   memory.models.set(agentId, model);
 };
 
-// A review's end takes what the mod kept of its agent; the agent never runs again.
-export const takeAgentFacts = (agentId: string): { errorText: string | undefined; spawnModel: string | undefined } => {
-  const facts = { errorText: memory.errors.get(agentId), spawnModel: memory.models.get(agentId) };
-  memory.errors.delete(agentId);
-  memory.models.delete(agentId);
-  return facts;
-};
-
 // §12.4: each error goes to `last error` in the status.
 export const setLastError = (watchdog: string, error: string): void => {
   memory.lastError = `${watchdog}: ${error}`;
 };
 
-// §12.3 item 1: the notes a review delivered: admitted, and not displaced or dropped since.
-export const deliveredNotes = (notes: readonly { readonly delivery: string }[]): number =>
-  notes.filter((note) => note.delivery !== 'displaced' && !note.delivery.startsWith('dropped:')).length;
+// §12.1 to §12.3: the outcome of a running review's own `turn.complete`, from what the mod saw of its agent:
+// the text of its last synthetic row, its step count and the model of its spawn, taken now because the agent
+// never runs again. The error goes to the review's record and to `last error`. With the notes the review
+// delivered (§12.3 item 1): admitted, and not displaced or dropped since.
+export const endOutcome = (e: TurnCompleteInput, review: RunningReview): { outcome: Outcome; notes: number } => {
+  const { agentId, slot, watchdog } = review;
+  const trace = traceOf(agentId);
+  const outcome = reviewOutcome({
+    end: e,
+    errorText: memory.errors.get(agentId),
+    steps: trace.steps,
+    isCompact: slot.isCompact === true,
+    model: watchdog.model,
+    ran: e.usage?.model ?? memory.models.get(agentId),
+  });
+  memory.errors.delete(agentId);
+  memory.models.delete(agentId);
+  if (outcome.error !== null) {
+    traceError(agentId, outcome.error);
+    setLastError(watchdog.name, outcome.error);
+  }
+  const notes = trace.notes.filter((note) => note.delivery !== 'displaced' && !note.delivery.startsWith('dropped:'));
+  return { outcome, notes: notes.length };
+};
 
 // §7.5, §12.3: one outcome of a review (or of its spawn) moves its watchdog's slot, counts and backlog.
 export const applyOutcome = (

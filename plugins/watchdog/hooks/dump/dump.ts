@@ -44,11 +44,15 @@ const reviewText = (record: ReviewRecord): string[] => [
 ];
 
 // §13.4: one record of the review log as one markdown block.
-export const recordText = (record: LogRecord): string =>
-  (record.kind === 'review'
-    ? reviewText(record)
-    : [`### ${isoTime(record.time)} · ${record.watchdog} · error`, `- error: ${record.error}`]
-  ).join('\n');
+export const recordText = (record: LogRecord): string => {
+  if (record.kind === 'review') {
+    return reviewText(record).join('\n');
+  }
+  const head = `### ${isoTime(record.time)} · ${record.watchdog}`;
+  return record.kind === 'error'
+    ? [`${head} · error`, `- error: ${record.error}`].join('\n')
+    : `${head} · unreviewed: ${record.updates} updates`;
+};
 
 const promptsText = (prompts: readonly ReviewPrompt[]): string[] => [
   '## Prompts of the last reviews',

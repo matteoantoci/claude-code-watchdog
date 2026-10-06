@@ -1,4 +1,5 @@
-import { moveCursor, pendingBatch } from '../feed/feed';
+import { moveCursor } from '../feed/feed';
+import { dropBacklog } from '../review/backlog';
 import type { Feed } from '../feed/feed';
 
 // §7.5, §12.3: what an outcome does to the backlog of its watchdog. `move`: the cursor passes the batch of the
@@ -12,8 +13,7 @@ export const applyBacklog = (feed: Feed, cursor: { slug: string; batchEnd: strin
     return moveCursor(feed, slug, cursor.batchEnd);
   }
   if (backlog === 'drop') {
-    const waiting = pendingBatch(feed, slug);
-    return waiting === undefined ? feed : moveCursor(feed, slug, waiting.end);
+    return dropBacklog(feed, slug);
   }
   if (backlog === 'forget') {
     return { ...feed, cursors: Object.fromEntries(Object.entries(feed.cursors).filter(([key]) => key !== slug)) };

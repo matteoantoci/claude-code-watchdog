@@ -1,5 +1,6 @@
 import { addWatchdogId } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
+import { cadenceOf } from './cadence';
 import type { Watchdog } from '../agents/roster';
 import type { PluginState } from 'claude-code';
 
@@ -36,14 +37,35 @@ export const setSlot = (slug: string, slot: Slot): void => {
 export const reviewOf = (agentId: string): string | undefined =>
   Array.from(slots).find(([, slot]) => slot.state === 'reviewing' && slot.agentId === agentId)?.[0];
 
-// The running review of this agent: the agent, its slot and its watchdog; undefined for another agent.
-export const runningReview = (agentId: string | undefined) => {
+// A running review: its agent, its slot and its watchdog.
+export type RunningReview = {
+  readonly agentId: string;
+  readonly slot: Extract<Slot, { state: 'reviewing' }>;
+  readonly watchdog: Watchdog;
+};
+
+// The running review of this agent; undefined for another agent.
+export const runningReview = (agentId: string | undefined): RunningReview | undefined => {
   const slug = agentId === undefined ? undefined : reviewOf(agentId);
   const slot = slug === undefined ? undefined : slotOf(slug);
   const watchdog = slug === undefined ? undefined : watchdogBySlug(slug);
   return agentId === undefined || slot?.state !== 'reviewing' || watchdog === undefined
     ? undefined
     : { agentId, slot, watchdog };
+};
+
+// How a review starts: at a boundary when its cadence is due (§7.4); as the try of a `limited` or `halted`
+// watchdog at a person prompt (§12.3 items 2, 3), which keeps the problem it starts from; or as the compact
+// retry at once of a prompt too large (§12.3 item 4), which keeps the problem of the review it repeats.
+export type Start = { readonly from?: Problem; readonly isCompact?: boolean };
+
+// Whether the watchdog can start a review this way now.
+export const isReady = (slug: string, start: Start): boolean => {
+  const slot = slotOf(slug);
+  if (start.isCompact === true) {
+    return slot.state === 'idle';
+  }
+  return start.from === undefined ? slot.state === 'idle' && cadenceOf(slug).isDue : slot === start.from;
 };
 
 // §7.3: a review agent's id, from the first source that gives it.

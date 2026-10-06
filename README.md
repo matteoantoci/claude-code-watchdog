@@ -21,6 +21,24 @@ shows `unsupported`. Desktop support starts when Claude.app bundles Claude Code 
 - `/watchdog on` and `/watchdog off`: turn reviews on or off for this session.
 - `/watchdog dump` and `/watchdog dump raw`: write the review log to a file.
 
+## Headless runs
+
+```
+CLAUDE_WATCHDOG=on claude -p "…"
+```
+
+- Set `CLAUDE_WATCHDOG` for one run, not in a shell profile. `on` and `1` turn the run on; another value leaves it
+  off with a warning in the dump. The plugin unsets the variable at start, so no Bash command and no nested
+  `claude -p` gets it.
+- `-p` has no nudge and no cards: a late note waits as an aside for the next prompt, and what is left at the end
+  (waiting notes, `unreviewed: N updates` records) goes to the dump file
+  `~/.claude/watchdog/dumps/<sessionId>-<time>.md` (under `$CLAUDE_CONFIG_DIR` when set).
+- `onByDefault` does not apply to `-p`.
+- A project `env` setting (`.claude/settings.json` or `.claude/settings.local.json`) is ignored: the run stays off.
+  The shell, the user settings, `--settings` and managed settings can set it.
+- `total_cost_usd` can leave out the review cost.
+- `claude -p "/watchdog on <prompt>"` does not work: the command turns on, but the model never sees the prompt.
+
 ## Configure the watchdogs
 
 Without a config file, one watchdog named `default` reviews on `opus` with `medium` effort. A `WATCHDOG.json` file

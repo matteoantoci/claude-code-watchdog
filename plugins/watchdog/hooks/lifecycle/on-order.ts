@@ -5,12 +5,14 @@ export type OnFlag = PluginState['watchdog']['on'];
 
 export type OnSource = Extract<OnFlag, { readonly isOn: true }>['source'];
 
-// §5.1: what `session.start` (or a Desktop attach) found. `state` and `stored` are raw reads.
+// §5.1: what `session.start` (or a Desktop attach) found. `state` and `stored` are raw reads; `isEnvOn` is
+// a `CLAUDE_WATCHDOG` that turns a headless session on (§5.3).
 export type OnSources = {
   readonly state: unknown;
   readonly stored: unknown;
   readonly onByDefault: boolean;
   readonly isInteractive: boolean;
+  readonly isEnvOn: boolean;
 };
 
 const SOURCES: readonly OnSource[] = ['/watchdog on', 'onByDefault', 'CLAUDE_WATCHDOG'];
@@ -41,11 +43,15 @@ export const isEnvOnFlag = (value: unknown): boolean => {
 };
 
 // §5.1: the first source that holds a value wins: the `$.state` flag, the stored `on:<sessionId>` flag,
-// `onByDefault`. The last two only for an interactive session; undefined leaves a headless session as it is.
+// `onByDefault`. The last two only for an interactive session. §5.3: a headless session takes only
+// `CLAUDE_WATCHDOG`; undefined leaves it as it is.
 export const pickOnFlag = (sources: OnSources): OnFlag | undefined => {
   const state = asOnFlag(sources.state);
-  if (state !== undefined || !sources.isInteractive) {
+  if (state !== undefined) {
     return state;
+  }
+  if (!sources.isInteractive) {
+    return sources.isEnvOn ? { isOn: true, source: 'CLAUDE_WATCHDOG' } : undefined;
   }
   const defaultFlag: OnFlag = sources.onByDefault ? { isOn: true, source: 'onByDefault' } : { isOn: false };
   return asOnFlag(sources.stored) ?? defaultFlag;
@@ -67,9 +73,16 @@ export const addOnWarning = (warning: string): void => {
   memory.warnings.push(warning);
 };
 
-// §5.3: a Desktop attach before the first prompt makes the session interactive.
+// §5.3: a Desktop attach before the first prompt makes the session interactive; `CLAUDE_WATCHDOG` asked a
+// headless session to turn on.
 // §4.1: `onByDefault` from `register(on, options)`; a missing or non-boolean value is the default, false.
-const session = { isInteractive: false, hasPrompted: false, onByDefault: false };
+const session = { isInteractive: false, hasPrompted: false, onByDefault: false, isEnvOn: false };
+
+export const isEnvOn = (): boolean => session.isEnvOn;
+
+export const setEnvOn = (isOn: boolean): void => {
+  session.isEnvOn = isOn;
+};
 
 export const isOnByDefault = (): boolean => session.onByDefault;
 
