@@ -20,6 +20,10 @@ declare module 'claude-code' {
       // §7.3: the id set as an array (a Set becomes `{}` in JSON): each review agent and its watchdog slug.
       ids: readonly { readonly agentId: string; readonly watchdog: string }[];
       feed: WatchdogFeed;
+      // §6.5, §14.1: the read-scope allow set: the match key of each recorded call, oldest first, cap 500.
+      allow: readonly string[];
+      // §6.5 item 8: the read-scope denies of each watchdog slug.
+      denies: Readonly<Record<string, number>>;
     };
   }
 }

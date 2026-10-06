@@ -11,3 +11,6 @@ export const MAX_TURNS = 12;
 
 // §5.2: the preflight asks each distinct model for one token.
 export const PREFLIGHT_MAX_TOKENS = 1;
+
+// §6.5, §14.1: the read-scope allow set keeps the newest 500 calls.
+export const ALLOW_SET_CAP = 500;

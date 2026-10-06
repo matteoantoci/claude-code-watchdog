@@ -4,6 +4,7 @@ import { installFeed } from './feed/install';
 import { installLifecycle } from './lifecycle/install';
 import { installNote } from './note/install';
 import { installReview } from './review/install';
+import { installTools } from './tools/install';
 import type { Register } from 'claude-code';
 
 export const register: Register = (on) => {
@@ -13,4 +14,5 @@ export const register: Register = (on) => {
   installFeed(on);
   installReview(on);
   installNote(on);
+  installTools(on);
 };
