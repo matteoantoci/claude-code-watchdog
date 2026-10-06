@@ -143,14 +143,17 @@ describe('band cards (§13.1)', () => {
     );
   });
 
-  test('a displaced note keeps its card, marked displaced (§9.4)', async ($, on: Stubs) => {
+  test('a displaced note leaves the band; the count line keeps the session totals (§9.4)', async ($, on: Stubs) => {
     const file = { text: JSON.stringify({ maxNotesPerReview: 1 }), mtimeMs: 1 };
     stubBand(on, { files: { [`${HOME}/.claude/WATCHDOG.json`]: file } });
     await startReview($);
     await sendNote($, 'nit', NIT);
     await sendNote($, 'concern', NEW_CONCERN);
-    expect((await rows($)).map((shown) => shown['watchdog-card-1'])).toEqual(
-      onBoth(` NIT  default · just now · displaced${NIT}`)
+    expect(await rows($)).toEqual(
+      onBoth({
+        'watchdog-count': 'watchdog · 1 concern · 1 nit',
+        'watchdog-card-0': ` CONCERN  default · just now · nudged${NEW_CONCERN}`,
+      })
     );
   });
 });

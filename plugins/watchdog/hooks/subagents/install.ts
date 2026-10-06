@@ -7,6 +7,7 @@ import { currentTurn } from '../delivery/turns';
 import { wrapNotes, wrappedNote } from '../delivery/wrapper';
 import { currentFeed } from '../feed/feed';
 import { currentMode } from '../lifecycle/mode';
+import { dropHeldNote } from '../note/drop';
 import { normalizeNote } from '../note/guard';
 import {
   EMPTY_HISTORY,
@@ -128,12 +129,13 @@ const savePrimaryHistory = async ($: EngineInterface, sessionId: string): Promis
 };
 
 // §11.4: one late note on a subagent, checked against the primary agent's key set. A repeat leaves the held list
-// and gives its row; any other note records its key there and takes the primary agent's route (§10).
+// and the band (the drop path of a displaced note, §9.4) and gives its row; any other note records its key there
+// and takes the primary agent's route (§10).
 const settleLate = (sessionId: string, note: HeldNote): string[] => {
   const history = liveHistory(sessionId) ?? EMPTY_HISTORY;
   const entry = { key: normalizeNote(note.text), severity: note.severity };
   if (isRepeat(history, note.watchdog, entry)) {
-    replaceHeldNote(note);
+    dropHeldNote(note);
     const name = watchdogBySlug(note.watchdog)?.name ?? note.watchdog;
     return [logRow({ ...note, delivery: 'dropped:duplicate' }, name)];
   }

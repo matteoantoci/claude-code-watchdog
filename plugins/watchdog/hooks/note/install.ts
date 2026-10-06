@@ -1,6 +1,6 @@
 import { watchdogOf } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
-import { addCard, markCard } from '../band/cards';
+import { addCard } from '../band/cards';
 import { DEFAULT_MAX_NOTES_PER_REVIEW } from '../constants';
 import { currentTurn } from '../delivery/turns';
 import { errorText } from '../errors';
@@ -9,6 +9,7 @@ import { traceNote } from '../log/log';
 import { IDLE, reviewOf, slotOf } from '../review/slots';
 import { isLateNote, subagentOfReview, watchedSubagent } from '../subagents/watch';
 import { UNSAFE_ROW, isUnsafeNote } from './destructive';
+import { dropHeldNote } from './drop';
 import { DROP_ACKS, judgeNote, normalizeNote, reviewSlots, setReviewSlots } from './guard';
 import {
   EMPTY_HISTORY,
@@ -106,14 +107,14 @@ const raiseHeld = (history: NoteHistory, queued: HeldNote, severity: Severity) =
   return { shown, history: updateNote(history, queued.watchdog, change) };
 };
 
-// §9.4: the displaced note leaves the held list, and the history and the review log mark it `displaced`.
+// §9.4: the displaced note leaves the held list and the band, and the history and the review log mark it
+// `displaced`.
 const displaceHeld = (history: NoteHistory, note: Note, key: string | undefined): NoteHistory => {
   const gone = key === undefined ? undefined : heldNoteOf(note, key);
   if (gone === undefined || key === undefined) {
     return history;
   }
-  replaceHeldNote(gone);
-  markCard(gone, 'displaced');
+  dropHeldNote(gone);
   traceNote({ ...gone, delivery: 'displaced' });
   return updateNote(history, note.watchdog, { key, delivery: 'displaced' });
 };

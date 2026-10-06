@@ -1,6 +1,6 @@
 import { watchdogBySlug } from '../agents/roster';
 import { normalizeNote } from '../note/guard';
-import type { DeliveryState, HeldNote } from '../note/notes';
+import type { HeldNote } from '../note/notes';
 import type { Severity } from '../note/tool';
 import type { PluginState } from 'claude-code';
 
@@ -67,13 +67,11 @@ export const changeCard = (before: HeldNote | undefined, after: HeldNote): void 
   };
 };
 
-// §9.4: a displaced note leaves the held list; its card says so.
-export const markCard = (note: HeldNote, delivery: DeliveryState): void => {
+// §9.4, §11.4: a note that goes undelivered (displaced, or a late repeat on a subagent) leaves the band; the
+// totals keep it, as the session totals count each admitted note.
+export const removeCard = (note: HeldNote): void => {
   const key = cardKey(note);
-  memory.band = {
-    ...memory.band,
-    cards: memory.band.cards.map((card) => (card.key === key ? { ...card, delivery } : card)),
-  };
+  memory.band = { ...memory.band, cards: memory.band.cards.filter((card) => card.key !== key) };
 };
 
 // §13.1, §5.2: a person prompt and `/watchdog off` clear the cards; the totals stay for the count line.

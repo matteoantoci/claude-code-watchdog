@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { readHistory, watchdogNotes } from '../hooks/note/history';
 import { PERSON_PROMPT, REVIEW_SPAWN, sendNote, stubDelivery, wrapped } from './fixtures/delivery';
+import { stateIn, stubState } from './fixtures/on-state';
 import {
   REVIEW_AGENT,
   SESSION_ID,
@@ -15,6 +16,7 @@ import {
 import type { LogRecord } from '../hooks/log/log';
 import type { OnEvents } from '../hooks/on';
 import type { DeliverySeen, DeliveryStubs } from './fixtures/delivery';
+import type { StateStubs } from './fixtures/on-state';
 import type { Seen, SessionStubs, WorkspaceFile } from './fixtures/session';
 import type { AgentSpawnInput, SessionAppendInput, TurnStepInput } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
@@ -253,8 +255,10 @@ describe('delivery of the notes on a subagent (§11.3)', () => {
 });
 
 describe('the note history of a subagent (§11.4)', () => {
-  test('each subagent has its own key set; a late note on it is first checked against the primary agent set', async ($, on: DeliveryStubs) => {
+  test('each subagent has its own key set; a late note on it is first checked against the primary agent set', async ($, on: DeliveryStubs &
+    StateStubs) => {
     const seen = stubDelivery(on, { files: EXPLORE_ON });
+    const state = stubState(on);
     const known = 'Check the expiry branch.';
     const repeated = 'Keep the old token format.';
     await startOn($);
@@ -273,6 +277,13 @@ describe('the note history of a subagent (§11.4)', () => {
     await sendNote($, 'concern', BLOCKER);
     await $.turn.complete({ ...turnEnd('s1'), agentId: SUB });
     expect(seen.logs.at(-1)).toBe(`[concern · Explore] default: ${known} (dropped:duplicate)`);
+    // The dropped repeat leaves the band, as a displaced note does (§9.4).
+    const band = stateIn(state, SESSION_ID, 'band') as { cards: readonly { text: string; subagent?: string }[] };
+    expect(band.cards.map((card) => [card.text, card.subagent])).toEqual([
+      [known, undefined],
+      [repeated, undefined],
+      [BLOCKER, 'Explore'],
+    ]);
     const late = await $.tool.call({
       tool: 'mcp__watchdog__note',
       agentId: REVIEW_AGENT,
