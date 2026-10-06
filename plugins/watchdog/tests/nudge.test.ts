@@ -1,6 +1,7 @@
-import { describe, expect, test } from 'claude-code/testing';
+import { describe, expect, mock, test } from 'claude-code/testing';
 import {
   PERSON_PROMPT,
+  REVIEW_SPAWN,
   TASK_NOTIFICATION,
   nudgeTurnText,
   sendNote,
@@ -8,9 +9,22 @@ import {
   stubDelivery,
   wrapped,
 } from './fixtures/delivery';
-import { NOW, REVIEW_AGENT, START, USAGE, turnEnd, typed } from './fixtures/session';
+import { stateIn, stubState } from './fixtures/on-state';
+import {
+  NOW,
+  REVIEW_AGENT,
+  SESSION_ID,
+  START,
+  USAGE,
+  mainRow,
+  stubAfterAtOnce,
+  stubSession,
+  turnEnd,
+  typed,
+} from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { DeliveryEvents, DeliverySeen, DeliveryStubs } from './fixtures/delivery';
+import type { SessionEvents } from './fixtures/session';
 import type { Engine } from 'claude-code/testing';
 
 const CONCERN = 'parseDate drops the timezone';
@@ -235,5 +249,50 @@ describe('late note and nudge', () => {
     expect(nudges(seen)).toEqual([]);
     await seen.clock.advance(1);
     expect(nudges(seen)).toEqual([wrapped(`<note severity="concern" turns_ago="1">${CONCERN}</note>`)]);
+  });
+});
+
+describe('the nudge budget after a refused nudge (§10.3, §10.4)', () => {
+  type RefusedStubs = OnEvents<SessionEvents | 'clock.after' | 'state.get' | 'state.set'>;
+
+  test('a nudge whose submit rejects gives the budget back and leaves no wait in $.state', async ($, on: RefusedStubs) => {
+    // The 2 s wait runs at once, and no hook answers `prompt.submit` beneath the mod, so the nudge rejects.
+    const seen = stubSession(on);
+    stubAfterAtOnce(on);
+    const state = stubState(on);
+    await $.session.start(START);
+    await $.command.run(typed('on'));
+    await $.session.append(mainRow('u1', 'user', 'Fix the parser.')).catch(() => undefined);
+    await $.turn.complete(turnEnd('t1'));
+    await $.agent.spawn(REVIEW_SPAWN);
+    await lateBlocker($, BLOCKER);
+
+    expect(seen.logs.at(-1)).toBe(`[blocker] default: ${BLOCKER} (nudged)`);
+    expect((await $.command.run(typed('status'))).text?.split('\n')[0]).toBe('watchdog on · nudge 0/1 · cooldown 0');
+    expect(stateIn(state, SESSION_ID, 'nudge')).toMatchObject({ nudges: 0, dueAt: null, notes: [] });
+  });
+
+  test('a person prompt during a refused nudge leaves the new budget at 0, so the next prompt gets 1 nudge', async ($, on: DeliveryStubs) => {
+    const clock = mock.clock(on, { now: NOW });
+    stubSession(on, { isClockMocked: true });
+    const submitted: string[] = [];
+    // The person sends a prompt while the nudge submit waits; then the engine drops the nudge.
+    on('prompt.submit', async (_$, e) => {
+      submitted.push(e.text);
+      if (!e.text.startsWith('<watchdog-notes>')) {
+        return { text: e.text };
+      }
+      await $.prompt.submit(PERSON_PROMPT);
+      return { drop: 'the session is busy' };
+    });
+    on('turn.start', (_$, e) => ({ turnId: e.turnId }));
+    await startReview($);
+    await personTurn($, 't1');
+    await $.turn.complete(turnEnd('t1'));
+    await lateBlocker($, BLOCKER);
+    await clock.advance(2000);
+
+    expect(submitted.filter((text) => text.startsWith('<watchdog-notes>'))).toHaveLength(1);
+    expect((await $.command.run(typed('status'))).text?.split('\n')[0]).toBe('watchdog on · nudge 0/1 · cooldown 0');
   });
 });

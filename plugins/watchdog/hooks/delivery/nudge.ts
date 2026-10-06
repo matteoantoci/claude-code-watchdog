@@ -129,6 +129,17 @@ export const setNudgeClock = (clock: NudgeClock): void => {
   memory.clock = clock;
 };
 
+// §10.4: a nudge that goes out takes the budget of its person prompt.
+export const spendNudge = (): void => {
+  memory.clock = { ...memory.clock, nudges: memory.clock.nudges + 1 };
+};
+
+// §10.3, §10.4: a refused nudge gives its budget back. A person prompt that came while the nudge was in flight
+// already reset the budget, so the count never goes below 0.
+export const giveBackNudge = (): void => {
+  memory.clock = { ...memory.clock, nudges: Math.max(0, memory.clock.nudges - 1) };
+};
+
 // The `$.state` value: the clock and the late notes of the nudge that waits.
 export const nudgeValue = (notes: readonly NudgeNote[]): Nudge => ({
   ...memory.clock,

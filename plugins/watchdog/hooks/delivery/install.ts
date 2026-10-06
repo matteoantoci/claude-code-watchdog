@@ -12,6 +12,7 @@ import {
   currentNudgeClock,
   currentRouting,
   endMainTurn,
+  giveBackNudge,
   immuneTurnsWarning,
   lateRoute,
   nudgeStatus,
@@ -20,6 +21,7 @@ import {
   routeNote,
   setImmuneTurns,
   setNudgeClock,
+  spendNudge,
   startMainTurn,
 } from './nudge';
 import { countTurn, currentTurn, restoreTurn } from './turns';
@@ -141,12 +143,12 @@ const sendNudge = async ($: EngineInterface): Promise<void> => {
   setNudgeClock({ ...currentNudgeClock(), dueAt: null });
   const notes = currentRouting().isTurnRunning ? [] : takeNotes('nudged');
   if (notes.length > 0) {
-    setNudgeClock({ ...currentNudgeClock(), nudges: currentNudgeClock().nudges + 1 });
+    spendNudge();
   }
   await saveNudge($);
   const problem = notes.length === 0 ? undefined : await submitNudge($, notes);
   if (problem !== undefined) {
-    setNudgeClock({ ...currentNudgeClock(), nudges: currentNudgeClock().nudges - 1 });
+    giveBackNudge();
     await keepUndelivered($, { notes, route: () => 'held', error: `nudge failed: ${problem}` });
     await saveNudge($);
   }
@@ -161,12 +163,21 @@ const startWait = ($: EngineInterface, ms: number): void => {
 // §10.3: late notes that wait while the session is idle start one 2 s wait; the notes ready within it share
 // the nudge. Only a `turn.complete` (or the load) starts it: a submit from a timer that a `tool.call` hook
 // set is refused, so the note hook never does.
+const canArm = (): boolean =>
+  !currentRouting().isTurnRunning && memory.wait === undefined && heldNotes().some(isNudged);
+
+// The clock is read before the wait starts, so a wait that runs out at once finds `dueAt` set and its nudge's
+// budget is not written over.
 const armNudge = async ($: EngineInterface): Promise<void> => {
-  if (currentRouting().isTurnRunning || memory.wait !== undefined || !heldNotes().some(isNudged)) {
+  if (!canArm()) {
     return;
   }
+  const dueAt = (await $.clock.now()) + NUDGE_WAIT_MS;
+  if (!canArm()) {
+    return;
+  }
+  setNudgeClock({ ...currentNudgeClock(), dueAt });
   startWait($, NUDGE_WAIT_MS);
-  setNudgeClock({ ...currentNudgeClock(), dueAt: (await $.clock.now()) + NUDGE_WAIT_MS });
   await saveNudge($);
 };
 
