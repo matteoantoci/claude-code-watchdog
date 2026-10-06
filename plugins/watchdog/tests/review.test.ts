@@ -37,6 +37,14 @@ const agentRow = (uuid: string, text: string): SessionAppendInput => ({
   agentId: REVIEW_AGENT,
 });
 
+// The engine appends each `$.ui.log` line to the main conversation as a notice led by the plugin's name.
+const noticeRow = (uuid: string, text: string): SessionAppendInput => ({
+  uuid,
+  door: 'notice',
+  origin: { kind: 'engine' },
+  message: { type: 'system', content: [{ type: 'text', text }] },
+});
+
 const reviewEnd = { ...turnEnd('r1'), agentId: REVIEW_AGENT, usage: USAGE } as const;
 
 const startOn = async ($: Engine): Promise<void> => {
@@ -162,6 +170,26 @@ describe('one review at a time, and no self-review', () => {
     expect(seen.spawns.length).toBe(spawnsBefore + 1);
     expect(prompt).toContain('First task.');
     expect(prompt).not.toMatch(/WATCHDOG READS|watchdog-notes|task-notification/u);
+  });
+
+  test("the engine's notice echo of the mod's own log row stays out of the next review (l3-self-review-log-rows)", async ($, on: SessionStubs) => {
+    const seen = stubSession(on);
+    await startOn($);
+    await append($, mainRow('u1', 'user', 'First task.'));
+    await $.turn.complete(turnEnd('t1'));
+    await $.agent.spawn(SPAWN);
+    await $.tool.call({ tool: 'mcp__watchdog__note', agentId: REVIEW_AGENT, note: 'Check null.', severity: 'concern' });
+    await $.turn.complete(reviewEnd);
+    expect(seen.logs).toEqual(['[concern] default: Check null. (nudged)']);
+    await append($, noticeRow('n1', `watchdog: ${seen.logs[0] ?? ''}`));
+    await append($, noticeRow('n2', 'linter: 0 problems'));
+    await append($, mainRow('u2', 'user', 'Second task.'));
+    await $.turn.complete(turnEnd('t2'));
+
+    const prompt = seen.spawns.at(-1)?.prompt ?? '';
+    expect(prompt).toContain('Second task.');
+    expect(prompt).toContain('[notice] linter: 0 problems');
+    expect(prompt).not.toContain('watchdog: [concern] default: Check null.');
   });
 });
 

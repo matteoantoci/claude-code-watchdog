@@ -14,6 +14,13 @@ const textRow = (text: string) => ({
   message: { content: [{ type: 'text', text }] },
 });
 
+// The engine's main-loop row for a `$.ui.log` line, led by the logging plugin's name.
+const noticeRow = (text: string) => ({
+  door: 'notice',
+  origin: { kind: 'engine' },
+  message: { content: [{ type: 'text', text }] },
+});
+
 const notification = (id: string) =>
   `<task-notification>\n<task-id>${id}</task-id>\n<tool-use-id>${PLUGIN_ID}</tool-use-id>\n<status>completed</status>\n</task-notification>`;
 
@@ -67,6 +74,12 @@ describe('self-review filter, item 3: the delivered notes', () => {
       message: { content: [{ type: 'text', text: 'lint: 0 problems' }] },
     };
     expect(isOwnRow(other, IDLE)).toBe(false);
+  });
+
+  test("the engine's notice echo of the mod's own $.ui.log row is its own; another plugin's notice is not", () => {
+    expect(isOwnRow(noticeRow('watchdog: [concern] probe: add() returns a - b (nudged)'), IDLE)).toBe(true);
+    expect(isOwnRow(noticeRow('linter: 0 problems'), IDLE)).toBe(false);
+    expect(isOwnRow(noticeRow('watchdog-extra: hello'), IDLE)).toBe(false);
   });
 });
 

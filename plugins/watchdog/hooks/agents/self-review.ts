@@ -46,13 +46,18 @@ export const isOwnSend = (send: { readonly to: string; readonly agentId?: string
 export const isOwnPrompt = (text: string, own: OwnContext): boolean =>
   (text.startsWith('<task-notification>') && isId(TASK_ID.exec(text)?.[1], own)) || STOPPED_REVIEW_PROMPT.test(text);
 
-// Items 1, 2, 3, and the prompts of items 4 and 6, for a session.append row.
+// Items 1, 2, 3, and the prompts of items 4 and 6, for a session.append row. Item 3 also covers the engine's
+// `notice` echo of each `$.ui.log` row, which it leads with the plugin's name (live probe l3-self-review-log-rows).
 export const isOwnRow = (row: Row, own: OwnContext): boolean => {
   if (isId(row.agentId, own) || (row.origin.kind === 'plugin' && row.origin.name === PLUGIN)) {
     return true;
   }
   const text = row.message.content.map((block) => (typeof block.text === 'string' ? block.text : '')).join('\n');
-  return (row.door === 'hook-context' && text.includes('<watchdog-notes>')) || isOwnPrompt(text, own);
+  return (
+    (row.door === 'hook-context' && text.includes('<watchdog-notes>')) ||
+    (row.door === 'notice' && text.startsWith(`${PLUGIN}: `)) ||
+    isOwnPrompt(text, own)
+  );
 };
 
 // Items 1, 4 and 5 for a tool.call or tool.check; `originPlugin` is `next.origin.plugin`.
