@@ -1,0 +1,19 @@
+name: ci
+
+on: push
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Spec §2: the pinned Claude Code; npm blocks its postinstall script, so run it by hand.
+      - run: npm install --no-save --ignore-scripts @anthropic-ai/claude-code@2.1.290
+      - run: node node_modules/@anthropic-ai/claude-code/install.cjs
+      - run: npx claude --version
+      - run: npm run check

@@ -1,0 +1,25 @@
+{
+  "name": "watchdog",
+  "displayName": "Watchdog",
+  "version": "0.1.0",
+  "description": "Watchdog agents review each update of the agent you work with and push short notes to it.",
+  "author": { "name": "Matteo Antoci" },
+  "license": "Apache-2.0",
+  "userConfig": {
+    "onByDefault": {
+      "type": "boolean",
+      "title": "On by default",
+      "description": "Turn the watchdog on in each new interactive session.",
+      "required": false,
+      "default": false
+    },
+    "immuneTurns": {
+      "type": "number",
+      "title": "Immune turns",
+      "description": "Main turns after a nudge before the next nudge (0 to 5).",
+      "required": false,
+      "default": 3
+    }
+  },
+  "types": "./types/index.d.ts"
+}

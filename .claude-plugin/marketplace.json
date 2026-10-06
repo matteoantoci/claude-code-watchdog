@@ -1,0 +1,6 @@
+{
+  "name": "matteoantoci",
+  "description": "Claude Code plugins by Matteo Antoci.",
+  "owner": { "name": "matteoantoci" },
+  "plugins": [{ "name": "watchdog", "source": "./plugins/watchdog" }]
+}

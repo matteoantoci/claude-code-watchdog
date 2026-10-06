@@ -1,0 +1,3 @@
+{
+  "extends": "./plugins/watchdog/.claude-plugin/types/tsconfig.json"
+}

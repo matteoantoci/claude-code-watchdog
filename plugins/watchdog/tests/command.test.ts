@@ -1,0 +1,81 @@
+import { describe, expect, test } from 'claude-code/testing';
+import type { CommandRunInput, On } from 'claude-code';
+
+const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const;
+
+const startOn = (on: On, base: string): void => {
+  on('session.version', () => ({ value: { version: base, base } }));
+  on('command.register', () => ({ value: { command: 'watchdog' } }));
+  on('session.start', (_$, e) => ({ cwd: e.cwd }));
+};
+
+const typed = (args: string): CommandRunInput => ({
+  command: 'watchdog',
+  args,
+  origin: { kind: 'composer' },
+  presentation: { isFullscreen: false, columns: 80 },
+});
+
+describe('/watchdog command', () => {
+  test('below 2.1.290, /watchdog on replies that Claude Code needs an update', async ($, on) => {
+    startOn(on, '2.1.289');
+    await $.session.start(START);
+    const reply = await $.command.run(typed('on'));
+    expect(reply.text).toBe('needs Claude Code 2.1.290 or later; update the Claude app');
+  });
+
+  test('a bare /watchdog and /watchdog status show the same short status', async ($, on) => {
+    startOn(on, '2.1.290');
+    await $.session.start(START);
+    const bare = await $.command.run(typed(''));
+    const status = await $.command.run(typed('status'));
+    expect(bare.text).toBe('watchdog off');
+    expect(status.text).toBe('watchdog off');
+  });
+
+  test('below 2.1.290, the status says unsupported and why', async ($, on) => {
+    startOn(on, '2.1.289');
+    await $.session.start(START);
+    const status = await $.command.run(typed('status'));
+    expect(status.text).toBe('watchdog unsupported: needs Claude Code 2.1.290 or later; update the Claude app');
+  });
+
+  test('an unknown subcommand replies with the usage', async ($, on) => {
+    startOn(on, '2.1.290');
+    await $.session.start(START);
+    const reply = await $.command.run(typed('of'));
+    expect(reply.text).toBe('usage: /watchdog [on|off|status|dump [raw]]');
+  });
+});
+
+describe('/watchdog registration', () => {
+  test('session.start registers the command after the version gate', async ($, on) => {
+    const calls: string[] = [];
+    on('session.version', () => {
+      calls.push('session.version');
+      return { value: { version: '2.1.290', base: '2.1.290' } };
+    });
+    on('command.register', (_$, e) => {
+      calls.push(`command.register ${e.name}`);
+      return { value: { command: e.name } };
+    });
+    on('session.start', (_$, e) => ({ cwd: e.cwd }));
+    await $.session.start(START);
+    expect(calls).toEqual(['session.version', 'command.register watchdog']);
+  });
+
+  test('a register error writes one log row and the hook still ends', async ($, on) => {
+    const rows: string[] = [];
+    on('session.version', () => ({ value: { version: '2.1.290', base: '2.1.290' } }));
+    on('command.register', () => ({ deny: 'the name watchdog belongs to another plugin' }));
+    on('ui.log', (_$, e) => {
+      rows.push(e.text);
+      return { value: undefined };
+    });
+    on('session.start', (_$, e) => ({ cwd: e.cwd }));
+    const started = await $.session.start(START);
+    expect(started.cwd).toBe('/repo');
+    expect(rows.length).toBe(1);
+    expect(rows[0]).toMatch(/^\/watchdog is not registered: .*another plugin/u);
+  });
+});
