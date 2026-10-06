@@ -2,12 +2,12 @@ import { watchdogBySlug } from '../agents/roster';
 import { parseSubcommand } from '../command/args';
 import { COMMAND_LOG_DELAY_MS } from '../constants';
 import { errorText } from '../errors';
-import { currentFeed } from '../feed/feed';
 import { currentMode } from '../lifecycle/mode';
 import { isInteractiveSession, onWarnings } from '../lifecycle/on-order';
 import { addLogRecord, currentLog, recentPrompts, unreviewedRecord } from '../log/log';
 import { heldNotes, logRow } from '../note/notes';
 import { waitingUpdates } from '../review/backlog';
+import { watchedFeeds } from '../review/backlogs';
 import { slotOf } from '../review/slots';
 import { configDir, dumpPath, dumpText } from './dump';
 import { addDumpLines, dumpLines } from './sections';
@@ -76,17 +76,19 @@ const onDumpCommand: Hook<'command.run'> = async ($, e, next) => {
   return { text: reply };
 };
 
-// §7.5: one `unreviewed: N updates` record for each backlog that no review took: the updates after the
-// cursor, or after the batch of a review that still runs.
+// §7.5, §11.2: one `unreviewed: N updates` record for each backlog that no review took, the primary agent's and
+// each watched subagent's: the updates after the cursor, or after the batch of the review that runs on it.
 const recordUnreviewed = async ($: EngineInterface): Promise<void> => {
   const time = await $.clock.now();
-  const feed = currentFeed();
-  const records = Object.entries(feed.cursors).flatMap(([slug, cursor]) => {
-    const slot = slotOf(slug);
-    const updates = waitingUpdates(feed, slot.state === 'reviewing' ? slot.batchEnd : cursor);
-    const watchdog = watchdogBySlug(slug)?.name ?? slug;
-    return updates === 0 ? [] : [unreviewedRecord({ watchdog, time, updates })];
-  });
+  const records = watchedFeeds().flatMap(({ subagent, feed }) =>
+    Object.entries(feed.cursors).flatMap(([slug, cursor]) => {
+      const slot = slotOf(slug);
+      const isTaken = slot.state === 'reviewing' && slot.subagent === subagent?.agentId;
+      const updates = waitingUpdates(feed, isTaken ? slot.batchEnd : cursor);
+      const watchdog = watchdogBySlug(slug)?.name ?? slug;
+      return updates === 0 ? [] : [unreviewedRecord({ watchdog, time, updates })];
+    })
+  );
   for (const record of records) {
     addLogRecord(record);
   }

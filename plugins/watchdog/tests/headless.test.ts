@@ -12,14 +12,15 @@ import {
   USAGE,
   mainRow,
   stubSession,
+  subagentId,
   turnEnd,
   typed,
 } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { DeliveryEvents } from './fixtures/delivery';
 import type { OnStateStubs } from './fixtures/on-state';
-import type { SessionEvents } from './fixtures/session';
-import type { SessionAppendInput } from 'claude-code';
+import type { SessionEvents, WorkspaceFile } from './fixtures/session';
+import type { AgentSpawnInput, SessionAppendInput } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
 // The end of a `-p` run: the engine's end step and the dump file it leaves.
@@ -336,5 +337,68 @@ describe('backlog at the end of -p', () => {
     await mainTurn($, 't2');
     await $.session.end(END);
     expect(written).toEqual([]);
+  });
+});
+
+describe('the backlog of a watched subagent at the end of -p (§7.5, §11.2)', () => {
+  const EXPLORE_ON: Record<string, WorkspaceFile> = {
+    '/repo/WATCHDOG.json': { text: JSON.stringify({ subagents: { Explore: true } }), mtimeMs: 1 },
+  };
+  const EXPLORE: AgentSpawnInput = {
+    tool_use_id: 'toolu_01HxWq8tYbGk2Lm4Np6Rs0001',
+    prompt: 'Find where the auth token is parsed.',
+    description: 'explore auth',
+    subagentType: 'Explore',
+    provider: { plugin: 'engine', tier: 'core' },
+    parentModel: 'claude-opus-4-5',
+    background: true,
+    fork: false,
+  };
+  const SUB = subagentId(EXPLORE.tool_use_id);
+
+  // The review of t1 runs; meanwhile Explore closes 2 updates (a step boundary and its end) that wait.
+  const subagentBacklog = async ($: Engine): Promise<void> => {
+    await $.session.start(HEADLESS_START);
+    await mainTurn($, 't1');
+    await $.agent.spawn(REVIEW_SPAWN);
+    await $.agent.spawn(EXPLORE);
+    await append($, { ...mainRow('s1', 'assistant', 'Searching for the token parser.'), agentId: SUB });
+    const stream = $.turn.step({ turnId: 's1', index: 1, model: 'claude-haiku-4-5', messageCount: 2, agentId: SUB });
+    for await (const chunk of stream) {
+      expect(chunk).toBeDefined();
+    }
+    await stream.result;
+    await append($, { ...mainRow('s2', 'assistant', 'Found it in auth/token.ts.'), agentId: SUB });
+    await $.turn.complete({ ...turnEnd('s1'), agentId: SUB });
+  };
+
+  test('the unbound reject of its review drops the subagent backlog it took; the primary one waits for session.end', async ($, on: Stubs) => {
+    const unbound = { isOn: false };
+    on('agent.spawn', { prompt: /^/u }, (_$, e, next) => {
+      const type = String('subagent_type' in e ? e.subagent_type : e.subagentType);
+      return unbound.isOn && type.startsWith('watchdog:') ? { deny: 'no session is bound' } : next(e);
+    });
+    stubSession(on, { env: ENV_ON, files: EXPLORE_ON });
+    const written = stubEnd(on);
+    await subagentBacklog($);
+    await mainTurn($, 't2');
+    unbound.isOn = true;
+    await $.turn.complete({ ...turnEnd('r1'), agentId: REVIEW_AGENT, usage: USAGE });
+    await $.session.end(END);
+
+    // The reject's record counts the 2 subagent updates; session.end's counts t2 of the primary agent.
+    expect(written[0]?.text.match(/unreviewed: \d+ updates/gu)).toEqual([
+      'unreviewed: 2 updates',
+      'unreviewed: 1 updates',
+    ]);
+  });
+
+  test('session.end records the subagent backlog that no review took', async ($, on: Stubs) => {
+    stubSession(on, { env: ENV_ON, files: EXPLORE_ON });
+    const written = stubEnd(on);
+    await subagentBacklog($);
+    await $.session.end(END);
+
+    expect(written[0]?.text.match(/unreviewed: \d+ updates/gu)).toEqual(['unreviewed: 2 updates']);
   });
 });

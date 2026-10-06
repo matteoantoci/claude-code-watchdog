@@ -9,6 +9,13 @@ import type { Start } from './slots';
 // §7.5, §11.2: a backlog a watchdog may review: the primary agent's (no subagent) or a watched subagent's.
 export type Backlog = { readonly subagent: WatchedSubagent | undefined; readonly batch: Batch };
 
+// §7.5, §11.2: the feed of each watched agent, which holds a backlog for each of its watchdogs: the primary
+// agent's (no subagent), then each watched subagent's.
+export const watchedFeeds = (): { readonly subagent: WatchedSubagent | undefined; readonly feed: Feed }[] => [
+  { subagent: undefined, feed: currentFeed() },
+  ...watchedSubagents().map((watch) => ({ subagent: watch, feed: watch.feed })),
+];
+
 // §7.4, §11.2: the cadence of one pair of a watchdog and a watched agent; the primary agent's pair is the slug.
 export const cadenceKey = (slug: string, subagent: string | undefined): string =>
   subagent === undefined ? slug : `${slug}@${subagent}`;
@@ -60,12 +67,7 @@ const isTaken = (slug: string, subagent: string | undefined, start: Start): bool
 // §7.5: a free watchdog takes the backlog with the oldest update that waits, of the ones it may take now; the
 // primary agent's on a tie.
 export const takeBacklog = (slug: string, start: Start): Backlog | undefined => {
-  const sources: { subagent: WatchedSubagent | undefined; feed: Feed }[] = [
-    { subagent: undefined, feed: currentFeed() },
-    ...watchedSubagents()
-      .filter((watch) => watch.watchdogs.includes(slug))
-      .map((watch) => ({ subagent: watch, feed: watch.feed })),
-  ];
+  const sources = watchedFeeds().filter(({ subagent }) => subagent === undefined || subagent.watchdogs.includes(slug));
   const backlogs = sources.flatMap(({ subagent, feed }) => {
     const batch = isTaken(slug, subagent?.agentId, start) ? pendingBatch(feed, slug) : undefined;
     return batch === undefined ? [] : [{ subagent, batch }];
@@ -84,7 +86,6 @@ export const changeBacklog = (subagent: string | undefined, change: (feed: Feed)
   } else {
     changeSubagentFeed(subagent, change);
   }
-  const feeds = [currentFeed(), ...watchedSubagents().map((watch) => watch.feed)];
-  const live = new Set(feeds.flatMap((feed) => feed.ends.map((close) => close.uuid)));
+  const live = new Set(watchedFeeds().flatMap(({ feed }) => feed.ends.map((close) => close.uuid)));
   [...order.ranks.keys()].filter((uuid) => !live.has(uuid)).forEach((uuid) => order.ranks.delete(uuid));
 };

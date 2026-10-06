@@ -15,7 +15,7 @@ import { isPersonPrompt } from '../person';
 import { resolveEffort, sessionEffort, setSessionEffort } from '../roster/model';
 import { taskPrompts } from '../subagents/watch';
 import { dropBacklog, isUnboundReject, waitingUpdates } from './backlog';
-import { cadenceKey, closeBacklog, takeBacklog, watchersOf } from './backlogs';
+import { cadenceKey, changeBacklog, closeBacklog, takeBacklog, watchedFeeds, watchersOf } from './backlogs';
 import { cadenceOf, countBoundary, setCadence } from './cadence';
 import { reviewPrompt } from './prompt';
 import { IDLE, isReady, learnReviewAgent, runningReview, setSlot, slotOf } from './slots';
@@ -29,6 +29,9 @@ import type { Backlog } from './backlogs';
 import type { ReviewInput } from './prompt';
 import type { Problem, Start } from './slots';
 import type { EngineInterface, Hook, TurnCompleteInput } from 'claude-code';
+
+// §12.2: a spawn that started no agent: its error, the problem that a try started from, and the batch it took.
+type SpawnFailure = { error: string; from: Problem | undefined; batchEnd: string; subagent: string | undefined };
 
 // `$.state` keeps the live copies across a reload (§14.1); a refused write loses only that carry-over.
 const save = async ($: EngineInterface): Promise<void> => {
@@ -91,15 +94,16 @@ const refreshAgent = async ($: EngineInterface, watchdog: Watchdog): Promise<voi
   );
 };
 
-// §7.5: in `-p` a spawn rejects with `no session is bound` once the session unbound. The watchdog's backlog
-// goes, with one `unreviewed: N updates` record for the dump file (§10.6); no failure counts. Returns whether
-// the backlog went.
-const dropUnbound = async ($: EngineInterface, watchdog: Watchdog, reason: string): Promise<boolean> => {
-  if (isInteractiveSession() || !isUnboundReject(reason)) {
+// §7.5: in `-p` a spawn rejects with `no session is bound` once the session unbound. The backlog that the spawn
+// took goes (the primary agent's or a watched subagent's, §11.2), with one `unreviewed: N updates` record for the
+// dump file (§10.6); no failure counts. Returns whether the backlog went.
+const dropUnbound = async ($: EngineInterface, watchdog: Watchdog, failure: SpawnFailure): Promise<boolean> => {
+  if (isInteractiveSession() || !isUnboundReject(failure.error)) {
     return false;
   }
-  const updates = waitingUpdates(currentFeed(), currentFeed().cursors[watchdog.slug]);
-  setFeed(dropBacklog(currentFeed(), watchdog.slug));
+  const feed = watchedFeeds().find(({ subagent }) => subagent?.agentId === failure.subagent)?.feed;
+  const updates = feed === undefined ? 0 : waitingUpdates(feed, feed.cursors[watchdog.slug]);
+  changeBacklog(failure.subagent, (backlog) => dropBacklog(backlog, watchdog.slug));
   addLogRecord(unreviewedRecord({ watchdog: watchdog.name, time: await $.clock.now(), updates }));
   await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog()).catch(() => undefined);
   return true;
@@ -107,13 +111,9 @@ const dropUnbound = async ($: EngineInterface, watchdog: Watchdog, reason: strin
 
 // §12.2: a spawn that started no agent gives `blocked`, a cap (no failure, no record: it retries at each boundary,
 // and the 100-record log keeps the reviews) or 1 failure; the error goes to `last error`. The `-p` unbind is §7.5.
-const spawnFailed = async (
-  $: EngineInterface,
-  watchdog: Watchdog,
-  failure: { error: string; from: Problem | undefined; batchEnd: string; subagent: string | undefined }
-): Promise<void> => {
+const spawnFailed = async ($: EngineInterface, watchdog: Watchdog, failure: SpawnFailure): Promise<void> => {
   setSlot(watchdog.slug, failure.from ?? IDLE);
-  if (await dropUnbound($, watchdog, failure.error)) {
+  if (await dropUnbound($, watchdog, failure)) {
     return;
   }
   const time = await $.clock.now();
