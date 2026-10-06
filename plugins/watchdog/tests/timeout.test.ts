@@ -5,8 +5,10 @@ import {
   NO_REVIEWS,
   TIMEOUT_ERROR,
   dueReviews,
+  slotOfClock,
   stopReasonOf,
   stopAll,
+  timeLeft,
   timeOut,
   trackReviews,
 } from '../hooks/stop/reviews';
@@ -30,14 +32,14 @@ describe('§7.8 the reviews that run', () => {
   test('a review starts at its spawn, learns its agent later, and ends when its slot leaves `reviewing`', () => {
     const started = trackReviews(NO_REVIEWS, [['default', reviewing(null)]], SPAWNED);
     expect(started).toEqual({
-      reviews: { running: [{ watchdog: 'default', agentId: null, spawnedAt: SPAWNED }], stops: [] },
+      reviews: { running: [{ watchdog: 'default', agentId: null, spawnedAt: SPAWNED, batchEnd: 'a1' }], stops: [] },
       started: ['default'],
       ended: [],
     });
 
     const learned = trackReviews(started.reviews, [['default', reviewing('a1')]], SPAWNED + 5);
     expect(learned).toEqual({
-      reviews: { running: [{ watchdog: 'default', agentId: 'a1', spawnedAt: SPAWNED }], stops: [] },
+      reviews: { running: [{ watchdog: 'default', agentId: 'a1', spawnedAt: SPAWNED, batchEnd: 'a1' }], stops: [] },
       started: [],
       ended: [],
     });
@@ -51,7 +53,10 @@ describe('§7.8 the reviews that run', () => {
 
   test('a review that ends and the next one that spawns in one hook end the old one and start the new one', () => {
     expect(trackReviews(tracked(), [['default', reviewing(null)]], SPAWNED + 7)).toEqual({
-      reviews: { running: [{ watchdog: 'default', agentId: null, spawnedAt: SPAWNED + 7 }], stops: [] },
+      reviews: {
+        running: [{ watchdog: 'default', agentId: null, spawnedAt: SPAWNED + 7, batchEnd: 'a1' }],
+        stops: [],
+      },
       started: ['default'],
       ended: ['default'],
     });
@@ -60,6 +65,23 @@ describe('§7.8 the reviews that run', () => {
   test('a review is due once 10 min passed since its spawn', () => {
     expect(dueReviews(tracked(), SPAWNED + REVIEW_TIMEOUT_MS - 1)).toEqual([]);
     expect(dueReviews(tracked(), SPAWNED + REVIEW_TIMEOUT_MS)).toEqual(['default']);
+  });
+});
+
+describe('§14.6 the reviews that run at load', () => {
+  test('a review gets its slot back as its clock kept it, and its timer the time left', () => {
+    const slot: Slot = {
+      state: 'reviewing',
+      agentId: 'a1',
+      batchEnd: 'a1',
+      subagent: 'asub0001',
+      from: { state: 'limited', reason: 'rate limit' },
+      isCompact: true,
+    };
+    const [clock] = trackReviews(NO_REVIEWS, [['default', slot]], SPAWNED).reviews.running;
+    expect(clock === undefined ? undefined : slotOfClock(clock)).toEqual(slot);
+    expect(clock === undefined ? undefined : timeLeft(clock, SPAWNED + 1000)).toBe(REVIEW_TIMEOUT_MS - 1000);
+    expect(clock === undefined ? undefined : timeLeft(clock, SPAWNED + REVIEW_TIMEOUT_MS + 5)).toBe(0);
   });
 });
 

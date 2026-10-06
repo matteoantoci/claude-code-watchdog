@@ -33,9 +33,11 @@ const typedTexts = (message: ApiMessage): string[] =>
       })
     : [];
 
-type Prompt = { readonly index: number; readonly text: string };
+// A person prompt of the conversation: its message index and its typed text.
+export type Prompt = { readonly index: number; readonly text: string };
 
-const personPrompts = (messages: readonly ApiMessage[]): Prompt[] =>
+// §7.7 part 2, §14.3: the person prompts of the conversation, oldest first.
+export const personPrompts = (messages: readonly ApiMessage[]): Prompt[] =>
   messages.flatMap((message, index) => {
     const texts = typedTexts(message);
     return texts.length === 0 ? [] : [{ index, text: texts.join('\n') }];

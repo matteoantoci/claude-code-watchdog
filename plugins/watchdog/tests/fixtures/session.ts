@@ -9,6 +9,7 @@ import type {
   ContextMemoryFile,
   ModelCompleteRequest,
   SessionAppendInput,
+  SessionMessage,
   SessionUsage,
   Settings,
   SettingsSource,
@@ -45,6 +46,8 @@ export type SessionEvents =
   | 'session.messages'
   | 'store.get'
   | 'store.set'
+  | 'store.keys'
+  | 'store.delete'
   | 'clock.now';
 
 export type SessionStubs = OnEvents<SessionEvents>;
@@ -61,6 +64,8 @@ export type Seen = {
   taskStops: string[];
   // What `$.store` holds (store key → value), as JSON round trips it.
   store: Map<string, unknown>;
+  // Each key `$.store.delete` removed, oldest first.
+  storeDeletes: string[];
   // Each `$.env.set` as [name, value]; an undefined value unsets.
   envSets: [string, string | undefined][];
   // The source of each `$.settings.read`; undefined for the merge.
@@ -146,6 +151,11 @@ type Options = {
   // §7.8: the reason each `TaskStop` call denies with, after it is seen; and what runs as it arrives.
   taskStopDeny?: string;
   onTaskStop?: () => void;
+  // What `$.session.id()` resolves, read at each call; default `SESSION_ID`. A test switches the session with it.
+  sessionId?: () => string;
+  // What `$.session.messages()` resolves, read at each call: the main conversation as `SessionMessage` rows.
+  // Default: none.
+  transcript?: () => readonly SessionMessage[];
 };
 
 // `$.session.usage({ breakdown: 'summary' })` with the given memory files; the other figures are zeros.
@@ -189,14 +199,24 @@ export const SESSION_ID = 'c0ffee00-0000-4000-8000-000000000001';
 
 // `$.session.id`, the main conversation, and a `$.store` in memory that round trips each value through JSON.
 const stubStore = (on: SessionStubs, seen: Seen, options: Options): void => {
-  on('session.id', () => ({ value: SESSION_ID }));
-  on('session.messages', () => ({ value: [...(options.messages ?? [])] }));
+  on('session.id', () => ({ value: options.sessionId?.() ?? SESSION_ID }));
+  on('session.messages', (_$, e) =>
+    e.as === undefined && e.agentId === undefined
+      ? { value: [...(options.transcript?.() ?? [])] }
+      : { value: [...(options.messages ?? [])] }
+  );
   on('store.get', (_$, e) => ({ value: seen.store.get(e.key) }));
   on('store.set', (_$, e) => {
     if (options.storeSetDeny !== undefined) {
       return { deny: options.storeSetDeny };
     }
     seen.store.set(e.key, JSON.parse(JSON.stringify(e.value)) as unknown);
+    return { value: undefined };
+  });
+  on('store.keys', () => ({ value: [...seen.store.keys()] }));
+  on('store.delete', (_$, e) => {
+    seen.storeDeletes.push(e.key);
+    seen.store.delete(e.key);
     return { value: undefined };
   });
 };
@@ -323,6 +343,7 @@ export const stubSession = (on: SessionStubs, options: Options = {}): Seen => {
     coreToolCalls: [],
     taskStops: [],
     store: new Map(options.store),
+    storeDeletes: [],
     envSets: [],
     settingsReads: [],
   };

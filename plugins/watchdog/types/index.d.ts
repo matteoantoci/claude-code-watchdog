@@ -131,11 +131,16 @@ export type WatchdogHealth = {
 export type WatchdogStopReason = 'timeout' | 'off' | 'session' | 'rewind';
 
 // §7.8: one review that runs: its watchdog slug, its agent (null until the id comes) and its spawn time (ms
-// since the epoch).
+// since the epoch). §14.6: a reload rebuilds its slot from the rest: the last row of its batch, the subagent
+// whose backlog it took (§11.2), the problem a try started from and a compact retry (§12.3).
 export type WatchdogRunningReview = {
   readonly watchdog: string;
   readonly agentId: string | null;
   readonly spawnedAt: number;
+  readonly batchEnd: string;
+  readonly subagent?: string;
+  readonly from?: WatchdogProblem;
+  readonly isCompact?: boolean;
 };
 
 // §13.1: one band card: an admitted note since the last person prompt. `key` is the watchdog slug and the

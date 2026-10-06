@@ -16,6 +16,7 @@ import {
   hasPrompted,
   isEnvOn,
   isEnvOnFlag,
+  isInteractiveSession,
   isOnByDefault,
   onStoreKey,
   onWarnings,
@@ -41,8 +42,7 @@ import type { LoadedFile } from '../roster/merge';
 import type { SearchPath, Where } from '../roster/paths';
 import type { EngineInterface, Hook, PluginOptions } from 'claude-code';
 
-// §5.2 step 4, §14.1: `$.state` keeps the on flag and the feed. The live copies are module memory, so a
-// refused write loses only what a reload would carry over.
+// §5.2 step 4, §14.1: `$.state` keeps the on flag and the feed; a refused write loses only the carry-over.
 const saveOnState = async ($: EngineInterface): Promise<void> => {
   const source = currentOnSource();
   const flag: OnFlag = currentMode() === 'on' && source !== undefined ? { isOn: true, source } : { isOn: false };
@@ -205,12 +205,12 @@ const applyOrder = async ($: EngineInterface, state: unknown, isInteractive: boo
   }
 };
 
-// §5.1: after the version gate (the lifecycle hook beneath this one), set the on state by the order.
+// §5.1: after the version gate beneath, set the on state by the order; §14.6: a desktop reload is interactive.
 const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
   const result = await next(e);
   setInteractiveSession(e.isInteractive);
   if (currentMode() !== 'unsupported') {
-    await applyOrder($, await readOnState($), e.isInteractive);
+    await applyOrder($, await readOnState($), isInteractiveSession());
   }
   return result;
 };

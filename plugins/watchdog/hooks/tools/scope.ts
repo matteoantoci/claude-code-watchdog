@@ -73,8 +73,8 @@ export const isScopedCheck = (tool: string, originPlugin: string, isReviewAgent:
 export const addEntry = (entries: AllowSet, key: string, cap = ALLOW_SET_CAP): AllowSet =>
   [...entries.filter((entry) => entry !== key), key].slice(-cap);
 
-// Module memory; `$.state` keeps a copy, and a reload restores it (§6.5 item 8).
-const memory: { allow: AllowSet; denies: DenyCounts } = { allow: [], denies: {} };
+// Module memory; `$.state` keeps a copy, and a reload restores it once (§6.5 item 8).
+const memory: { allow: AllowSet; denies: DenyCounts; isLoaded: boolean } = { allow: [], denies: {}, isLoaded: false };
 
 export const allowSet = (): AllowSet => memory.allow;
 
@@ -90,8 +90,20 @@ export const addDeny = (slug: string): void => {
   memory.denies = { ...memory.denies, [slug]: (memory.denies[slug] ?? 0) + 1 };
 };
 
-// Every writer waits for this read-back, so it finds the memory of this module instance still empty.
+export const isScopeLoaded = (): boolean => memory.isLoaded;
+
+// Every writer waits for this read-back, so it finds the memory of this module instance still empty. A read-back
+// that a session change overtook changes nothing.
 export const restoreScope = (allow: AllowSet | undefined, denies: DenyCounts | undefined): void => {
-  memory.allow = allow ?? [];
-  memory.denies = denies ?? {};
+  if (!memory.isLoaded) {
+    memory.allow = allow ?? [];
+    memory.denies = denies ?? {};
+    memory.isLoaded = true;
+  }
+};
+
+// §14.1, §14.3: a session change empties the allow set and the deny counts; the new `$.state` holds neither, so
+// nothing is read back.
+export const resetScope = (): void => {
+  Object.assign(memory, { allow: [], denies: {}, isLoaded: true });
 };

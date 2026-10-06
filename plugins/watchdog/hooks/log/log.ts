@@ -93,6 +93,11 @@ export const addLogRecord = (record: LogRecord): void => {
   memory.log = appendLog(memory.log, record);
 };
 
+// §14.6: at load the records of before the reload come back from `$.state`, before any of this instance.
+export const restoreLog = (records: readonly LogRecord[]): void => {
+  memory.log = [...records, ...memory.log].slice(-LOG_RECORD_CAP);
+};
+
 export const recentPrompts = (): readonly ReviewPrompt[] => memory.prompts;
 
 export const rememberPrompt = (prompt: ReviewPrompt): void => {

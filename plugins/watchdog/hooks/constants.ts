@@ -113,3 +113,10 @@ export const BAND_TINY_TEXT_MAX = 40;
 
 // §12.5: the halt's next try shows in whole minutes.
 export const MINUTE_MS = 60_000;
+
+// §14.4: `$.session.messages()` gives the newest 4096 messages; at this length the list slides as it grows.
+export const MESSAGES_READ_CAP = 4096;
+
+// §14.4: the message hash is 32-bit FNV-1a: its offset basis and its prime.
+export const FNV_OFFSET_BASIS = 2_166_136_261;
+export const FNV_PRIME = 16_777_619;

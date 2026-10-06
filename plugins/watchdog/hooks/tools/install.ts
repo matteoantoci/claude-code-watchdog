@@ -9,6 +9,7 @@ import {
   allowSet,
   denyCounts,
   isAllowed,
+  isScopeLoaded,
   isScopedCheck,
   readScopeDeny,
   restoreScope,
@@ -24,10 +25,14 @@ type GuardHook = MatchedHook<'tool.call', { agentId: RegExp }>;
 type ReadHook = MatchedHook<'tool.call', { tool: RegExp }>;
 
 // §6.5 item 8: a reload empties module memory, so the first hook of this module instance that needs the
-// allow set or the deny counts reads them back from `$.state` once; a refused read leaves them empty.
+// allow set or the deny counts reads them back from `$.state` once; a refused read leaves them empty. After a
+// session change (§14.3) the new `$.state` holds neither, and nothing is read back.
 const loading: { scope?: Promise<void> } = {};
 
 const loadScope = async ($: EngineInterface): Promise<void> => {
+  if (isScopeLoaded()) {
+    return;
+  }
   loading.scope ??= Promise.all([
     $.state.get({ plugin: 'watchdog', key: 'allow' }),
     $.state.get({ plugin: 'watchdog', key: 'denies' }),

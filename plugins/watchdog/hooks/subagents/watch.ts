@@ -68,12 +68,18 @@ const memory = {
   dirty: new Set<string>(),
 };
 
+// §5.2, §14.3, §14.4: the backlogs start again and the mod watches no subagent of before: at a new on/off
+// period, a session change and a rewind.
+export const forgetSubagents = (): void => {
+  memory.watches.clear();
+  memory.reviews.clear();
+  memory.dirty.clear();
+};
+
 const live = (): typeof memory => {
   if (memory.period !== currentPeriod()) {
     memory.period = currentPeriod();
-    memory.watches.clear();
-    memory.reviews.clear();
-    memory.dirty.clear();
+    forgetSubagents();
   }
   return memory;
 };
@@ -108,6 +114,11 @@ export const watchedSubagent = (agentId: string | undefined): WatchedSubagent | 
   agentId === undefined ? undefined : live().watches.get(agentId);
 
 export const watchedSubagents = (): readonly WatchedSubagent[] => [...live().watches.values()];
+
+// §14.6: at load a watched subagent comes back as the `$.state` family `subagents` kept it.
+export const restoreSubagent = (watch: WatchedSubagent): void => {
+  live().watches.set(watch.agentId, watch);
+};
 
 // §11.2, §7.3: a row of a watched subagent enters its feed rendered (§7.6). The caller leaves out the
 // watchdog's own rows. The prompt row of the task is left out too: the feed starts with it.

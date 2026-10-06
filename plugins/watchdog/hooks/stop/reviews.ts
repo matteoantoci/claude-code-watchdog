@@ -7,25 +7,39 @@ import type { PluginState } from 'claude-code';
 // §7.8, §14.1: the reviews that run and the stop map (the `reviews` key of the state contract).
 export type Reviews = PluginState['watchdog']['reviews'];
 
-// One review that runs: its watchdog slug, its agent and its spawn time.
+// One review that runs: its watchdog slug, its agent, its spawn time and the rest of its slot.
 export type ReviewClock = Reviews['running'][number];
 
 export type StopReason = Reviews['stops'][number]['reason'];
+
+type Review = Extract<Slot, { state: 'reviewing' }>;
+
+type Extra = Pick<ReviewClock, 'subagent' | 'from' | 'isCompact'>;
 
 export const NO_REVIEWS: Reviews = { running: [], stops: [] };
 
 // §7.8, §12.4: the error of a timeout, for `last error`.
 export const TIMEOUT_ERROR = 'the review ran for more than 10 min';
 
-const agentOf = (slot: Slot): string | null => (slot.state === 'reviewing' ? slot.agentId : null);
+// The optional fields of a review's slot; one that is absent stays absent in the `$.state` copy.
+const extraOf = (review: Extra): Extra => ({
+  ...(review.subagent === undefined ? {} : { subagent: review.subagent }),
+  ...(review.from === undefined ? {} : { from: review.from }),
+  ...(review.isCompact === undefined ? {} : { isCompact: review.isCompact }),
+});
 
-const slotIn = (slots: readonly (readonly [string, Slot])[], slug: string): Slot =>
-  slots.find(([known]) => known === slug)?.[1] ?? IDLE;
+const clockOf = (watchdog: string, slot: Review, spawnedAt: number): ReviewClock => ({
+  watchdog,
+  agentId: slot.agentId,
+  spawnedAt,
+  batchEnd: slot.batchEnd,
+  ...extraOf(slot),
+});
 
 // The slot still runs the review of this clock: it is `reviewing`, and its agent is the clock's or the clock
 // had none yet (the id comes after the spawn, §16.2).
-const isSameReview = (clock: ReviewClock, slot: Slot): boolean =>
-  slot.state === 'reviewing' && (clock.agentId === null || clock.agentId === slot.agentId);
+const isSameReview = (clock: ReviewClock, slot: Review | undefined): boolean =>
+  slot !== undefined && (clock.agentId === null || clock.agentId === slot.agentId);
 
 // §7.8: the reviews that run, from the slots of each watchdog now. A slot that is `reviewing` with no clock
 // started a review now; a clock whose slot left `reviewing`, or runs another agent, ended. A review that
@@ -35,14 +49,19 @@ export const trackReviews = (
   slots: readonly (readonly [string, Slot])[],
   now: number
 ): { reviews: Reviews; started: string[]; ended: string[] } => {
-  const kept = reviews.running.filter((clock) => isSameReview(clock, slotIn(slots, clock.watchdog)));
+  const reviewing = new Map(
+    slots.flatMap(([slug, slot]) => (slot.state === 'reviewing' ? [[slug, slot] as const] : []))
+  );
+  const kept = reviews.running.filter((clock) => isSameReview(clock, reviewing.get(clock.watchdog)));
   const ended = reviews.running.filter((clock) => !kept.includes(clock)).map((clock) => clock.watchdog);
-  const started = slots
-    .filter(([slug, slot]) => slot.state === 'reviewing' && !kept.some((clock) => clock.watchdog === slug))
-    .map(([slug]) => slug);
+  const started = [...reviewing.keys()].filter((slug) => !kept.some((clock) => clock.watchdog === slug));
+  const clocks = (slug: string, spawnedAt: number): ReviewClock[] => {
+    const slot = reviewing.get(slug);
+    return slot === undefined ? [] : [clockOf(slug, slot, spawnedAt)];
+  };
   const running = [
-    ...kept.map(({ watchdog, spawnedAt }) => ({ watchdog, agentId: agentOf(slotIn(slots, watchdog)), spawnedAt })),
-    ...started.map((slug) => ({ watchdog: slug, agentId: agentOf(slotIn(slots, slug)), spawnedAt: now })),
+    ...kept.flatMap((clock) => clocks(clock.watchdog, clock.spawnedAt)),
+    ...started.flatMap((slug) => clocks(slug, now)),
   ];
   return { reviews: { ...reviews, running }, started, ended };
 };
@@ -50,6 +69,17 @@ export const trackReviews = (
 // §7.8: the fallback check: the watchdogs whose review runs for 10 min or more.
 export const dueReviews = (reviews: Reviews, now: number): string[] =>
   reviews.running.filter((clock) => now - clock.spawnedAt >= REVIEW_TIMEOUT_MS).map((clock) => clock.watchdog);
+
+// §14.6: at load each review that runs gets its slot back from its clock, and its 10 min timer the time left.
+export const slotOfClock = (clock: ReviewClock): Slot => ({
+  state: 'reviewing',
+  agentId: clock.agentId,
+  batchEnd: clock.batchEnd,
+  ...extraOf(clock),
+});
+
+export const timeLeft = (clock: ReviewClock, now: number): number =>
+  Math.max(0, clock.spawnedAt + REVIEW_TIMEOUT_MS - now);
 
 const withStops = (reviews: Reviews, agentIds: readonly string[], reason: StopReason): Reviews['stops'] => [
   ...reviews.stops,

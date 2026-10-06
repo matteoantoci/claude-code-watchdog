@@ -9,13 +9,16 @@ import { currentMode } from '../lifecycle/mode';
 import { addLogRecord, currentLog, errorRecord, timeoutRecord } from '../log/log';
 import { addNoteGuard } from '../note/notes';
 import { setSlot, slotOf } from '../review/slots';
+import { takeRewindStop } from '../rewind/mark';
 import {
   TIMEOUT_ERROR,
   currentReviews,
   dueReviews,
   setReviews,
+  slotOfClock,
   stopAll,
   stopReasonOf,
+  timeLeft,
   timeOut,
   trackReviews,
 } from './reviews';
@@ -111,15 +114,33 @@ const checkTimeouts = async ($: EngineInterface): Promise<void> => {
   await Promise.all(dueReviews(currentReviews(), now).map(async (slug) => timeOutReview($, slug, now)));
 };
 
-// §7.8: the 10 min timer of a review that starts now.
-const startTimer = ($: EngineInterface, slug: string): void => {
-  const timer = $.clock.after(REVIEW_TIMEOUT_MS, () => {
+// §7.8: the 10 min timer of a review that starts now; §14.6: at load, the time it has left.
+const startTimer = ($: EngineInterface, slug: string, ms = REVIEW_TIMEOUT_MS): void => {
+  const timer = $.clock.after(ms, () => {
     $.clock
       .now()
       .then(async (now) => timeOutReview($, slug, now))
       .catch(() => undefined);
   });
   timers.set(slug, timer);
+};
+
+// §14.6: a reload cancels the old instance's timers. At load the reviews that run and the stop map come back
+// from `$.state`: each review gets its slot back and its timer starts again with the time left.
+const restoreReviews = async ($: EngineInterface): Promise<void> => {
+  const stored = await $.state.get({ plugin: 'watchdog', key: 'reviews' }).then(
+    (read) => read.value,
+    () => undefined
+  );
+  if (stored === undefined) {
+    return;
+  }
+  setReviews(stored);
+  const now = stored.running.length === 0 ? 0 : await $.clock.now();
+  stored.running.forEach((clock) => {
+    setSlot(clock.watchdog, slotOfClock(clock));
+    startTimer($, clock.watchdog, timeLeft(clock, now));
+  });
 };
 
 // §7.8: after a hook beneath spawned or ended a review: a new review starts its 10 min timer, an ended one
@@ -163,22 +184,27 @@ const stopReviews = async ($: EngineInterface, reason: StopReason): Promise<void
   await saveLog($);
 };
 
-// §7.8: the fallback check runs at the start of the main-loop step, never in a watchdog agent's own event.
+// §7.8: the fallback check runs at the start of the main-loop step and end, never in a watchdog agent's own
+// event. §14.4: a rewind that the rewind area found at this boundary stops each review with reason `rewind`
+// instead, before the review area spawns.
+const checkMainLoop = async ($: EngineInterface): Promise<void> => {
+  await (takeRewindStop() ? stopReviews($, 'rewind') : checkTimeouts($));
+};
+
 // §11.2: a watched subagent's step may spawn a review, so each step tracks the reviews after it.
 const onStep: Hook<'turn.step'> = async function* ($, e, next) {
   if (e.agentId === undefined) {
-    await checkTimeouts($);
+    await checkMainLoop($);
   }
   const response = yield* next(e);
   await trackAll($);
   return response;
 };
 
-// §7.8: the fallback check at the start of the main-loop end; any end (a review's own too) may end a review
-// and spawn the next.
+// Any end (a review's own too) may end a review and spawn the next.
 const onComplete: Hook<'turn.complete'> = async ($, e, next) => {
   if (e.agentId === undefined) {
-    await checkTimeouts($);
+    await checkMainLoop($);
   }
   const result = await next(e);
   await trackAll($);
@@ -200,13 +226,30 @@ const onCommand: Hook<'command.run'> = async ($, e, next) => {
   return result;
 };
 
+// §14.3: `/clear`, `/resume` and `/branch` end the old session inside the command's `next(e)`; each review that
+// runs stops there with reason `session`, while its agent is still the old session's.
+const onSessionEnd: Hook<'session.end'> = async ($, e, next) => {
+  await stopReviews($, 'session');
+  return next(e);
+};
+
+// §14.6: at load, before the on order beneath sets the slots again (a review that runs keeps its slot there).
+const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
+  await restoreReviews($);
+  return next(e);
+};
+
 // Install after the failure area and before the command and review areas: these hooks sit beneath the
 // failure area's, which writes the rows and `health` of a fallback timeout, and above the hooks that spawn
 // and end reviews. The matchers only tell these `on()` from the other areas'.
-export const installStop = (on: OnEvents<'turn.step' | 'turn.complete' | 'prompt.submit' | 'command.run'>): void => {
+export const installStop = (
+  on: OnEvents<'turn.step' | 'turn.complete' | 'prompt.submit' | 'command.run' | 'session.end' | 'session.start'>
+): void => {
   on('turn.step', { turnId: /^/u }, onStep);
   on('turn.complete', { turnId: /^/u }, onComplete);
   on('prompt.submit', { text: /^/u }, onPrompt);
   on('command.run', { command: 'watchdog' }, onCommand);
+  on('session.end', { reason: ['clear', 'resume'] }, onSessionEnd);
+  on('session.start', { cwd: /^/u }, onSessionStart);
   addNoteGuard((note) => (stopReasonOf(currentReviews(), note.agentId) === undefined ? undefined : STOPPED_ACK));
 };

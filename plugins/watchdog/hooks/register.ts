@@ -10,7 +10,9 @@ import { installLifecycle } from './lifecycle/install';
 import { installLog } from './log/install';
 import { installNote } from './note/install';
 import { installReview } from './review/install';
+import { installRewind } from './rewind/install';
 import { installRoster } from './roster/install';
+import { installSession } from './session/install';
 import { installStatus } from './status/install';
 import { installStop } from './stop/install';
 import { installSubagents } from './subagents/install';
@@ -19,6 +21,8 @@ import type { Register } from 'claude-code';
 
 export const register: Register = (on, options) => {
   installBand(on);
+  installSession(on);
+  installRewind(on);
   installRoster(on);
   installFailure(on);
   installStop(on);

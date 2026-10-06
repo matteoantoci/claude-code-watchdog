@@ -74,9 +74,10 @@ export const addOnWarning = (warning: string): void => {
 };
 
 // §5.3: a Desktop attach before the first prompt makes the session interactive; `CLAUDE_WATCHDOG` asked a
-// headless session to turn on.
+// headless session to turn on. §14.6: a reload on the desktop starts with `isInteractive` false, as the first
+// start did, but finds the desktop among the surfaces already.
 // §4.1: `onByDefault` from `register(on, options)`; a missing or non-boolean value is the default, false.
-const session = { isInteractive: false, hasPrompted: false, onByDefault: false, isEnvOn: false };
+const session = { isInteractive: false, hasDesktop: false, hasPrompted: false, onByDefault: false, isEnvOn: false };
 
 export const isEnvOn = (): boolean => session.isEnvOn;
 
@@ -90,10 +91,14 @@ export const setOnByDefault = (options: PluginOptions): void => {
   session.onByDefault = options.onByDefault === true;
 };
 
-export const isInteractiveSession = (): boolean => session.isInteractive;
+export const isInteractiveSession = (): boolean => session.isInteractive || session.hasDesktop;
 
 export const setInteractiveSession = (isInteractive: boolean): void => {
   session.isInteractive = isInteractive;
+};
+
+export const setSurfacesAtStart = (surfaces: readonly string[]): void => {
+  session.hasDesktop = surfaces.includes('desktop');
 };
 
 export const hasPrompted = (): boolean => session.hasPrompted;

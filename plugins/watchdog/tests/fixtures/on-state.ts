@@ -21,10 +21,28 @@ export type OnStateSeen = {
   reviewsWrites: unknown[];
   // Each `$.state` value written under `band` (the band cards, §13.1), oldest first.
   bandWrites: unknown[];
+  // §14: each session id's `$.state`: each value written under every key, oldest first; a family member under
+  // `<key>:<id>`.
+  sessions: Map<string, Map<string, unknown[]>>;
 };
 
-// The `$.state` values of `on`, `health` and `band` at load (a reload).
-export type StateSeed = { state?: unknown; health?: unknown; band?: unknown };
+// The `$.state` values of `on`, `health` and `band` at load (a reload); `values` holds any other key's, a family
+// member's under `<key>:<id>`. The seed is the `$.state` of `SESSION_ID`; `sessionId` names the session now, as
+// `stubSession` gets it (default `SESSION_ID`): `$.state` lasts one session id.
+export type StateSeed = {
+  state?: unknown;
+  health?: unknown;
+  band?: unknown;
+  values?: ReadonlyMap<string, unknown>;
+  sessionId?: () => string;
+};
+
+// A key's name in the stub: a family member's is `<key>:<id>`.
+const nameOf = (e: { key: string; id?: string }): string => (e.id === undefined ? e.key : `${e.key}:${e.id}`);
+
+// The last value written under `key` in one session's `$.state`.
+export const stateIn = (seen: OnStateSeen, sessionId: string, key: string): unknown =>
+  seen.sessions.get(sessionId)?.get(key)?.at(-1);
 
 // The `$.store` key of the on flag.
 export const ON_STORE_KEY = `on:${SESSION_ID}`;
@@ -39,15 +57,23 @@ export const DESKTOP_ATTACH = { surface: 'desktop', clientId: 'desktop:default' 
 
 export const PROMPT = { text: 'fix the bug', wait: false, origin: { kind: 'composer' } } as const;
 
-// `$.state` alone, for a test whose other fixture stubs the prompts. A read of `on`, `health` or `band` gets
-// the last write, else the seed.
+// `$.state` alone, for a test whose other fixture stubs the prompts. A read gets the last write of its key in
+// the session now, else the seed.
 export const stubState = (on: StateStubs, seed: StateSeed = {}): OnStateSeen => {
-  const seen: OnStateSeen = { onWrites: [], healthWrites: [], logWrites: [], reviewsWrites: [], bandWrites: [] };
-  const values: Readonly<Record<string, () => unknown>> = {
-    on: () => seen.onWrites.at(-1) ?? seed.state,
-    health: () => seen.healthWrites.at(-1) ?? seed.health,
-    band: () => seen.bandWrites.at(-1) ?? seed.band,
+  const seen: OnStateSeen = {
+    onWrites: [],
+    healthWrites: [],
+    logWrites: [],
+    reviewsWrites: [],
+    bandWrites: [],
+    sessions: new Map(),
   };
+  const seeds = new Map<string, unknown>([
+    ...(seed.values ?? []),
+    ['on', seed.state],
+    ['health', seed.health],
+    ['band', seed.band],
+  ]);
   const writes: Readonly<Record<string, unknown[]>> = {
     on: seen.onWrites,
     health: seen.healthWrites,
@@ -55,9 +81,22 @@ export const stubState = (on: StateStubs, seed: StateSeed = {}): OnStateSeen => 
     reviews: seen.reviewsWrites,
     band: seen.bandWrites,
   };
-  on('state.get', (_$, e) => ({ value: { value: values[e.key]?.(), version: 0 } }));
+  // §14: `$.state` is empty after each session change, a `/resume` to an earlier id too; the seed is the first
+  // session's.
+  const current = seed.sessionId ?? (() => SESSION_ID);
+  const live = { id: current(), isSeeded: true, values: new Map<string, unknown[]>() };
+  const session = (): Map<string, unknown[]> => {
+    if (live.id !== current()) {
+      Object.assign(live, { id: current(), isSeeded: false, values: new Map<string, unknown[]>() });
+    }
+    seen.sessions.set(live.id, live.values);
+    return live.values;
+  };
+  const read = (key: string): unknown => session().get(key)?.at(-1) ?? (live.isSeeded ? seeds.get(key) : undefined);
+  on('state.get', (_$, e) => ({ value: { value: read(nameOf(e)), version: 0 } }));
   on('state.set', (_$, e) => {
     writes[e.key]?.push(e.value);
+    session().set(nameOf(e), [...(session().get(nameOf(e)) ?? []), e.value]);
     return { value: { isSet: true, version: 1 } };
   });
   return seen;

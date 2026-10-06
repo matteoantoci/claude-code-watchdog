@@ -45,6 +45,14 @@ export const recordGuardKey = (history: NoteHistory, slug: string, entry: GuardK
   return withNotes(history, slug, { keys: recordKey(keys, entry), notes });
 };
 
+// §9.6: a rewind clears the guard keys of each watchdog and keeps its recap notes.
+export const clearGuardKeys = (history: NoteHistory): NoteHistory => ({
+  ...history,
+  watchdogs: Object.fromEntries(
+    Object.entries(history.watchdogs).map(([slug, { notes }]) => [slug, { keys: [], notes }])
+  ),
+});
+
 // §9.2, §11.4: the set already holds the key at the same or a higher severity, so the note repeats.
 export const isRepeat = (history: NoteHistory, slug: string, entry: GuardKey): boolean => {
   const seen = watchdogNotes(history, slug).keys.find((known) => known.key === entry.key)?.severity;
