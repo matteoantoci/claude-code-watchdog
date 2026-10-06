@@ -1,5 +1,6 @@
 import { watchdogOf } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
+import { addCard, markCard } from '../band/cards';
 import { DEFAULT_MAX_NOTES_PER_REVIEW } from '../constants';
 import { currentTurn } from '../delivery/turns';
 import { errorText } from '../errors';
@@ -99,6 +100,7 @@ const displaceHeld = (history: NoteHistory, watchdog: string, key: string | unde
     return history;
   }
   replaceHeldNote(gone);
+  markCard(gone, 'displaced');
   traceNote({ ...gone, delivery: 'displaced' });
   return updateNote(history, watchdog, { key, delivery: 'displaced' });
 };
@@ -108,6 +110,7 @@ const holdNew = (history: NoteHistory, note: Note, displaced: string | undefined
   const kept = displaceHeld(history, note.watchdog, displaced);
   const shown: HeldNote = { ...note, delivery: deliveryFor(note) };
   holdNote(shown);
+  addCard(shown);
   return {
     shown,
     history: recordNote(kept, note.watchdog, { text: note.text, severity: note.severity, delivery: shown.delivery }),
