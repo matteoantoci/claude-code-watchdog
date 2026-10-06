@@ -14,9 +14,9 @@ export type Where = {
 
 export type SearchPath = { readonly path: string; readonly isUser: boolean };
 
-// The mod cannot resolve a symlink, so paths compare as normalized strings: no empty or `.` segment, each
-// `..` folded, no trailing slash.
-export const normalizePath = (path: string): string => {
+// The mod cannot resolve a symlink, so paths compare as folded strings: no empty or `.` segment, each `..`
+// folded (one above `/` folds to nothing), no trailing slash.
+const foldPath = (path: string): string => {
   const parts = path.split('/').reduce<string[]>((kept, part) => {
     if (part === '' || part === '.') {
       return kept;
@@ -26,7 +26,7 @@ export const normalizePath = (path: string): string => {
   return `${path.startsWith('/') ? '/' : ''}${parts.join('/')}`;
 };
 
-const join = (dir: string, name: string): string => normalizePath(`${dir}/${name}`);
+const join = (dir: string, name: string): string => foldPath(`${dir}/${name}`);
 
 // The part of `path` below `dir`, or undefined when `path` is not below it.
 const below = (path: string, dir: string): string | undefined => {
@@ -44,10 +44,10 @@ const dirsDown = (top: string, bottom: string): string[] =>
 // §4.3: from the git root down to the cwd; outside git only the session root. A cwd outside the git root
 // (`repo().root` is the main working tree's, also for a worktree elsewhere) counts as outside git.
 const projectDirs = (where: Where): string[] => {
-  const cwd = normalizePath(where.cwd);
-  const gitRoot = where.gitRoot === null ? undefined : normalizePath(where.gitRoot);
+  const cwd = foldPath(where.cwd);
+  const gitRoot = where.gitRoot === null ? undefined : foldPath(where.gitRoot);
   const isInGit = gitRoot !== undefined && (cwd === gitRoot || below(cwd, gitRoot) !== undefined);
-  return isInGit ? dirsDown(gitRoot, cwd) : [normalizePath(where.root)];
+  return isInGit ? dirsDown(gitRoot, cwd) : [foldPath(where.root)];
 };
 
 // §4.3: the user file first, then for each project directory `.claude/<name>` and `<name>`. The walk skips
@@ -64,10 +64,10 @@ export const searchPaths = (where: Where, name: string): SearchPath[] => {
 
 // §13.3: how the status and the warnings name a file: `./…` under the cwd, `~/…` under `$HOME`, else in full.
 export const displayPath = (path: string, where: Where): string => {
-  const inCwd = below(path, normalizePath(where.cwd));
+  const inCwd = below(path, foldPath(where.cwd));
   if (inCwd !== undefined) {
     return `./${inCwd}`;
   }
-  const inHome = where.home === undefined || where.home === '' ? undefined : below(path, normalizePath(where.home));
+  const inHome = where.home === undefined || where.home === '' ? undefined : below(path, foldPath(where.home));
   return inHome === undefined ? path : `~/${inHome}`;
 };

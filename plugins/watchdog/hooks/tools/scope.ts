@@ -1,5 +1,5 @@
 import { ALLOW_SET_CAP } from '../constants';
-import { normalizePath } from './paths';
+import { scopePath } from './paths';
 import type { PluginState } from 'claude-code';
 
 // §6.5, §14.1: the match keys of the reads the primary agent and its subagents made, oldest first, and the
@@ -36,7 +36,7 @@ export const toolArguments = (call: Arguments): Arguments =>
 
 // Grep and Glob: every key in key order, with `path` normalized; undefined when the path leaves `/`.
 const searchKey = (tool: string, input: Arguments): string | undefined => {
-  const path = typeof input.path === 'string' ? normalizePath(input.path) : input.path;
+  const path = typeof input.path === 'string' ? scopePath(input.path) : input.path;
   if (typeof input.path === 'string' && path === undefined) {
     return undefined;
   }
@@ -51,7 +51,7 @@ export const scopeKey = (tool: string, input: unknown): string | undefined => {
     return undefined;
   }
   if (tool === 'Read') {
-    const path = typeof input.file_path === 'string' ? normalizePath(input.file_path) : undefined;
+    const path = typeof input.file_path === 'string' ? scopePath(input.file_path) : undefined;
     return path === undefined ? undefined : `Read ${path}`;
   }
   return tool === 'Grep' || tool === 'Glob' ? searchKey(tool, input) : undefined;

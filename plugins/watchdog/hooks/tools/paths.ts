@@ -18,7 +18,7 @@ const addSegment = (segments: readonly string[] | undefined, segment: string, is
 
 // `.` and `..` resolved, repeated and trailing slashes dropped. A relative path keeps its leading `..`.
 // Undefined for an absolute path that goes above `/` at any point.
-export const normalizePath = (path: string): string | undefined => {
+export const scopePath = (path: string): string | undefined => {
   const isAbsolute = path.startsWith(ROOT);
   const segments = path
     .split(ROOT)

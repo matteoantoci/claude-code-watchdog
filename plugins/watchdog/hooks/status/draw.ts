@@ -1,4 +1,14 @@
-import { STATUS_NARROW_COLUMNS } from '../constants';
+import {
+  STATUS_COST_WIDTH,
+  STATUS_DETAIL_INDENT,
+  STATUS_MODEL_WIDTH,
+  STATUS_NAME_WIDTH,
+  STATUS_NARROW_COLUMNS,
+  STATUS_NOTES_WIDTH,
+  STATUS_REVIEWS_WIDTH,
+  STATUS_STATE_WIDTH,
+  STATUS_TOKENS_WIDTH,
+} from '../constants';
 import type { Segment, StatusTable, TableRow } from './table';
 import type { BoxProps, ElementConstructor, RenderElement, RenderNode, TextProps } from 'claude-code';
 
@@ -10,15 +20,15 @@ export type TableElements = {
 
 type Column = Exclude<keyof TableRow, 'state' | 'detail'> | 'state';
 
-// §13.3: the cells of each column, after the prototype's variant A; `source` takes the rest of the row.
+// §13.3: the cells of each column; `source` takes the rest of the row.
 const WIDTHS: Readonly<Record<Exclude<Column, 'source'>, number>> = {
-  name: 12,
-  model: 26,
-  state: 11,
-  reviews: 9,
-  notes: 10,
-  tokens: 8,
-  cost: 10,
+  name: STATUS_NAME_WIDTH,
+  model: STATUS_MODEL_WIDTH,
+  state: STATUS_STATE_WIDTH,
+  reviews: STATUS_REVIEWS_WIDTH,
+  notes: STATUS_NOTES_WIDTH,
+  tokens: STATUS_TOKENS_WIDTH,
+  cost: STATUS_COST_WIDTH,
 };
 
 const HEADER: TableRow = {
@@ -64,7 +74,7 @@ const detailLine = (E: TableElements, row: TableRow): RenderElement[] =>
     ? []
     : [
         E.Box({
-          marginLeft: 2,
+          marginLeft: STATUS_DETAIL_INDENT,
           children: [
             E.Text({
               wrap: 'truncate-end',

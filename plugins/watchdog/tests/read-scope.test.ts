@@ -1,25 +1,25 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { forkDeny, guardDeny, toolDeny } from '../hooks/tools/guard';
-import { normalizePath } from '../hooks/tools/paths';
+import { scopePath } from '../hooks/tools/paths';
 import { addEntry, isScopedCheck, readScopeDeny, scopeKey, toolArguments } from '../hooks/tools/scope';
 
-describe('path normalization', () => {
+describe('the read-scope path', () => {
   test('`.`, `..`, repeated and trailing slashes resolve', () => {
-    expect(normalizePath('/repo/./src/../lib//a.ts')).toBe('/repo/lib/a.ts');
-    expect(normalizePath('/repo/lib/')).toBe('/repo/lib');
-    expect(normalizePath('/repo/..')).toBe('/');
-    expect(normalizePath('/')).toBe('/');
+    expect(scopePath('/repo/./src/../lib//a.ts')).toBe('/repo/lib/a.ts');
+    expect(scopePath('/repo/lib/')).toBe('/repo/lib');
+    expect(scopePath('/repo/..')).toBe('/');
+    expect(scopePath('/')).toBe('/');
   });
 
-  test('an absolute path that goes above `/` at any point has no normal form', () => {
-    expect(normalizePath('/..')).toBeUndefined();
-    expect(normalizePath('/../etc/passwd')).toBeUndefined();
-    expect(normalizePath('/repo/../../etc/passwd')).toBeUndefined();
+  test('an absolute path that goes above `/` at any point has no scope path', () => {
+    expect(scopePath('/..')).toBeUndefined();
+    expect(scopePath('/../etc/passwd')).toBeUndefined();
+    expect(scopePath('/repo/../../etc/passwd')).toBeUndefined();
   });
 
   test('a relative path keeps its leading `..`', () => {
-    expect(normalizePath('src/../../lib/./a.ts')).toBe('../lib/a.ts');
-    expect(normalizePath('./src/..')).toBe('.');
+    expect(scopePath('src/../../lib/./a.ts')).toBe('../lib/a.ts');
+    expect(scopePath('./src/..')).toBe('.');
   });
 });
 

@@ -1,4 +1,10 @@
-import { BAND_CARD_LIMIT, BAND_LINE_COLUMNS, BAND_TINY_COLUMNS, BAND_TINY_TEXT_MAX } from '../constants';
+import {
+  BAND_CARD_INDENT,
+  BAND_CARD_LIMIT,
+  BAND_LINE_COLUMNS,
+  BAND_TINY_COLUMNS,
+  BAND_TINY_TEXT_MAX,
+} from '../constants';
 import { severityRank } from '../note/tool';
 import type { Severity } from '../note/tool';
 import type { Band, Card } from './cards';
@@ -95,7 +101,7 @@ const header = (el: BandElements, card: Card, turn: number): RenderElement => {
 // `min(40, bodyColumns - tag - 1)` characters, so the row fills `bodyColumns`.
 const cardOf = (el: BandElements, card: Card, view: { mode: Mode; columns: number; turn: number }): RenderElement => {
   if (view.mode === 'full') {
-    const body = el.Box({ marginLeft: 2, children: [el.Markdown({ text: card.text })] });
+    const body = el.Box({ marginLeft: BAND_CARD_INDENT, children: [el.Markdown({ text: card.text })] });
     return el.Box({ flexDirection: 'column', children: [header(el, card, view.turn), body] });
   }
   const tag = `[${[card.severity, ...(card.subagent === undefined ? [] : [card.subagent])].join(' · ')}]`;

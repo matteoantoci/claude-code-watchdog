@@ -42,13 +42,15 @@ export type WatchdogStatus = {
   readonly tally: Tally;
 };
 
-// §12.4: the states that show red.
-const RED_STATES: Readonly<Record<string, true>> = {
+// §12.4: whether each slot state shows red: the problem states do.
+const RED_STATES: Readonly<Record<Slot['state'], boolean>> = {
+  idle: false,
+  disabled: false,
+  reviewing: false,
   no_model: true,
+  blocked: true,
   limited: true,
   halted: true,
-  blocked: true,
-  unsupported: true,
 };
 
 // §6.3, §13.3: the tools a watchdog has without a mark.
@@ -88,7 +90,7 @@ const sourceOf = (watchdog: Watchdog, configFile: string | undefined): string =>
 // §13.3: the model column shows the model that ran (§12.2), before any review the roster's.
 const watchdogRow = (status: WatchdogStatus, configFile: string | undefined): TableRow => {
   const { watchdog, slot, tally } = status;
-  const isRed = RED_STATES[slot.state] === true;
+  const isRed = RED_STATES[slot.state];
   return {
     name: hasMark(watchdog) ? `${watchdog.name}${TOOL_MARK}` : watchdog.name,
     model: `${tally.model ?? watchdog.model}/${watchdog.effort}`,

@@ -96,6 +96,18 @@ export const TOKENS_M = 1_000_000;
 // §13.3: below this many columns the status table narrows to `name state $`.
 export const STATUS_NARROW_COLUMNS = 80;
 
+// §13.3: the width of each status column but `file`, which takes the rest of the row (prototype variant A).
+export const STATUS_NAME_WIDTH = 12;
+export const STATUS_MODEL_WIDTH = 26;
+export const STATUS_STATE_WIDTH = 11;
+export const STATUS_REVIEWS_WIDTH = 9;
+export const STATUS_NOTES_WIDTH = 10;
+export const STATUS_TOKENS_WIDTH = 8;
+export const STATUS_COST_WIDTH = 10;
+
+// §13.3: the reason and the failure parts of a watchdog indent this many columns under its row.
+export const STATUS_DETAIL_INDENT = 2;
+
 // §13.3: the status snapshots that wait for their `CommandOutput` render or stay for a redraw, oldest out.
 export const STATUS_SNAPSHOT_CAP = 20;
 
@@ -110,6 +122,9 @@ export const BAND_TINY_COLUMNS = 50;
 
 // §13.1: the longest note text of the cut form.
 export const BAND_TINY_TEXT_MAX = 40;
+
+// §13.1: the note text of a full card indents this many columns under its header.
+export const BAND_CARD_INDENT = 2;
 
 // §12.5: the halt's next try shows in whole minutes.
 export const MINUTE_MS = 60_000;
