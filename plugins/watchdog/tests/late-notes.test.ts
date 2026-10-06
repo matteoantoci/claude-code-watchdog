@@ -12,6 +12,7 @@ const IDLE: Routing = {
   nudges: 0,
   nudgeTurn: null,
   immuneTurns: 3,
+  isHeadless: false,
 };
 
 describe('the person prompt set', () => {
@@ -45,6 +46,13 @@ describe('the route of an admitted note', () => {
   test('a late concern or blocker gets the one nudge of the person prompt', () => {
     expect(routeNote('concern', IDLE)).toBe('nudged');
     expect(routeNote('blocker', IDLE)).toBe('nudged');
+  });
+
+  test('in a headless session a late concern or blocker waits as an aside, and a steer still steers', () => {
+    const headless = { ...IDLE, isHeadless: true };
+    expect(routeNote('concern', headless)).toBe('aside on next prompt');
+    expect(routeNote('blocker', headless)).toBe('aside on next prompt');
+    expect(routeNote('blocker', { ...headless, isTurnRunning: true })).toBe('steered');
   });
 
   test('over budget, after Esc and after the nudge turn a late note waits for the next person prompt', () => {

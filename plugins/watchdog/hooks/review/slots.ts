@@ -1,11 +1,18 @@
 import { addWatchdogId } from '../agents/ids';
+import { watchdogBySlug } from '../agents/roster';
 import { setReviewTarget } from '../subagents/watch';
 import type { Watchdog } from '../agents/roster';
+import type { PluginState } from 'claude-code';
+
+// §12.4: the problem states (their shape is the `health` key of the state contract). `no_model` and
+// `blocked` make no review until `/watchdog on`; `limited` and `halted` try one review at a person prompt
+// (§12.3), `halted` once its next-try time passed.
+export type Problem = NonNullable<PluginState['watchdog']['health']['watchdogs'][string]['problem']>;
 
 // §7.5, §12.4: each watchdog runs one review at a time. `reviewing` keeps the agent (null until its id
-// arrives), the last row of its batch and, for a review of a subagent (§11.2), that subagent's `agentId`.
-// `no_model` and `blocked` make no review until `/watchdog on`. `disabled` is a roster entry with
-// `enabled: false` (§4.2).
+// arrives), the last row of its batch and, for a review of a subagent (§11.2), that subagent's `agentId`; a try
+// keeps the problem it started from (§12.3), and the retry at once of a prompt too large is compact (§12.3 item 4).
+// `disabled` is a roster entry with `enabled: false` (§4.2).
 export type Slot =
   | { readonly state: 'idle' | 'disabled' }
   | {
@@ -13,8 +20,10 @@ export type Slot =
       readonly agentId: string | null;
       readonly batchEnd: string;
       readonly subagent?: string;
+      readonly from?: Problem;
+      readonly isCompact?: boolean;
     }
-  | { readonly state: 'no_model' | 'blocked'; readonly reason: string };
+  | Problem;
 
 export const IDLE: Slot = { state: 'idle' };
 
@@ -29,6 +38,35 @@ export const setSlot = (slug: string, slot: Slot): void => {
 // The watchdog whose running review is this agent.
 export const reviewOf = (agentId: string): string | undefined =>
   Array.from(slots).find(([, slot]) => slot.state === 'reviewing' && slot.agentId === agentId)?.[0];
+
+// A running review: its agent, its slot and its watchdog.
+export type RunningReview = {
+  readonly agentId: string;
+  readonly slot: Extract<Slot, { state: 'reviewing' }>;
+  readonly watchdog: Watchdog;
+};
+
+// The running review of this agent; undefined for another agent.
+export const runningReview = (agentId: string | undefined): RunningReview | undefined => {
+  const slug = agentId === undefined ? undefined : reviewOf(agentId);
+  const slot = slug === undefined ? undefined : slotOf(slug);
+  const watchdog = slug === undefined ? undefined : watchdogBySlug(slug);
+  return agentId === undefined || slot?.state !== 'reviewing' || watchdog === undefined
+    ? undefined
+    : { agentId, slot, watchdog };
+};
+
+// How a review starts: at a boundary when the cadence of a backlog is due (§7.4, §11.2); as the try of a
+// `limited` or `halted` watchdog at a person prompt (§12.3 items 2, 3), which keeps the problem it starts from;
+// or as the compact retry at once of a prompt too large (§12.3 item 4), which keeps the problem and the
+// backlog (the subagent's `agentId`, none for the primary agent) of the review it repeats.
+export type Start = { readonly from?: Problem; readonly isCompact?: boolean; readonly subagent?: string };
+
+// Whether the watchdog can start a review this way now; the backlog it takes decides the rest (§7.5).
+export const isReady = (slug: string, start: Start): boolean => {
+  const slot = slotOf(slug);
+  return start.from === undefined || start.isCompact === true ? slot.state === 'idle' : slot === start.from;
+};
 
 // §7.3: a review agent's id, from the first source that gives it; §11.4: the id maps to the subagent of a review
 // of a subagent, and to none for a review of the primary agent.

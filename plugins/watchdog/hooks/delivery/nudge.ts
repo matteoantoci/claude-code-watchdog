@@ -1,4 +1,5 @@
 import { DEFAULT_IMMUNE_TURNS, MAX_IMMUNE_TURNS, NUDGE_BUDGET } from '../constants';
+import { isInteractiveSession } from '../lifecycle/on-order';
 import { currentTurn } from './turns';
 import type { DeliveryState } from '../note/notes';
 import type { Severity } from '../note/tool';
@@ -20,7 +21,9 @@ export type MainLoop = {
   readonly isNudgeTurn: boolean;
 };
 
-export type Routing = MainLoop & Omit<NudgeClock, 'dueAt'> & { readonly immuneTurns: number };
+// `isHeadless`: a `-p` or SDK session (§5.3), which has no nudge and no cards (§10.6).
+export type Routing = MainLoop &
+  Omit<NudgeClock, 'dueAt'> & { readonly immuneTurns: number; readonly isHeadless: boolean };
 
 type Cooldown = Pick<Routing, 'turn' | 'nudgeTurn' | 'immuneTurns'>;
 
@@ -36,7 +39,11 @@ export const cooldownLeft = (at: Cooldown): number =>
 
 // §10.3, §10.4: a late concern or blocker gets the one nudge of its person prompt. Over budget, after Esc,
 // after the nudge turn, or a concern in the cooldown: `held`, a card and an aside on the next person prompt.
-export const lateRoute = (severity: Severity, at: Routing): 'nudged' | 'held' => {
+// §10.6: a headless session has no nudge and no cards: the note waits as an aside.
+export const lateRoute = (severity: Severity, at: Routing): 'nudged' | 'held' | 'aside on next prompt' => {
+  if (at.isHeadless) {
+    return 'aside on next prompt';
+  }
   const isSpent = at.nudges >= NUDGE_BUDGET || at.isNudgeTurn || at.isAfterEsc;
   const isCooling = severity !== 'blocker' && isInCooldown(at);
   return isSpent || isCooling ? 'held' : 'nudged';
@@ -90,6 +97,7 @@ export const currentRouting = (): Routing => ({
   nudges: memory.clock.nudges,
   nudgeTurn: memory.clock.nudgeTurn,
   immuneTurns: memory.immuneTurns,
+  isHeadless: !isInteractiveSession(),
 });
 
 // §4.1: the value of `register(on, options)`; §4.6: the status warning of a bad one.

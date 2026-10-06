@@ -1,11 +1,16 @@
 // Stubs for an L2 test of a watched session: every `$` call and engine event the mod reaches.
+import { FRAGMENTS } from './prompts';
 import type { OnEvents } from '../../hooks/on';
 import type {
   AgentSpec,
   ApiMessage,
   CommandRunInput,
+  ContextMemoryFile,
   ModelCompleteRequest,
   SessionAppendInput,
+  SessionUsage,
+  Settings,
+  SettingsSource,
   ToolSpec,
   TurnStepResult,
   TurnStepServerToolUse,
@@ -21,7 +26,12 @@ export type SessionEvents =
   | 'agent.spawn'
   | 'fs.read'
   | 'fs.stat'
+  | 'fs.list'
+  | 'fs.exists'
+  | 'session.usage'
   | 'env.get'
+  | 'env.set'
+  | 'settings.read'
   | 'session.cwd'
   | 'session.root'
   | 'session.repo'
@@ -48,9 +58,16 @@ export type Seen = {
   coreToolCalls: string[];
   // What `$.store` holds (store key → value), as JSON round trips it.
   store: Map<string, unknown>;
+  // Each `$.env.set` as [name, value]; an undefined value unsets.
+  envSets: [string, string | undefined][];
+  // The source of each `$.settings.read`; undefined for the merge.
+  settingsReads: (SettingsSource | undefined)[];
 };
 
 export const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const;
+
+// §5.3: a `-p` (or SDK) session.
+export const HEADLESS_START = { cwd: '/repo', surface: null, isInteractive: false } as const;
 
 // The workspace of every L2 session: `$HOME` is /home/me, and the cwd /repo is the git root and the session
 // root. So the user file is /home/me/.claude/WATCHDOG.json, the project files /repo/.claude/WATCHDOG.json and
@@ -108,10 +125,56 @@ type Options = {
   // The server tool calls of each step result (`serverToolUses`).
   serverToolUses?: readonly TurnStepServerToolUse[];
   files?: Record<string, WorkspaceFile>;
-  // What `$.env.get` answers; a name not listed is unset. Default: `HOME` only.
+  // What `$.env.get` answers; a name not listed is unset. Default: `HOME` only. `$.env.set` changes it.
   env?: Readonly<Record<string, string>>;
+  // What `$.settings.read({ source })` answers for each source; a source not listed answers `{}`.
+  settings?: Partial<Record<SettingsSource, Settings>>;
+  // The reason each `agent.spawn` denies with, after it is seen. A throw in a stub only skips it, so a deny
+  // stands in for a reject: the mod handles both the same.
+  spawnDeny?: string;
+  // §8.2: the memory files of the session's context, as `$.session.usage` lists them. Default: none.
+  memoryFiles?: readonly ContextMemoryFile[];
+  // `$.session.repo()` answers null: the cwd /repo is outside git.
+  isOutsideGit?: boolean;
   // The caller answers `$.clock` with `mock.clock` (./delivery), so this fixture leaves `clock.now` alone.
   isClockMocked?: true;
+};
+
+// `$.session.usage({ breakdown: 'summary' })` with the given memory files; the other figures are zeros.
+const usage = (memoryFiles: readonly ContextMemoryFile[]): SessionUsage => ({
+  startedAt: NOW,
+  rateLimits: [],
+  context: {
+    window: 200_000,
+    breakdown: {
+      categories: [],
+      totalTokens: 0,
+      maxTokens: 200_000,
+      rawMaxTokens: 200_000,
+      autocompactSource: 'model-default',
+      percentage: 0,
+      gridRows: [],
+      model: 'claude-opus-4-5',
+      memoryFiles: [...memoryFiles],
+      mcpTools: [],
+      agents: [],
+      isAutoCompactEnabled: true,
+      apiUsage: null,
+    },
+  },
+});
+
+// The entries of directory `dir` in a workspace given as file paths: a name with more path below it is a dir.
+const listDir = (paths: readonly string[], dir: string) => {
+  const below = paths.filter((path) => path.startsWith(`${dir}/`)).map((path) => path.slice(dir.length + 1));
+  const names = [...new Set(below.map((rest) => rest.split('/')[0] ?? ''))];
+  return names.map((name) => ({
+    name,
+    kind: below.includes(name) ? ('file' as const) : ('dir' as const),
+    size: 0,
+    mtimeMs: 0,
+    isLink: false,
+  }));
 };
 
 export const SESSION_ID = 'c0ffee00-0000-4000-8000-000000000001';
@@ -130,24 +193,44 @@ const stubStore = (on: SessionStubs, seen: Seen, options: Options): void => {
   });
 };
 
-// `$.env`, and the workspace: every path not in `files` is missing. `fs.read` of another path answers the
-// shipped prompt it names.
+// `$.env`, and the workspace: every path not in `files` is missing, and a directory exists when a file is
+// below it. `fs.read` of another path answers the shipped prompt it names.
 const stubWorkspace = (on: SessionStubs, seen: Seen, options: Options): void => {
-  const env = options.env ?? { HOME };
+  const env = new Map(Object.entries(options.env ?? { HOME }));
   const files = options.files ?? {};
-  on('env.get', (_$, e) => ({ value: env[e.name] }));
+  const paths = Object.keys(files);
+  on('env.get', (_$, e) => ({ value: env.get(e.name) }));
+  on('env.set', (_$, e) => {
+    seen.envSets.push([e.name, e.value]);
+    if (e.value === undefined) {
+      env.delete(e.name);
+    } else {
+      env.set(e.name, e.value);
+    }
+    return { value: undefined };
+  });
+  on('settings.read', (_$, e) => {
+    seen.settingsReads.push(e.source);
+    return { value: (e.source === undefined ? undefined : options.settings?.[e.source]) ?? {} };
+  });
   on('session.cwd', () => ({ value: START.cwd }));
   on('session.root', () => ({ value: START.cwd }));
-  on('session.repo', () => ({ value: { root: START.cwd, remote: null, internal: false, name: null } }));
+  on('session.repo', () => ({
+    value: options.isOutsideGit === true ? null : { root: START.cwd, remote: null, internal: false, name: null },
+  }));
+  on('session.usage', () => ({ value: usage(options.memoryFiles ?? []) }));
   on('fs.stat', (_$, e) => {
     const file = files[e.path];
     return file === undefined
       ? { deny: `ENOENT: no such file or directory, stat '${e.path}'` }
       : { value: { kind: 'file', size: file.text.length, mtimeMs: file.mtimeMs, isLink: false } };
   });
+  on('fs.list', (_$, e) => ({ value: listDir(paths, e.path ?? START.cwd) }));
+  on('fs.exists', (_$, e) => ({ value: paths.some((path) => path === e.path || path.startsWith(`${e.path}/`)) }));
   on('fs.read', (_$, e) => {
     seen.reads.push(e.path);
-    const shipped = e.path.endsWith('/prompts/boundary-guidance.md') ? GUIDANCE : SYSTEM_TEMPLATE;
+    const name = e.path.slice(e.path.lastIndexOf('/') + 1);
+    const shipped = name === 'boundary-guidance.md' ? GUIDANCE : (FRAGMENTS[name] ?? SYSTEM_TEMPLATE);
     return { value: files[e.path]?.text ?? shipped };
   });
 };
@@ -180,8 +263,8 @@ const stubEngine = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('agent.spawn', (_$, e) => {
     const subagentType = String('subagent_type' in e ? e.subagent_type : e.subagentType);
     seen.spawns.push({ prompt: e.prompt, subagentType, description: e.description });
-    const isReview = subagentType.startsWith('watchdog:');
-    return { model: 'claude-opus-4-5', agentId: isReview ? REVIEW_AGENT : subagentId(e.tool_use_id) };
+    const agentId = subagentType.startsWith('watchdog:') ? REVIEW_AGENT : subagentId(e.tool_use_id);
+    return options.spawnDeny === undefined ? { model: 'claude-opus-4-5', agentId } : { deny: options.spawnDeny };
   });
   on('turn.step', async function* (_$, e) {
     yield* [];
@@ -224,6 +307,8 @@ export const stubSession = (on: SessionStubs, options: Options = {}): Seen => {
     logs: [],
     coreToolCalls: [],
     store: new Map(options.store),
+    envSets: [],
+    settingsReads: [],
   };
   stubRegisters(on, seen, options);
   stubEngine(on, seen, options);

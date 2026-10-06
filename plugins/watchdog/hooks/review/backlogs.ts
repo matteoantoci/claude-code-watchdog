@@ -1,9 +1,10 @@
-import { closeUpdate, currentFeed, moveCursor, pendingBatch, setFeed } from '../feed/feed';
-import { closeSubagentUpdate, moveSubagentCursor, watchedSubagent, watchedSubagents } from '../subagents/watch';
+import { closeUpdate, currentFeed, pendingBatch, setFeed } from '../feed/feed';
+import { changeSubagentFeed, closeSubagentUpdate, watchedSubagent, watchedSubagents } from '../subagents/watch';
 import { cadenceOf } from './cadence';
 import type { Watchdog } from '../agents/roster';
 import type { Batch, Feed, UpdateClose } from '../feed/feed';
 import type { WatchedSubagent } from '../subagents/watch';
+import type { Start } from './slots';
 
 // §7.5, §11.2: a backlog a watchdog may review: the primary agent's (no subagent) or a watched subagent's.
 export type Backlog = { readonly subagent: WatchedSubagent | undefined; readonly batch: Batch };
@@ -47,35 +48,41 @@ export const closeBacklog = (agentId: string | undefined, close: UpdateClose): v
 
 const rankOf = (backlog: Backlog): number => order.ranks.get(backlog.batch.updates[0]?.rows.at(-1)?.uuid ?? '') ?? 0;
 
-const dueBatch = (feed: Feed, slug: string, subagent: string | undefined): Batch | undefined =>
-  cadenceOf(cadenceKey(slug, subagent)).isDue ? pendingBatch(feed, slug) : undefined;
+// §7.4, §12.3: whether a review that starts this way takes from this backlog: a boundary review a due one, a try
+// any one, the compact retry only the backlog of the review it repeats.
+const isTaken = (slug: string, subagent: string | undefined, start: Start): boolean => {
+  if (start.isCompact === true) {
+    return subagent === start.subagent;
+  }
+  return start.from !== undefined || cadenceOf(cadenceKey(slug, subagent)).isDue;
+};
 
-// §7.5: a free watchdog takes the backlog with the oldest update that waits, of the ones its cadence makes
-// due; the primary agent's on a tie.
-export const takeBacklog = (slug: string): Backlog | undefined => {
-  const primary = dueBatch(currentFeed(), slug, undefined);
-  const backlogs: Backlog[] = [
-    ...(primary === undefined ? [] : [{ subagent: undefined, batch: primary }]),
+// §7.5: a free watchdog takes the backlog with the oldest update that waits, of the ones it may take now; the
+// primary agent's on a tie.
+export const takeBacklog = (slug: string, start: Start): Backlog | undefined => {
+  const sources: { subagent: WatchedSubagent | undefined; feed: Feed }[] = [
+    { subagent: undefined, feed: currentFeed() },
     ...watchedSubagents()
       .filter((watch) => watch.watchdogs.includes(slug))
-      .flatMap((watch) => {
-        const batch = dueBatch(watch.feed, slug, watch.agentId);
-        return batch === undefined ? [] : [{ subagent: watch, batch }];
-      }),
+      .map((watch) => ({ subagent: watch, feed: watch.feed })),
   ];
+  const backlogs = sources.flatMap(({ subagent, feed }) => {
+    const batch = isTaken(slug, subagent?.agentId, start) ? pendingBatch(feed, slug) : undefined;
+    return batch === undefined ? [] : [{ subagent, batch }];
+  });
   return backlogs.reduce<Backlog | undefined>(
     (oldest, backlog) => (oldest === undefined || rankOf(backlog) < rankOf(oldest) ? backlog : oldest),
     undefined
   );
 };
 
-// §7.1, §7.5: a finished review moves the cursor of its watchdog in the backlog it took. The ranks of the
-// updates that left every feed go too.
-export const moveBacklogCursor = (slug: string, subagent: string | undefined, end: string): void => {
+// §7.1, §7.5, §12.3: the outcome of a review changes the backlog it took: the primary agent's feed or a watched
+// subagent's. The ranks of the updates that left every feed go too.
+export const changeBacklog = (subagent: string | undefined, change: (feed: Feed) => Feed): void => {
   if (subagent === undefined) {
-    setFeed(moveCursor(currentFeed(), slug, end));
+    setFeed(change(currentFeed()));
   } else {
-    moveSubagentCursor(subagent, slug, end);
+    changeSubagentFeed(subagent, change);
   }
   const feeds = [currentFeed(), ...watchedSubagents().map((watch) => watch.feed)];
   const live = new Set(feeds.flatMap((feed) => feed.ends.map((close) => close.uuid)));

@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { START, stubSession, typed } from './fixtures/session';
-import type { SessionStubs } from './fixtures/session';
+import type { OnEvents } from '../hooks/on';
+import type { SessionEvents, SessionStubs } from './fixtures/session';
+
+// §12.5: the row of a problem state from a `command.run` hook waits 300 ms (§13.2); the stub runs it at once.
+type DelayStubs = OnEvents<SessionEvents | 'clock.after'>;
 
 const NOTE_SCHEMA = {
   type: 'object',
@@ -35,7 +39,12 @@ describe('/watchdog on', () => {
         inputSchema: NOTE_SCHEMA,
       },
     ]);
-    expect(seen.reads).toEqual([expect.stringMatching(/\/prompts\/system\.md$/u)]);
+    expect(seen.reads.map((path) => path.slice(path.lastIndexOf('/prompts/')))).toEqual([
+      '/prompts/system.md',
+      '/prompts/context-files.md',
+      '/prompts/memory-context.md',
+      '/prompts/active-repo-watchdog.md',
+    ]);
     expect(seen.agents).toEqual([
       {
         name: 'default',
@@ -62,24 +71,30 @@ describe('/watchdog on', () => {
     expect(shown).toEqual({ isOffered: true });
   });
 
-  test('a preflight the engine refuses puts the watchdog in no_model with the reason', async ($, on: SessionStubs) => {
-    stubSession(on, { preflightDeny: 'model opus is not in availableModels' });
+  test('a preflight the engine refuses puts the watchdog in no_model with the reason and one row', async ($, on: DelayStubs) => {
+    const seen = stubSession(on, { preflightDeny: 'model opus is not in availableModels' });
+    on('clock.after', () => ({ value: undefined }));
     await $.session.start(START);
     await $.command.run(typed('on'));
     const status = await $.command.run(typed('status'));
     expect(status.text).toMatch(
       /^watchdog on · nudge 0\/1 · cooldown 0\non source: \/watchdog on\ndefault no_model: .*model opus is not in availableModels$/u
     );
+    expect(seen.logs).toEqual([expect.stringMatching(/^watchdog: default no_model: .*not in availableModels$/u)]);
   });
 
-  test('a refused note register puts the watchdog in blocked with the reason', async ($, on: SessionStubs) => {
-    stubSession(on, { noteDeny: 'allowedMcpServers refuses watchdog' });
+  test('a refused note register puts the watchdog in blocked with the reason and one row', async ($, on: DelayStubs) => {
+    const seen = stubSession(on, { noteDeny: 'allowedMcpServers refuses watchdog' });
+    on('clock.after', () => ({ value: undefined }));
     await $.session.start(START);
     await $.command.run(typed('on'));
     const status = await $.command.run(typed('status'));
     expect(status.text).toMatch(
       /^watchdog on · nudge 0\/1 · cooldown 0\non source: \/watchdog on\ndefault blocked: .*allowedMcpServers refuses watchdog$/u
     );
+    expect(seen.logs).toEqual([
+      expect.stringMatching(/^watchdog: default blocked: .*allowedMcpServers refuses watchdog$/u),
+    ]);
   });
 });
 

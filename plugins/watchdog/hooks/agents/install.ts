@@ -1,3 +1,4 @@
+import { rememberSpawnModel } from '../failure/state';
 import { learnReviewAgent } from '../review/slots';
 import { ownContext, watchdogIds } from './ids';
 import { isOwnSpawn, isOwnToolCall } from './self-review';
@@ -25,8 +26,12 @@ const learn = async ($: EngineInterface, subagentType: unknown, agentId: string 
 };
 
 // §7.3: the id comes from the `next(e)` result of the mod's `agent.spawn` hook, before the spawn resolves.
+// §12.2: so does the model that the agent runs on.
 const onSpawn: Hook<'agent.spawn'> = async ($, e, next) => {
   const result = await next(e);
+  if (result.agentId !== undefined) {
+    rememberSpawnModel(result.agentId, result.model);
+  }
   await learn($, e.subagentType, result.agentId);
   return result;
 };

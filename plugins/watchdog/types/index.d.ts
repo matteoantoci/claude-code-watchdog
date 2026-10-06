@@ -60,6 +60,7 @@ export type WatchdogLogUsage = {
 // §13.4: one record of the review log. `watchdog` is the display name, `time` ms since the epoch.
 // `review`: one finished review, with its `turn.complete` `reason`, step count and answer length.
 // `error`: an error of the mod that belongs to a watchdog (for example a refused steer append).
+// `unreviewed`: §7.5, the updates of a `-p` run that no review took.
 export type WatchdogLogRecord =
   | {
       readonly kind: 'review';
@@ -76,11 +77,15 @@ export type WatchdogLogRecord =
       // §15: null while no price is known for the model.
       readonly cost: number | null;
       readonly notes: readonly WatchdogLogNote[];
+      // §12.4: the error of the review's outcome: its synthetic row text, or the reason of a `no_model` compare.
       readonly error: string | null;
+      // §12.3 item 10: the `refusal.category` of a refusal; null for another end or no category.
+      readonly refusal: string | null;
       // §11.4: a review of a subagent; absent for a review of the primary agent.
       readonly subagent?: WatchdogSubagentRef;
     }
-  | { readonly kind: 'error'; readonly watchdog: string; readonly time: number; readonly error: string };
+  | { readonly kind: 'error'; readonly watchdog: string; readonly time: number; readonly error: string }
+  | { readonly kind: 'unreviewed'; readonly watchdog: string; readonly time: number; readonly updates: number };
 
 // §10.3: a late note of the nudge that waits, as the note hook admitted it: the watchdog slug, the review
 // agent, and the main-loop turn when it came (§10.7).
@@ -106,6 +111,20 @@ export type WatchdogNudge = {
   readonly notes: readonly WatchdogNudgeNote[];
 };
 
+// §12.4: a problem state of one watchdog and its error text. `halted` keeps its failed tries and the time of
+// its next try (ms since the epoch).
+export type WatchdogProblem =
+  | { readonly state: 'no_model' | 'blocked' | 'limited'; readonly reason: string }
+  | { readonly state: 'halted'; readonly reason: string; readonly tries: number; readonly nextTryAt: number };
+
+// §12.3: the failure state of one watchdog: its problem (null for none), its failed reviews in a row and its
+// refusals in the session.
+export type WatchdogHealth = {
+  readonly problem: WatchdogProblem | null;
+  readonly failures: number;
+  readonly refused: number;
+};
+
 declare module 'claude-code' {
   interface PluginState {
     watchdog: {
@@ -128,6 +147,8 @@ declare module 'claude-code' {
       nudge: WatchdogNudge;
       // §11.2, build-session choice "`$.state` key names": each watched subagent, by its `agentId`.
       subagents: StateFamily<WatchdogSubagent>;
+      // §12.3, §14.1: the failure state of each watchdog slug, and the last error for the status (§12.4).
+      health: { readonly watchdogs: Readonly<Record<string, WatchdogHealth>>; readonly lastError: string | null };
     };
   }
 }

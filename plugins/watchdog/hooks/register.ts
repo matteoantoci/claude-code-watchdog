@@ -2,7 +2,9 @@ import { installAgents } from './agents/install';
 import { installCommand } from './command/install';
 import { installDelivery } from './delivery/install';
 import { installDump } from './dump/install';
+import { installFailure } from './failure/install';
 import { installFeed } from './feed/install';
+import { installGuidance } from './guidance/install';
 import { installLifecycle } from './lifecycle/install';
 import { installLog } from './log/install';
 import { installNote } from './note/install';
@@ -14,9 +16,11 @@ import type { Register } from 'claude-code';
 
 export const register: Register = (on, options) => {
   installRoster(on);
+  installFailure(on);
   installCommand(on, options);
   installDump(on);
   installLifecycle(on);
+  installGuidance(on);
   installAgents(on);
   installFeed(on);
   installReview(on);

@@ -10,8 +10,9 @@ export type ReviewRecord = Extract<LogRecord, { kind: 'review' }>;
 
 type LogNote = ReviewRecord['notes'][number];
 
-// What the mod saw of one review agent while it ran: its `turn.step` count (§12.1) and its admitted notes.
-export type ReviewTrace = { readonly steps: number; readonly notes: readonly LogNote[] };
+// What the mod saw of one review agent while it ran: its `turn.step` count (§12.1), its admitted notes and the
+// error of its outcome (§12.4).
+export type ReviewTrace = { readonly steps: number; readonly notes: readonly LogNote[]; readonly error: string | null };
 
 // §13.4: the full prompt of one review, for `/watchdog dump raw`.
 export type ReviewPrompt = { readonly watchdog: string; readonly prompt: string };
@@ -25,7 +26,14 @@ export const errorRecord = (input: { watchdog: string; time: number; error: stri
   ...input,
 });
 
-// §13.4: one finished review. §12.2: the model that ran is `usage.model`, else the roster's.
+// §7.5: the updates of one watchdog's backlog that a `-p` run left unreviewed.
+export const unreviewedRecord = (input: { watchdog: string; time: number; updates: number }): LogRecord => ({
+  kind: 'unreviewed',
+  ...input,
+});
+
+// §13.4: one finished review. §12.2: the model that ran is `usage.model`, else the roster's. §12.3 item 10: a
+// refusal keeps its category.
 export const reviewRecord = (input: {
   watchdog: Watchdog;
   agentId: string;
@@ -59,12 +67,13 @@ export const reviewRecord = (input: {
           },
     cost: null,
     notes: trace.notes,
-    error: null,
+    error: trace.error,
+    refusal: end.reason === 'refusal' ? end.refusal.category : null,
     ...(input.subagent === undefined ? {} : { subagent: input.subagent }),
   };
 };
 
-const EMPTY_TRACE: ReviewTrace = { steps: 0, notes: [] };
+const EMPTY_TRACE: ReviewTrace = { steps: 0, notes: [], error: null };
 
 // The live log and the last prompts are module memory; `$.state` key `log` keeps a copy of the log
 // (§14.1). A reload loses the prompts (§13.4).
@@ -83,7 +92,7 @@ export const rememberPrompt = (prompt: ReviewPrompt): void => {
   memory.prompts = [...memory.prompts, prompt].slice(-RAW_PROMPT_CAP);
 };
 
-const traceOf = (agentId: string): ReviewTrace => traces.get(agentId) ?? EMPTY_TRACE;
+export const traceOf = (agentId: string): ReviewTrace => traces.get(agentId) ?? EMPTY_TRACE;
 
 export const countStep = (agentId: string): void => {
   const trace = traceOf(agentId);
@@ -94,6 +103,11 @@ export const traceNote = (note: HeldNote): void => {
   const trace = traceOf(note.agentId);
   const logged = { severity: note.severity, text: note.text, delivery: note.delivery };
   traces.set(note.agentId, { ...trace, notes: [...trace.notes, logged] });
+};
+
+// §12.4: the error of a review's outcome goes to its record.
+export const traceError = (agentId: string, error: string): void => {
+  traces.set(agentId, { ...traceOf(agentId), error });
 };
 
 // A review's end takes its trace; the agent never runs again.

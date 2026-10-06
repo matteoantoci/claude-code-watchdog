@@ -69,3 +69,12 @@ export const NUDGE_BUDGET = 1;
 // §4.1: the nudge cooldown in main turns when `immuneTurns` is absent or bad, and its top.
 export const DEFAULT_IMMUNE_TURNS = 3;
 export const MAX_IMMUNE_TURNS = 5;
+
+// §12.3 item 2: failed reviews in a row that halt a watchdog.
+export const MAX_FAILED_REVIEWS = 3;
+
+// §12.3 item 2: the halt waits before a try at a person prompt: 5 min, then 15 min, then 60 min each time.
+const HALT_FIRST_WAIT_MS = 300_000;
+const HALT_SECOND_WAIT_MS = 900_000;
+const HALT_LATER_WAIT_MS = 3_600_000;
+export const HALT_WAITS_MS: readonly number[] = [HALT_FIRST_WAIT_MS, HALT_SECOND_WAIT_MS, HALT_LATER_WAIT_MS];

@@ -1,9 +1,16 @@
+import { watchdogBySlug } from '../agents/roster';
 import { parseSubcommand } from '../command/args';
 import { COMMAND_LOG_DELAY_MS } from '../constants';
 import { errorText } from '../errors';
-import { currentLog, recentPrompts } from '../log/log';
+import { currentFeed } from '../feed/feed';
+import { currentMode } from '../lifecycle/mode';
+import { isInteractiveSession, onWarnings } from '../lifecycle/on-order';
+import { addLogRecord, currentLog, recentPrompts, unreviewedRecord } from '../log/log';
+import { heldNotes, logRow } from '../note/notes';
+import { waitingUpdates } from '../review/backlog';
+import { slotOf } from '../review/slots';
 import { configDir, dumpPath, dumpText } from './dump';
-import { dumpLines } from './sections';
+import { addDumpLines, dumpLines } from './sections';
 import type { OnEvents } from '../on';
 import type { EngineInterface, Hook } from 'claude-code';
 
@@ -24,26 +31,37 @@ const copyDump = async ($: EngineInterface, text: string): Promise<void> => {
 };
 
 // §13.4: the review log, the lines of the other areas and, for `dump raw`, the last prompts, in one file
-// under `<config>/watchdog/dumps/`. Returns the reply.
-const writeDump = async ($: EngineInterface, isRaw: boolean): Promise<string> => {
+// under `<config>/watchdog/dumps/`. Returns its path and text; undefined when no `<config>` is known.
+const writeDumpFile = async (
+  $: EngineInterface,
+  sessionId: string,
+  isRaw: boolean
+): Promise<{ path: string; text: string } | undefined> => {
   const config = configDir(await $.env.get('CLAUDE_CONFIG_DIR'), await $.env.get('HOME'));
   if (config === undefined) {
-    return 'watchdog dump failed: neither CLAUDE_CONFIG_DIR nor HOME is set';
+    return undefined;
   }
-  const sessionId = await $.session.id();
   const time = await $.clock.now();
-  const records = currentLog();
   const text = dumpText({
     sessionId,
     time,
     lines: dumpLines(),
-    records,
+    records: currentLog(),
     ...(isRaw ? { prompts: recentPrompts() } : {}),
   });
   const path = dumpPath(config, sessionId, time);
   await $.fs.write(path, text);
-  await copyDump($, text);
-  return `watchdog dump: ${path}`;
+  return { path, text };
+};
+
+// §13.4: `/watchdog dump`: the file, and on the terminal the clipboard. Returns the reply.
+const writeDump = async ($: EngineInterface, isRaw: boolean): Promise<string> => {
+  const dump = await writeDumpFile($, await $.session.id(), isRaw);
+  if (dump === undefined) {
+    return 'watchdog dump failed: neither CLAUDE_CONFIG_DIR nor HOME is set';
+  }
+  await copyDump($, dump.text);
+  return `watchdog dump: ${dump.path}`;
 };
 
 // §13.4: `/watchdog dump` and `/watchdog dump raw`; the command hook passes them here.
@@ -58,6 +76,37 @@ const onDumpCommand: Hook<'command.run'> = async ($, e, next) => {
   return { text: reply };
 };
 
-export const installDump = (on: OnEvents<'command.run'>): void => {
+// §7.5: one `unreviewed: N updates` record for each backlog that no review took: the updates after the
+// cursor, or after the batch of a review that still runs.
+const recordUnreviewed = async ($: EngineInterface): Promise<void> => {
+  const time = await $.clock.now();
+  const feed = currentFeed();
+  const records = Object.entries(feed.cursors).flatMap(([slug, cursor]) => {
+    const slot = slotOf(slug);
+    const updates = waitingUpdates(feed, slot.state === 'reviewing' ? slot.batchEnd : cursor);
+    const watchdog = watchdogBySlug(slug)?.name ?? slug;
+    return updates === 0 ? [] : [unreviewedRecord({ watchdog, time, updates })];
+  });
+  for (const record of records) {
+    addLogRecord(record);
+  }
+};
+
+// §10.6: at the end of a headless session, the dump file holds the notes that still wait, the `unreviewed`
+// records and the warnings. A session that never turned on and has no warning leaves no file.
+const onSessionEnd: Hook<'session.end'> = async ($, e, next) => {
+  if (!isInteractiveSession() && (currentMode() === 'on' || onWarnings().length > 0)) {
+    await recordUnreviewed($).catch(() => undefined);
+    await writeDumpFile($, e.sessionId, false).catch(() => undefined);
+  }
+  return next(e);
+};
+
+export const installDump = (on: OnEvents<'command.run' | 'session.end'>): void => {
   on('command.run', { command: 'watchdog' }, onDumpCommand);
+  on('session.end', onSessionEnd);
+  // §10.6, §13.4: the notes that still wait, as their log row shows them.
+  addDumpLines(() =>
+    heldNotes().map((note) => `waiting: ${logRow(note, watchdogBySlug(note.watchdog)?.name ?? note.watchdog)}`)
+  );
 };

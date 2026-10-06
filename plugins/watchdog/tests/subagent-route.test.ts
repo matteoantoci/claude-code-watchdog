@@ -106,7 +106,7 @@ const review = (type?: string): LogRecord =>
     agentId: 'afake0001',
     time: 0,
     end: { turnId: 'r1', reason: 'answer', answer: '', durationMs: 5, isAborted: false },
-    trace: { steps: 1, notes: [] },
+    trace: { steps: 1, notes: [], error: null },
     subagent: type === undefined ? undefined : { agentId: 'asub0001', type },
   });
 

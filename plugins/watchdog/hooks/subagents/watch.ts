@@ -1,6 +1,6 @@
 import { TYPE_PREFIX } from '../agents/spec';
 import { TOOL_INPUT_CAP } from '../constants';
-import { closeUpdate, moveCursor, recordRow, startFeed } from '../feed/feed';
+import { closeUpdate, recordRow, startFeed } from '../feed/feed';
 import { contentText, elide } from '../feed/text';
 import { currentPeriod } from '../lifecycle/mode';
 import type { Roster } from '../agents/roster';
@@ -124,9 +124,9 @@ export const recordSubagentRow = (row: SessionAppendInput): boolean => {
 export const closeSubagentUpdate = (agentId: string, close: UpdateClose): Feed | undefined =>
   changeWatch(agentId, (watch) => ({ feed: closeUpdate(watch.feed, close) }))?.feed;
 
-// §7.5: a finished review of a subagent moves that watchdog's cursor in the subagent's feed.
-export const moveSubagentCursor = (agentId: string, slug: string, end: string): void => {
-  changeWatch(agentId, (watch) => ({ feed: moveCursor(watch.feed, slug, end) }));
+// §7.5, §12.3: the outcome of a review of a subagent changes that watchdog's backlog in the subagent's feed.
+export const changeSubagentFeed = (agentId: string, change: (feed: Feed) => Feed): void => {
+  changeWatch(agentId, (watch) => ({ feed: change(watch.feed) }));
 };
 
 // §7.7 part 2 of a subagent review: the subagent's task. A batch that starts with the task row shows it in part
