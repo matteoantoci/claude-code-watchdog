@@ -46,6 +46,7 @@ export const reviewRecord = (input: {
   time: number;
   end: TurnCompleteInput;
   trace: ReviewTrace;
+  subagent?: ReviewRecord['subagent'];
 }): ReviewRecord => {
   const { watchdog, end, trace } = input;
   const usage = end.usage;
@@ -74,6 +75,7 @@ export const reviewRecord = (input: {
     notes: trace.notes,
     error: trace.error,
     refusal: end.reason === 'refusal' ? end.refusal.category : null,
+    ...(input.subagent === undefined ? {} : { subagent: input.subagent }),
   };
 };
 

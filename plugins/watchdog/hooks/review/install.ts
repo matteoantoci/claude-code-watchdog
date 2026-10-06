@@ -7,14 +7,16 @@ import { errorText } from '../errors';
 import { classifySpawnError } from '../failure/classify';
 import { dueTry } from '../failure/health';
 import { applyOutcome, endOutcome, setLastError } from '../failure/state';
-import { addServerToolUses, closeUpdate, currentFeed, pendingBatch, setFeed, unreviewedCalls } from '../feed/feed';
+import { addServerToolUses, currentFeed, setFeed, unreviewedCalls } from '../feed/feed';
 import { currentMode } from '../lifecycle/mode';
 import { isInteractiveSession } from '../lifecycle/on-order';
 import { addLogRecord, currentLog, errorRecord, rememberPrompt, unreviewedRecord } from '../log/log';
 import { liveHistory, notesKey, readHistory, watchdogNotes } from '../note/history';
 import { isPersonPrompt } from '../person';
 import { resolveEffort, sessionEffort, setSessionEffort } from '../roster/model';
+import { taskPrompts } from '../subagents/watch';
 import { dropBacklog, isUnboundReject, waitingUpdates } from './backlog';
+import { cadenceKey, closeBacklog, takeBacklog, watchersOf } from './backlogs';
 import { cadenceOf, countBoundary, setCadence } from './cadence';
 import { reviewPrompt } from './prompt';
 import { IDLE, isReady, learnReviewAgent, runningReview, setSlot, slotOf } from './slots';
@@ -23,6 +25,8 @@ import type { Watchdog } from '../agents/roster';
 import type { UpdateClose } from '../feed/feed';
 import type { RecapNote } from '../note/history';
 import type { OnEvents } from '../on';
+import type { WatchedSubagent } from '../subagents/watch';
+import type { Backlog } from './backlogs';
 import type { ReviewInput } from './prompt';
 import type { Problem, Start } from './slots';
 import type { EngineInterface, Hook, TurnCompleteInput } from 'claude-code';
@@ -34,17 +38,38 @@ const save = async ($: EngineInterface): Promise<void> => {
   await $.state.set({ plugin: 'watchdog', key: 'ids' }, watchdogIds()).catch(() => undefined);
 };
 
-// §7.7 part 1: the watchdog's newest 20 notes of this session: the note area's live copy of
-// `notes:<sessionId>`, else the stored value.
-const recapNotes = async ($: EngineInterface, slug: string): Promise<readonly RecapNote[]> => {
+// §7.7 part 1: the watchdog's newest 20 notes on the watched agent: the note area's live copy of
+// `notes:<sessionId>` (or `notes:<sessionId>:<agentId>` of a subagent, §11.4), else the stored value.
+const recapNotes = async ($: EngineInterface, slug: string, agentId?: string): Promise<readonly RecapNote[]> => {
   const sessionId = await $.session.id();
-  const history = liveHistory(sessionId) ?? readHistory(await $.store.get(notesKey(sessionId)));
+  const history = liveHistory(sessionId, agentId) ?? readHistory(await $.store.get(notesKey(sessionId, agentId)));
   return watchdogNotes(history, slug).notes;
+};
+
+// §7.7, §11.4: the recap of a subagent review reads that subagent's conversation; its part 2 is the task.
+const subagentRecap = async (
+  $: EngineInterface,
+  slug: string,
+  backlog: Backlog & { readonly subagent: WatchedSubagent }
+): Promise<Omit<ReviewInput, 'updates'>> => {
+  const { subagent } = backlog;
+  const [notes, messages] = await Promise.all([
+    recapNotes($, slug, subagent.agentId).catch(() => []),
+    $.session.messages({ agentId: subagent.agentId, as: 'api' }).then(
+      (read) => (Array.isArray(read) ? read : []),
+      () => []
+    ),
+  ]);
+  const prompts = taskPrompts(subagent, backlog.batch.rows);
+  return { notes, messages, prompts, skip: unreviewedCalls(subagent.feed, slug), subagent: subagent.type };
 };
 
 // §7.7: the recap of one review. Parts 2 and 3 read the main conversation in Messages API form; a refused
 // read leaves its parts empty.
-const recapOf = async ($: EngineInterface, slug: string): Promise<Omit<ReviewInput, 'updates'>> => {
+const recapOf = async ($: EngineInterface, slug: string, backlog: Backlog): Promise<Omit<ReviewInput, 'updates'>> => {
+  if (backlog.subagent !== undefined) {
+    return subagentRecap($, slug, { ...backlog, subagent: backlog.subagent });
+  }
   const [notes, messages] = await Promise.all([
     recapNotes($, slug).catch(() => []),
     $.session.messages({ as: 'api' }).catch(() => []),
@@ -87,7 +112,7 @@ const dropUnbound = async ($: EngineInterface, watchdog: Watchdog, reason: strin
 const spawnFailed = async (
   $: EngineInterface,
   watchdog: Watchdog,
-  failure: { error: string; from: Problem | undefined; batchEnd: string }
+  failure: { error: string; from: Problem | undefined; batchEnd: string; subagent: string | undefined }
 ): Promise<void> => {
   setSlot(watchdog.slug, failure.from ?? IDLE);
   if (await dropUnbound($, watchdog, failure.error)) {
@@ -95,25 +120,26 @@ const spawnFailed = async (
   }
   const time = await $.clock.now();
   const outcome = { kind: classifySpawnError(failure.error), error: failure.error };
-  applyOutcome(watchdog.slug, outcome, { from: failure.from, notes: 0, now: time, batchEnd: failure.batchEnd });
+  const { from, batchEnd, subagent } = failure;
+  applyOutcome(watchdog.slug, outcome, { from, notes: 0, now: time, batchEnd, subagent });
   setLastError(watchdog.name, failure.error);
   addLogRecord(errorRecord({ watchdog: watchdog.name, time, error: `review spawn failed: ${failure.error}` }));
   await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog()).catch(() => undefined);
 };
 
-// §7.2, §7.4, §7.5: a free watchdog with a due review takes all updates that wait into one review, with its
-// recap (§7.7); a try or a retry starts as `start` says (§12.3). The spawn is awaited inside a live hook, and
-// the in-flight window spans it (§7.3). A reject or a deny started no agent (§12.2). The agent id may come
-// only from the `agent.spawn` hook (§16.2), so a resolve without one keeps the slot.
+// §7.2, §7.4, §7.5, §11.2: a free watchdog merges the backlog with the oldest due update into one review with
+// its recap (§7.7); a try or a retry starts as `start` says (§12.3). The spawn is awaited in a live hook (§7.3);
+// a reject or deny started no agent (§12.2); a resolve without an id keeps the slot (§16.2).
 const spawnReview = async ($: EngineInterface, watchdog: Watchdog, start: Start = {}): Promise<void> => {
-  const batch = pendingBatch(currentFeed(), watchdog.slug);
-  if (batch === undefined || !isReady(watchdog.slug, start)) {
+  const backlog = isReady(watchdog.slug, start) ? takeBacklog(watchdog.slug, start) : undefined;
+  if (backlog === undefined) {
     return;
   }
-  setSlot(watchdog.slug, { state: 'reviewing', agentId: null, batchEnd: batch.end, ...start });
+  const subagent = backlog.subagent?.agentId;
+  setSlot(watchdog.slug, { state: 'reviewing', agentId: null, batchEnd: backlog.batch.end, ...start, subagent });
   await refreshAgent($, watchdog);
   const prompt = reviewPrompt(
-    { updates: batch.updates, ...(await recapOf($, watchdog.slug)) },
+    { updates: backlog.batch.updates, ...(await recapOf($, watchdog.slug, backlog)) },
     { isCompact: start.isCompact === true }
   );
   beginSpawn();
@@ -126,10 +152,12 @@ const spawnReview = async ($: EngineInterface, watchdog: Watchdog, start: Start 
     .catch((error: unknown) => ({ deny: errorText(error) }))
     .finally(endSpawn);
   if (spawned.deny !== undefined) {
-    await spawnFailed($, watchdog, { error: spawned.deny, from: start.from, batchEnd: batch.end });
+    const failure = { error: spawned.deny, from: start.from, batchEnd: backlog.batch.end, subagent };
+    await spawnFailed($, watchdog, failure);
     return;
   }
-  setCadence(watchdog.slug, { ...cadenceOf(watchdog.slug), isDue: false });
+  const pair = cadenceKey(watchdog.slug, subagent);
+  setCadence(pair, { ...cadenceOf(pair), isDue: false });
   rememberPrompt({ watchdog: watchdog.name, prompt });
   if (spawned.agentId !== undefined) {
     learnReviewAgent(watchdog.slug, spawned.agentId);
@@ -141,22 +169,24 @@ const reviewAll = async ($: EngineInterface, watchdogs: readonly Watchdog[], sta
   await save($);
 };
 
-// §7.2: a main-loop boundary closes an update before `next(e)`, so the rows of the next step stay out.
-// §7.4: each watchdog counts the boundary by its cadence; a `step` close is mid-turn.
-const closeMainUpdate = (agentId: string | undefined, close: UpdateClose): boolean => {
-  const isBoundary = agentId === undefined && currentMode() === 'on';
-  if (isBoundary) {
-    setFeed(closeUpdate(currentFeed(), close));
-    currentRoster().forEach((watchdog) => {
-      setCadence(watchdog.slug, countBoundary(cadenceOf(watchdog.slug), watchdog, close !== 'step'));
-    });
+// §7.2, §11.2: a boundary of a watched agent closes its update before `next(e)`, so the rows of the next step
+// stay out. §7.4: each of its watchdogs counts the boundary by its cadence; a `step` close is mid-turn.
+const closeWatchedUpdate = (agentId: string | undefined, close: UpdateClose): boolean => {
+  const watchers = currentMode() === 'on' ? watchersOf(agentId, currentRoster()) : undefined;
+  if (watchers === undefined) {
+    return false;
   }
-  return isBoundary;
+  closeBacklog(agentId, close);
+  watchers.forEach((watchdog) => {
+    const pair = cadenceKey(watchdog.slug, agentId);
+    setCadence(pair, countBoundary(cadenceOf(pair), watchdog, close !== 'step'));
+  });
+  return true;
 };
 
-// §7.5, §12.1 to §12.3: a review's own `turn.complete` frees its watchdog and applies its outcome; the error
-// goes to `last error` and to the review's record. Returns what starts next: the compact retry at once, or
-// the next review after an answer or a refusal that left the watchdog idle (§12.2 model compare first).
+// §7.5, §12.1 to §12.3: a review's own `turn.complete` frees its watchdog and applies its outcome to the backlog
+// it took (§11.2). Returns what starts next: the compact retry at once, or the next review after an answer or a
+// refusal that left the watchdog idle (§12.2 model compare first).
 const finishReview = async (
   $: EngineInterface,
   e: TurnCompleteInput
@@ -166,23 +196,24 @@ const finishReview = async (
     return undefined;
   }
   const { slot, watchdog } = review;
+  const { from, batchEnd, subagent } = slot;
   const { outcome, notes } = endOutcome(e, review);
-  applyOutcome(watchdog.slug, outcome, { from: slot.from, notes, now: await $.clock.now(), batchEnd: slot.batchEnd });
+  applyOutcome(watchdog.slug, outcome, { from, notes, now: await $.clock.now(), batchEnd, subagent });
   if (outcome.kind === 'retry') {
-    return { slug: watchdog.slug, start: { isCompact: true, from: slot.from } };
+    return { slug: watchdog.slug, start: { isCompact: true, from, subagent } };
   }
   const isNext = (e.reason === 'answer' || e.reason === 'refusal') && slotOf(watchdog.slug).state === 'idle';
   return isNext ? { slug: watchdog.slug, start: {} } : undefined;
 };
 
-// §7.2: main-loop `turn.step` with index ≥ 1 is a boundary; the reviews spawn after the step's stream.
-// §6.2: the main loop's step names the session effort. §7.6: the step's server tool calls that no row named
-// join the open update.
+// §7.2, §11.2: a watched agent's `turn.step` with index ≥ 1 is a boundary; the reviews spawn after the step's
+// stream. §6.2: the main loop's step names the session effort. §7.6: the step's server tool calls that no
+// row named join the primary agent's open update.
 const onStep: Hook<'turn.step'> = async function* ($, e, next) {
   if (e.agentId === undefined) {
     setSessionEffort(e.effort);
   }
-  const isBoundary = e.index >= 1 && closeMainUpdate(e.agentId, 'step');
+  const isBoundary = e.index >= 1 && closeWatchedUpdate(e.agentId, 'step');
   const response = yield* next(e);
   if (e.agentId === undefined && currentMode() === 'on') {
     setFeed(addServerToolUses(currentFeed(), response.serverToolUses ?? []));
@@ -193,11 +224,11 @@ const onStep: Hook<'turn.step'> = async function* ($, e, next) {
   return response;
 };
 
-// §7.2: main-loop `turn.complete` is a boundary; §7.5: an Esc closes the update as interrupted. A review's
-// own `turn.complete` spawns the next review of that watchdog, or its compact retry (§12.3 item 4), awaited
-// there.
+// §7.2, §11.2: a watched agent's `turn.complete` is a boundary; §7.5: an Esc closes the update as interrupted.
+// A review's own `turn.complete` spawns the next review of that watchdog, or its compact retry (§12.3 item 4),
+// awaited there.
 const onComplete: Hook<'turn.complete'> = async ($, e, next) => {
-  const isBoundary = closeMainUpdate(e.agentId, e.isAborted ? 'interrupted' : 'turn');
+  const isBoundary = closeWatchedUpdate(e.agentId, e.isAborted ? 'interrupted' : 'turn');
   const finished = await finishReview($, e);
   const result = await next(e);
   const isNext = (watchdog: Watchdog): boolean => watchdog.slug === finished?.slug && currentMode() === 'on';

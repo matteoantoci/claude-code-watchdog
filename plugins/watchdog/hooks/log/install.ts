@@ -1,5 +1,6 @@
 import { watchdogOf } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
+import { subagentOfReview } from '../subagents/watch';
 import { addLogRecord, countStep, currentLog, reviewRecord, takeTrace } from './log';
 import type { OnEvents } from '../on';
 import type { EngineInterface, TurnCompleteInput } from 'claude-code';
@@ -13,7 +14,9 @@ const logReview = async ($: EngineInterface, end: TurnCompleteInput): Promise<vo
     return;
   }
   const time = await $.clock.now();
-  addLogRecord(reviewRecord({ watchdog, agentId: end.agentId, time, end, trace: takeTrace(end.agentId) }));
+  const watch = subagentOfReview(end.agentId);
+  const subagent = watch === undefined ? undefined : { agentId: watch.agentId, type: watch.type };
+  addLogRecord(reviewRecord({ watchdog, agentId: end.agentId, time, end, trace: takeTrace(end.agentId), subagent }));
   await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog());
 };
 

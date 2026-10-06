@@ -1,6 +1,6 @@
 import { addWatchdogId } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
-import { cadenceOf } from './cadence';
+import { setReviewTarget } from '../subagents/watch';
 import type { Watchdog } from '../agents/roster';
 import type { PluginState } from 'claude-code';
 
@@ -10,14 +10,16 @@ import type { PluginState } from 'claude-code';
 export type Problem = NonNullable<PluginState['watchdog']['health']['watchdogs'][string]['problem']>;
 
 // §7.5, §12.4: each watchdog runs one review at a time. `reviewing` keeps the agent (null until its id
-// arrives) and the last row of its batch; a try keeps the problem it started from (§12.3), and the retry at
-// once of a prompt too large is compact (§12.3 item 4). `disabled` is a roster entry with `enabled: false` (§4.2).
+// arrives), the last row of its batch and, for a review of a subagent (§11.2), that subagent's `agentId`; a try
+// keeps the problem it started from (§12.3), and the retry at once of a prompt too large is compact (§12.3 item 4).
+// `disabled` is a roster entry with `enabled: false` (§4.2).
 export type Slot =
   | { readonly state: 'idle' | 'disabled' }
   | {
       readonly state: 'reviewing';
       readonly agentId: string | null;
       readonly batchEnd: string;
+      readonly subagent?: string;
       readonly from?: Problem;
       readonly isCompact?: boolean;
     }
@@ -54,25 +56,25 @@ export const runningReview = (agentId: string | undefined): RunningReview | unde
     : { agentId, slot, watchdog };
 };
 
-// How a review starts: at a boundary when its cadence is due (§7.4); as the try of a `limited` or `halted`
-// watchdog at a person prompt (§12.3 items 2, 3), which keeps the problem it starts from; or as the compact
-// retry at once of a prompt too large (§12.3 item 4), which keeps the problem of the review it repeats.
-export type Start = { readonly from?: Problem; readonly isCompact?: boolean };
+// How a review starts: at a boundary when the cadence of a backlog is due (§7.4, §11.2); as the try of a
+// `limited` or `halted` watchdog at a person prompt (§12.3 items 2, 3), which keeps the problem it starts from;
+// or as the compact retry at once of a prompt too large (§12.3 item 4), which keeps the problem and the
+// backlog (the subagent's `agentId`, none for the primary agent) of the review it repeats.
+export type Start = { readonly from?: Problem; readonly isCompact?: boolean; readonly subagent?: string };
 
-// Whether the watchdog can start a review this way now.
+// Whether the watchdog can start a review this way now; the backlog it takes decides the rest (§7.5).
 export const isReady = (slug: string, start: Start): boolean => {
   const slot = slotOf(slug);
-  if (start.isCompact === true) {
-    return slot.state === 'idle';
-  }
-  return start.from === undefined ? slot.state === 'idle' && cadenceOf(slug).isDue : slot === start.from;
+  return start.from === undefined || start.isCompact === true ? slot.state === 'idle' : slot === start.from;
 };
 
-// §7.3: a review agent's id, from the first source that gives it.
+// §7.3: a review agent's id, from the first source that gives it; §11.4: the id maps to the subagent of a review
+// of a subagent, and to none for a review of the primary agent.
 export const learnReviewAgent = (slug: string, agentId: string): void => {
   const slot = slotOf(slug);
   if (slot.state === 'reviewing' && slot.agentId === null) {
     setSlot(slug, { ...slot, agentId });
+    setReviewTarget(agentId, slot.subagent);
   }
   addWatchdogId(agentId, slug);
 };

@@ -1,7 +1,7 @@
 import { NOTE_KEY_CAP, RECAP_NOTE_CAP } from '../constants';
 import { normalizeNote } from './guard';
 import { isDeliveryState } from './notes';
-import { isSeverity } from './tool';
+import { isSeverity, severityRank } from './tool';
 import type { DeliveryState } from './notes';
 import type { Severity } from './tool';
 
@@ -22,7 +22,9 @@ export const EMPTY_HISTORY: NoteHistory = { watchdogs: {}, lastUsed: 0 };
 
 const NO_NOTES: WatchdogNotes = { keys: [], notes: [] };
 
-export const notesKey = (sessionId: string): string => `notes:${sessionId}`;
+// §14.2: the primary agent's key, and with an `agentId` the key of one watched subagent (§11.4).
+export const notesKey = (sessionId: string, agentId?: string): string =>
+  agentId === undefined ? `notes:${sessionId}` : `notes:${sessionId}:${agentId}`;
 
 export const watchdogNotes = (history: NoteHistory, slug: string): WatchdogNotes => history.watchdogs[slug] ?? NO_NOTES;
 
@@ -36,6 +38,18 @@ const recordKey = (keys: readonly GuardKey[], entry: GuardKey): readonly GuardKe
   keys.some((known) => known.key === entry.key)
     ? keys.map((known) => (known.key === entry.key ? entry : known))
     : [...keys, entry].slice(-NOTE_KEY_CAP);
+
+// §11.4: a late note on a subagent that goes to the primary agent records its key in the primary agent's set.
+export const recordGuardKey = (history: NoteHistory, slug: string, entry: GuardKey): NoteHistory => {
+  const { keys, notes } = watchdogNotes(history, slug);
+  return withNotes(history, slug, { keys: recordKey(keys, entry), notes });
+};
+
+// §9.2, §11.4: the set already holds the key at the same or a higher severity, so the note repeats.
+export const isRepeat = (history: NoteHistory, slug: string, entry: GuardKey): boolean => {
+  const seen = watchdogNotes(history, slug).keys.find((known) => known.key === entry.key)?.severity;
+  return seen !== undefined && severityRank(seen) >= severityRank(entry.severity);
+};
 
 // §9.6: an admitted note records its key and joins the newest 20 notes.
 export const recordNote = (history: NoteHistory, slug: string, note: RecapNote): NoteHistory => {
@@ -117,22 +131,28 @@ export const readHistory = (value: unknown): NoteHistory =>
       }
     : EMPTY_HISTORY;
 
-// §9.6: the live copy of one session's history in module memory, and whether its session already showed a
-// refused write (§14.2: one row for each session).
-const live: { sessionId: string | undefined; history: NoteHistory; isErrorShown: boolean } = {
+// §9.6, §11.4: the live copies of one session's histories in module memory (the primary agent's, and one for
+// each watched subagent by its `agentId`), and whether the session already showed a refused write (§14.2: one
+// row for each session). A new session id starts them again.
+const PRIMARY = '';
+
+const live: { sessionId: string | undefined; histories: Map<string, NoteHistory>; isErrorShown: boolean } = {
   sessionId: undefined,
-  history: EMPTY_HISTORY,
+  histories: new Map(),
   isErrorShown: false,
 };
 
-// The live copy, or undefined before the first load for this session id.
-export const liveHistory = (sessionId: string): NoteHistory | undefined =>
-  live.sessionId === sessionId ? live.history : undefined;
+// The live copy, or undefined before the first load for this session id and watched agent.
+export const liveHistory = (sessionId: string, agentId?: string): NoteHistory | undefined =>
+  live.sessionId === sessionId ? live.histories.get(agentId ?? PRIMARY) : undefined;
 
-export const setLiveHistory = (sessionId: string, history: NoteHistory): void => {
-  live.isErrorShown = live.isErrorShown && live.sessionId === sessionId;
+export const setLiveHistory = (sessionId: string, history: NoteHistory, agentId?: string): void => {
+  if (live.sessionId !== sessionId) {
+    live.histories.clear();
+    live.isErrorShown = false;
+  }
   live.sessionId = sessionId;
-  live.history = history;
+  live.histories.set(agentId ?? PRIMARY, history);
 };
 
 // True once for each session: the first refused write of that session shows a row.

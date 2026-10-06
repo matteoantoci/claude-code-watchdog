@@ -77,9 +77,10 @@ const stopAgent = async ($: EngineInterface, agentId: string, time: number): Pro
 };
 
 // §7.8: the 6 timeout actions, once: the stop map entry `timeout`, 1 failure that keeps the notes or puts the
-// batch back and frees the slot, the record, then `TaskStop` (the slot is free also when it rejects). The
-// note guard drops each later note of the agent. All but the writes run before the first await, so the timer
-// and the fallback check never both run them, and the agent's aborted end finds no review to finish.
+// batch back in the backlog the review took (§11.2) and frees the slot, the record, then `TaskStop` (the slot is
+// free also when it rejects). The note guard drops each later note of the agent. All but the writes run before
+// the first await, so the timer and the fallback check never both run them, and the agent's aborted end finds no
+// review to finish.
 const timeOutReview = async ($: EngineInterface, slug: string, now: number): Promise<void> => {
   const slot = slotOf(slug);
   const timed = timeOut(currentReviews(), slug, slot);
@@ -89,7 +90,8 @@ const timeOutReview = async ($: EngineInterface, slug: string, now: number): Pro
   endTimer(slug);
   setReviews(timed.reviews);
   const notes = timed.stop === null ? 0 : deliveredNotes(timed.stop);
-  applyOutcome(slug, timed.outcome, { from: slot.from, notes, now, batchEnd: slot.batchEnd });
+  const { from, batchEnd, subagent } = slot;
+  applyOutcome(slug, timed.outcome, { from, notes, now, batchEnd, subagent });
   setLastError(nameOf(slug), TIMEOUT_ERROR);
   addLogRecord(timeoutRecord({ watchdog: nameOf(slug), agentId: timed.stop, time: now }));
   await saveReviews($);
@@ -162,11 +164,11 @@ const stopReviews = async ($: EngineInterface, reason: StopReason): Promise<void
 };
 
 // §7.8: the fallback check runs at the start of the main-loop step, never in a watchdog agent's own event.
+// §11.2: a watched subagent's step may spawn a review, so each step tracks the reviews after it.
 const onStep: Hook<'turn.step'> = async function* ($, e, next) {
-  if (e.agentId !== undefined) {
-    return yield* next(e);
+  if (e.agentId === undefined) {
+    await checkTimeouts($);
   }
-  await checkTimeouts($);
   const response = yield* next(e);
   await trackAll($);
   return response;

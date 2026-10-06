@@ -1,6 +1,7 @@
 import { MAX_FAILED_REVIEWS } from '../constants';
 import { currentFeed, setFeed } from '../feed/feed';
 import { traceError, traceOf } from '../log/log';
+import { changeBacklog } from '../review/backlogs';
 import { setSlot, slotOf } from '../review/slots';
 import { applyBacklog } from './backlog';
 import { reviewOutcome } from './classify';
@@ -83,16 +84,17 @@ export const endOutcome = (e: TurnCompleteInput, review: RunningReview): { outco
   return { outcome, notes: deliveredNotes(agentId) };
 };
 
-// §7.5, §12.3: one outcome of a review (or of its spawn) moves its watchdog's slot, counts and backlog.
+// §7.5, §12.3: one outcome of a review (or of its spawn) moves its watchdog's slot, counts and the backlog the
+// review took: the primary agent's, or a watched subagent's (§11.2).
 export const applyOutcome = (
   slug: string,
   outcome: Outcome,
-  review: { from: Problem | undefined; notes: number; now: number; batchEnd: string }
+  review: { from: Problem | undefined; notes: number; now: number; batchEnd: string; subagent?: string }
 ): void => {
   const step = afterOutcome({ ...review, counters: countersOf(slug), outcome });
   setSlot(slug, step.slot);
   memory.counters.set(slug, step.counters);
-  setFeed(applyBacklog(currentFeed(), { slug, batchEnd: review.batchEnd }, step.backlog));
+  changeBacklog(review.subagent, (feed) => applyBacklog(feed, { slug, batchEnd: review.batchEnd }, step.backlog));
 };
 
 // §12.3 item 2: `/watchdog on` tries at once: the failure counts go, and a running try forgets its problem.
