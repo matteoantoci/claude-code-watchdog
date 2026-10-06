@@ -138,6 +138,25 @@ describe("recap part 2: the person's prompts", () => {
     expect(prompt).not.toMatch(/Before the watchdog|Context\.|task-id|Look again|interrupted/u);
   });
 
+  test('a person prompt that starts with a tag of its own is typed text; only the engine tags are left out', () => {
+    const prompt = reviewPrompt(
+      input({
+        messages: [
+          user('Before the watchdog.'),
+          user('<div> is misaligned on mobile.'),
+          user('<command-name>/watchdog</command-name>'),
+          user('<local-command-stdout>watchdog on</local-command-stdout>'),
+          user('<context>The login page.</context>'),
+        ],
+        prompts: 2,
+      })
+    );
+    expect(prompt).toContain(
+      '**user**:\n<context>The login page.</context>\n\n**user**:\n<div> is misaligned on mobile.\n\n###'
+    );
+    expect(prompt).not.toMatch(/Before the watchdog|command-name|local-command/u);
+  });
+
   test('over 20,000 chars, the oldest prompts go with a count; the newest stays whole even when longer', () => {
     const long = 'n'.repeat(25_000);
     const prompt = reviewPrompt(

@@ -13,12 +13,14 @@ export type RecapSource = {
 
 const SEPARATOR = '\n\n';
 
-// §7.7 part 2: a user text block that the engine or a plugin wrote, not the person: a tag block
-// (`<system-reminder>`, `<task-notification>`, `<watchdog-notes>`, `<command-name>`, `<bash-input>`, …),
-// an Esc line, the local-command caveat, a plugin's prompt frame, a compaction summary. [INFERENCE] The API
-// form keeps no origin, so the text tells them apart.
+// §7.7 part 2: a user text block that the engine or a plugin wrote, not the person: a block that opens with an
+// engine tag (`<system-reminder>`, `<task-notification>`, the mod's own `<watchdog-notes>`, a slash command's
+// `<command-name>` and its output, a `!` command's `<bash-input>` and its output, a `#` memory, a prompt hook's
+// output), an Esc line, the local-command caveat, a plugin's prompt frame, a compaction summary. A prompt that
+// opens with any other tag (`<div> is misaligned`) is the person's. [INFERENCE] The API form keeps no origin, so
+// the text tells them apart.
 const NOT_TYPED: readonly RegExp[] = [
-  /^<[a-z][\w-]*[\s>]/u,
+  /^<(?:system-reminder|task-notification|watchdog-notes|command-(?:name|message|args)|local-command-(?:stdout|stderr|caveat)|bash-(?:input|stdout|stderr)|user-memory-input|user-prompt-submit-hook)[\s>]/u,
   /^\[Request interrupted by user/u,
   /^Caveat: /u,
   /^The \S+ plugin sent a message:/u,
