@@ -11,7 +11,7 @@ import { changeBacklog } from '../review/backlogs';
 import { forgetMark } from '../rewind/mark';
 import { currentLedger, restoreLedger } from '../status/ledger';
 import { currentReviews } from '../stop/reviews';
-import { forgetSubagents, restoreSubagent, setReviewTarget } from '../subagents/watch';
+import { forgetSubagents, restoreSubagent, setReviewTarget, takeForgottenSubagents } from '../subagents/watch';
 import { resetScope } from '../tools/scope';
 import { discardNotes, endSession, keepCommand, takeChange } from './change';
 import { resumeFeed } from './load';
@@ -103,6 +103,14 @@ const applyChange = async ($: EngineInterface, change: SessionChange, to: string
   await $.state.set({ plugin: 'watchdog', key: 'nudge' }, nudgeValue([])).catch(() => undefined);
 };
 
+// §5.2: the entry of a forgotten subagent in the `$.state` family `subagents` becomes null, so a reload does not
+// watch it again.
+const dropSubagents = async ($: EngineInterface, agentIds: readonly string[]): Promise<void> => {
+  await Promise.all(
+    agentIds.map(async (id) => $.state.set({ plugin: 'watchdog', key: 'subagents', id }, null).catch(() => undefined))
+  );
+};
+
 // §14.3: the command is kept before `next(e)`, inside which `session.end` fires; right after it the session id
 // is the new one. A command that changed no session id (a `/resume` picker closed with no pick) changes nothing.
 const onSessionCommand: Hook<'command.run'> = async ($, e, next) => {
@@ -113,6 +121,13 @@ const onSessionCommand: Hook<'command.run'> = async ($, e, next) => {
   if (change !== undefined && to !== undefined && to !== change.from) {
     await applyChange($, change, to);
   }
+  return result;
+};
+
+// §5.2: `/watchdog on` and `/watchdog off` start the feeds again; the watched subagents of before leave `$.state`.
+const onWatchdogCommand: Hook<'command.run'> = async ($, e, next) => {
+  const result = await next(e);
+  await dropSubagents($, takeForgottenSubagents());
   return result;
 };
 
@@ -157,7 +172,7 @@ const restoreSubagents = async ($: EngineInterface): Promise<void> => {
   const found = await Promise.all(
     [...agentIds].map(async (agentId) =>
       $.state.get({ plugin: 'watchdog', key: 'subagents', id: agentId }).then(
-        (read) => (read.value === undefined ? [] : [{ agentId, ...read.value }]),
+        (read) => (read.value === undefined || read.value === null ? [] : [{ agentId, ...read.value }]),
         () => []
       )
     )
@@ -203,6 +218,7 @@ const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
 // `on()` from the other areas'.
 export const installSession = (on: OnEvents<'command.run' | 'session.end' | 'session.start'>): void => {
   on('command.run', { command: ['branch', 'resume', 'clear'] }, onSessionCommand);
+  on('command.run', { command: 'watchdog' }, onWatchdogCommand);
   on('session.end', { reason: /^(?:clear|resume)$/u }, onSessionEnd);
   on('session.start', { cwd: /./u }, onSessionStart);
 };

@@ -8,8 +8,9 @@ import type { Feed, FeedRow, UpdateClose } from '../feed/feed';
 import type { DeliveryState, HeldNote, Note } from '../note/notes';
 import type { AgentSpawnInput, PluginState, SessionAppendInput } from 'claude-code';
 
-// §11.1, §14.1: one watched subagent, as the `$.state` family `subagents` keeps it by its `agentId`.
-export type SubagentState = PluginState['watchdog']['subagents']['byId'];
+// §11.1, §14.1: one watched subagent, as the `$.state` family `subagents` keeps it by its `agentId` (null for
+// one that the mod forgot).
+export type SubagentState = NonNullable<PluginState['watchdog']['subagents']['byId']>;
 
 export type WatchedSubagent = SubagentState & { readonly agentId: string };
 
@@ -59,29 +60,41 @@ export const subagentStatusLines = (
 };
 
 // The watched subagents and the review agents of their reviews (review agentId → subagent agentId), in module
-// memory; `dirty` holds the ids whose `$.state` copy is behind. They belong to one on/off period (§5.2:
-// `/watchdog on` and `/watchdog off` start the feeds again).
+// memory; `dirty` holds the ids whose `$.state` copy is behind, `forgotten` the ids that a new on/off period
+// forgot and whose `$.state` copy still waits to go. They belong to one on/off period (§5.2: `/watchdog on` and
+// `/watchdog off` start the feeds again).
 const memory = {
   period: -1,
   watches: new Map<string, WatchedSubagent>(),
   reviews: new Map<string, string>(),
   dirty: new Set<string>(),
+  forgotten: new Set<string>(),
 };
 
 // §5.2, §14.3, §14.4: the backlogs start again and the mod watches no subagent of before: at a new on/off
-// period, a session change and a rewind.
-export const forgetSubagents = (): void => {
+// period, a session change and a rewind. Returns the subagents it forgot.
+export const forgetSubagents = (): string[] => {
+  const forgotten = [...memory.watches.keys()];
   memory.watches.clear();
   memory.reviews.clear();
   memory.dirty.clear();
+  return forgotten;
 };
 
 const live = (): typeof memory => {
   if (memory.period !== currentPeriod()) {
     memory.period = currentPeriod();
-    forgetSubagents();
+    forgetSubagents().forEach((agentId) => memory.forgotten.add(agentId));
   }
   return memory;
+};
+
+// §5.2, §14.6: the subagents that a new on/off period forgot, each once: their `$.state` copies go, so a reload
+// does not watch them again.
+export const takeForgottenSubagents = (): string[] => {
+  const forgotten = [...live().forgotten];
+  memory.forgotten.clear();
+  return forgotten;
 };
 
 const setWatch = (watch: WatchedSubagent): WatchedSubagent => {

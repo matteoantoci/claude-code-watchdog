@@ -23,17 +23,21 @@ const clearKeys = async ($: EngineInterface): Promise<void> => {
   await $.store.set(notesKey(sessionId), cleared).catch(() => undefined);
 };
 
-// §14.4: the cleanup of §14.3: the backlogs, the cards that wait and the undelivered notes go; the allow set
-// stays. The stop area beneath stops each review with reason `rewind` at this boundary, before the review area
-// spawns, and the next update starts with the marker.
+// §14.4: the cleanup of §14.3: the backlogs, the cards that wait and the undelivered notes go, and each watched
+// subagent's entry in the `$.state` family `subagents` becomes null, so a reload does not watch it again; the
+// allow set stays. The stop area beneath stops each review with reason `rewind` at this boundary, before the
+// review area spawns, and the next update starts with the marker.
 const rewind = async ($: EngineInterface, marker: string): Promise<void> => {
   discardNotes();
-  forgetSubagents();
+  const forgotten = forgetSubagents();
   clearCards();
   changeBacklog(undefined, (feed) => rewindFeed(feed, marker));
   await clearKeys($);
   await $.state.set({ plugin: 'watchdog', key: 'feed' }, currentFeed()).catch(() => undefined);
   await $.state.set({ plugin: 'watchdog', key: 'band' }, bandState(currentTurn())).catch(() => undefined);
+  await Promise.all(
+    forgotten.map(async (id) => $.state.set({ plugin: 'watchdog', key: 'subagents', id }, null).catch(() => undefined))
+  );
 };
 
 // §14.4: no event fires for a restore, so each main-loop boundary while on checks: a smaller step

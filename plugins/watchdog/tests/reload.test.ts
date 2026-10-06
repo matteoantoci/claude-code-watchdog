@@ -1,20 +1,33 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { REVIEW_TIMEOUT_MS } from '../hooks/constants';
 import { stubDelivery } from './fixtures/delivery';
-import { stubState } from './fixtures/on-state';
-import { NOW, REVIEW_AGENT, START, mainRow, turnEnd, typed } from './fixtures/session';
+import { stateIn, stubState } from './fixtures/on-state';
+import { NOW, REVIEW_AGENT, SESSION_ID, START, mainRow, subagentId, turnEnd, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { DeliveryStubs } from './fixtures/delivery';
 import type { StateSeed, StateStubs } from './fixtures/on-state';
 import type { WorkspaceFile } from './fixtures/session';
-import type { SessionAppendInput, ToolCallResult } from 'claude-code';
+import type { AgentSpawnInput, SessionAppendInput, ToolCallResult } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
 type Stubs = DeliveryStubs & StateStubs & OnEvents<'agent.list'>;
 
 // An agent of the id set whose review the mod stopped before the reload.
 const OLD_AGENT = 'aold0001';
-const SUB = 'asub0001';
+
+// The engine's `agent.spawn` of an Explore subagent, and the agent it starts.
+const EXPLORE: AgentSpawnInput = {
+  tool_use_id: 'toolu_01HxWq8tYbGk2Lm4Np6Rs0001',
+  prompt: 'Find where the auth token is parsed.',
+  description: 'explore auth',
+  subagentType: 'Explore',
+  provider: { plugin: 'engine', tier: 'core' },
+  parentModel: 'claude-opus-4-5',
+  background: true,
+  fork: false,
+};
+const SUB = subagentId(EXPLORE.tool_use_id);
+
 const DROPPED = 'Dropped: the review was stopped.';
 const QUEUED = 'Queued. Do not re-raise.';
 
@@ -160,5 +173,35 @@ describe('§14.6 a reload', () => {
     expect(reviews(seen)).toHaveLength(1);
     expect(reviews(seen)[0]).toMatch(/Find where the auth token is parsed\.[\s\S]*Searching for the token parser\./u);
     expect(reviews(seen)[0]).toMatch(/Found it in auth\/token\.ts\./u);
+  });
+});
+
+describe('§5.2, §14.6 the subagents of an earlier on/off period', () => {
+  test('/watchdog off writes null for each watched subagent in the `subagents` family', async ($, on: Stubs) => {
+    stubDelivery(on, { files: EXPLORE_ON });
+    const state = stubState(on);
+    await $.session.start(START);
+    await $.command.run(typed('on'));
+    await $.agent.spawn(EXPLORE);
+    expect(stateIn(state, SESSION_ID, `subagents:${SUB}`)).toMatchObject({ type: 'Explore' });
+
+    await $.command.run(typed('off'));
+    expect(stateIn(state, SESSION_ID, `subagents:${SUB}`)).toBeNull();
+  });
+
+  test('a reload does not watch again a listed subagent whose family entry is null; the primary agent gets its review', async ($, on: Stubs) => {
+    const seen = stubDelivery(on, { files: EXPLORE_ON });
+    stubState(on, { ...SUB_SEED, values: new Map([[`subagents:${SUB}`, null]]) });
+    on('agent.list', () => ({
+      value: [{ id: SUB, description: 'explore auth', type: 'Explore', status: 'running' as const }],
+    }));
+    await $.session.start(START);
+    await append($, { ...mainRow('s2', 'assistant', 'Found it in auth/token.ts.'), agentId: SUB });
+    await $.turn.complete({ ...turnEnd('s1'), agentId: SUB });
+    expect(reviews(seen)).toEqual([]);
+
+    await mainTurn($, 1);
+    expect(reviews(seen)).toHaveLength(1);
+    expect(reviews(seen)[0]).toMatch(/Task 1\./u);
   });
 });

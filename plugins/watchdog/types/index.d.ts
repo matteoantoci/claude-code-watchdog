@@ -197,8 +197,9 @@ declare module 'claude-code' {
       denies: Readonly<Record<string, number>>;
       // §10.3, §10.4, §14.1: the nudge budget, the cooldown and the nudge that waits.
       nudge: WatchdogNudge;
-      // §11.2, build-session choice "`$.state` key names": each watched subagent, by its `agentId`.
-      subagents: StateFamily<WatchdogSubagent>;
+      // §11.2, build-session choice "`$.state` key names": each watched subagent, by its `agentId`; null for one
+      // that the mod forgot (§5.2, §14.4), as `$.state` has no delete.
+      subagents: StateFamily<WatchdogSubagent | null>;
       // §12.3, §14.1: the failure state of each watchdog slug, and the last error for the status (§12.4).
       health: { readonly watchdogs: Readonly<Record<string, WatchdogHealth>>; readonly lastError: string | null };
       // §7.8, §14.1: the reviews that run, and the stop map: each agent the mod stopped and why.

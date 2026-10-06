@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { REVIEW_SPAWN, sendNote, stubDelivery } from './fixtures/delivery';
-import { stubState } from './fixtures/on-state';
-import { REVIEW_AGENT, SESSION_ID, START, mainRow, turnEnd, typed } from './fixtures/session';
+import { stateIn, stubState } from './fixtures/on-state';
+import { REVIEW_AGENT, SESSION_ID, START, mainRow, subagentId, turnEnd, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { DeliveryStubs } from './fixtures/delivery';
 import type { StateStubs } from './fixtures/on-state';
-import type { SessionAppendInput, SessionMessage } from 'claude-code';
+import type { WorkspaceFile } from './fixtures/session';
+import type { AgentSpawnInput, SessionAppendInput, SessionMessage } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
 type Stubs = DeliveryStubs & StateStubs & OnEvents<'session.compact'>;
@@ -96,5 +97,35 @@ describe('§14.4 /rewind', () => {
     talk.messages = [said('user', 'Summary.'), ...turnOf(3)];
     await mainTurn($, 3, 2);
     expect(seen.taskStops).toEqual([]);
+  });
+
+  test('a restore writes null for each watched subagent in the `subagents` family, so a reload does not watch it again', async ($, on: Stubs) => {
+    const explore: AgentSpawnInput = {
+      tool_use_id: 'toolu_01HxWq8tYbGk2Lm4Np6Rs0001',
+      prompt: 'Find where the auth token is parsed.',
+      description: 'explore auth',
+      subagentType: 'Explore',
+      provider: { plugin: 'engine', tier: 'core' },
+      parentModel: 'claude-opus-4-5',
+      background: true,
+      fork: false,
+    };
+    const files: Record<string, WorkspaceFile> = {
+      '/repo/WATCHDOG.json': { text: JSON.stringify({ subagents: { Explore: true } }), mtimeMs: 1 },
+    };
+    const talk: Talk = { messages: turnOf(1) };
+    stubDelivery(on, { transcript: () => talk.messages, files });
+    const state = stubState(on);
+    await $.session.start(START);
+    await $.command.run(typed('on'));
+    await mainTurn($, 1, 1);
+    await $.agent.spawn(explore);
+    expect(stateIn(state, SESSION_ID, `subagents:${subagentId(explore.tool_use_id)}`)).toMatchObject({
+      type: 'Explore',
+    });
+
+    talk.messages = turnOf(2);
+    await mainTurn($, 2, 1);
+    expect(stateIn(state, SESSION_ID, `subagents:${subagentId(explore.tool_use_id)}`)).toBeNull();
   });
 });
