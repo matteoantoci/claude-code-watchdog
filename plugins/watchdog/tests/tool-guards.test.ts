@@ -1,11 +1,15 @@
 import { describe, expect, test } from 'claude-code/testing';
+import { stubState } from './fixtures/on-state';
 import { REVIEW_AGENT, START, stubSession, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
+import type { StateStubs } from './fixtures/on-state';
 import type { SessionEvents } from './fixtures/session';
 import type { AgentSpawnInput, ToolCallArgs, ToolCheckDecision } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
 type Stubs = OnEvents<SessionEvents | 'tool.check'>;
+
+type ReloadStubs = Stubs & StateStubs;
 
 // A subagent of the primary agent: not in the watchdog id set.
 const SUBAGENT = 'asub0001';
@@ -184,5 +188,12 @@ describe('the read scope', () => {
 
     expect(before.text).not.toMatch(/read-scope denies/u);
     expect(after.text?.split('\n')).toContain('default read-scope denies: 2');
+  });
+
+  test('after a reload the status shows the deny counts $.state kept, before any read or check', async ($, on: ReloadStubs) => {
+    stub(on);
+    stubState(on, { state: { isOn: true, source: '/watchdog on' }, values: new Map([['denies', { default: 2 }]]) });
+    await $.session.start(START);
+    expect((await $.command.run(typed('status'))).text?.split('\n')).toContain('default read-scope denies: 2');
   });
 });

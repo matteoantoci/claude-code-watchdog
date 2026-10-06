@@ -24,9 +24,9 @@ import type { EngineInterface, Hook, MatchedHook } from 'claude-code';
 type GuardHook = MatchedHook<'tool.call', { agentId: RegExp }>;
 type ReadHook = MatchedHook<'tool.call', { tool: RegExp }>;
 
-// §6.5 item 8: a reload empties module memory, so the first hook of this module instance that needs the
-// allow set or the deny counts reads them back from `$.state` once; a refused read leaves them empty. After a
-// session change (§14.3) the new `$.state` holds neither, and nothing is read back.
+// §6.5 item 8: a reload empties module memory, so the load (this module instance's `session.start`), or else the
+// first hook that needs the allow set or the deny counts, reads them back from `$.state` once; a refused read
+// leaves them empty. After a session change (§14.3) the new `$.state` holds neither, and nothing is read back.
 const loading: { scope?: Promise<void> } = {};
 
 const loadScope = async ($: EngineInterface): Promise<void> => {
@@ -92,9 +92,16 @@ const onCheck: Hook<'tool.check'> = async ($, e, next) => {
   return { decision: 'deny', reason: readScopeDeny(e.tool, e.input) };
 };
 
+// §6.5 items 7, 8: the deny counts come back at load, so `/watchdog status` shows them before any scoped call.
+const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
+  const result = await next(e);
+  await loadScope($);
+  return result;
+};
+
 // §8.3: the 2.1.290 `.catch` forms. A failed guard denies only a call of a watchdog agent or a fork; a
 // failed read-scope check denies only a call the watchdog plugin raised.
-export const installTools = (on: OnEvents<'tool.call' | 'tool.check'>): void => {
+export const installTools = (on: OnEvents<'tool.call' | 'tool.check' | 'session.start'>): void => {
   on('tool.call', { agentId: /^/u }, onGuard).catch((_$, e, next) =>
     next.called || next.origin.plugin !== 'watchdog' || e.agentId === undefined
       ? next(e)
@@ -104,6 +111,7 @@ export const installTools = (on: OnEvents<'tool.call' | 'tool.check'>): void => 
   on('tool.check', onCheck).catch((_$, e, next) =>
     isScopedCheck(e.tool, next.origin.plugin, false) ? { decision: 'deny' } : next(e)
   );
+  on('session.start', { cwd: /^/u }, onSessionStart);
   // §6.5 item 7: one line for each watchdog with a read-scope deny in this session; none means 0.
   addStatusLines(() =>
     Object.entries(denyCounts()).map(
