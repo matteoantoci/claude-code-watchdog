@@ -1,7 +1,7 @@
 import { MAX_FAILED_REVIEWS } from '../constants';
 import { currentFeed, setFeed } from '../feed/feed';
 import { traceError, traceOf } from '../log/log';
-import { changeBacklog } from '../review/backlogs';
+import { changeBacklog, watchedFeeds } from '../review/backlogs';
 import { setSlot, slotOf } from '../review/slots';
 import { applyBacklog } from './backlog';
 import { reviewOutcome } from './classify';
@@ -105,7 +105,8 @@ export const endOutcome = (e: TurnCompleteInput, review: RunningReview): { outco
 };
 
 // §7.5, §12.3: one outcome of a review (or of its spawn) moves its watchdog's slot, counts and the backlog the
-// review took: the primary agent's, or a watched subagent's (§11.2).
+// review took: the primary agent's, or a watched subagent's (§11.2). A halt drops every backlog of the watchdog
+// (§12.3 item 2), so that its try reviews only the updates since the halt.
 export const applyOutcome = (
   slug: string,
   outcome: Outcome,
@@ -114,7 +115,14 @@ export const applyOutcome = (
   const step = afterOutcome({ ...review, counters: countersOf(slug), outcome });
   setSlot(slug, step.slot);
   memory.counters.set(slug, step.counters);
-  changeBacklog(review.subagent, (feed) => applyBacklog(feed, { slug, batchEnd: review.batchEnd }, step.backlog));
+  const cursor = { slug, batchEnd: review.batchEnd };
+  const backlogs =
+    step.backlog === 'drop'
+      ? watchedFeeds().flatMap(({ subagent, feed }) => (feed.cursors[slug] === undefined ? [] : [subagent?.agentId]))
+      : [review.subagent];
+  backlogs.forEach((subagent) => {
+    changeBacklog(subagent, (feed) => applyBacklog(feed, cursor, step.backlog));
+  });
 };
 
 // §12.3 item 2: `/watchdog on` tries at once: the failure counts go, and a running try forgets its problem.

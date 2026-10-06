@@ -9,11 +9,12 @@ import {
   mainRow,
   stubAfterAtOnce,
   stubSession,
+  subagentId,
   turnEnd,
   typed,
 } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
-import type { SessionEvents } from './fixtures/session';
+import type { SessionEvents, WorkspaceFile } from './fixtures/session';
 import type { AgentSpawnInput, SessionAppendInput, TurnCompleteInput } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
@@ -182,6 +183,41 @@ describe('§12.1 to §12.3: a review that ends with reason "error"', () => {
     await mainTurn($, 1);
     await failReview($, 'Credit balance is too low');
     expect(seen.logs.at(-1)).toBe('watchdog: default halted: Credit balance is too low');
+  });
+
+  test('the halt drops the backlog of each watched agent; the try reviews only the updates since the halt', async ($, on: Stubs) => {
+    const files: Record<string, WorkspaceFile> = {
+      '/repo/WATCHDOG.json': { text: JSON.stringify({ subagents: { Explore: true } }), mtimeMs: 1 },
+    };
+    const explore: AgentSpawnInput = {
+      ...SPAWN,
+      tool_use_id: 'toolu_01HxWq8tYbGk2Lm4Np6Rs0001',
+      prompt: 'Find where the auth token is parsed.',
+      subagentType: 'Explore',
+      provider: { plugin: 'engine', tier: 'core' },
+    };
+    const time = { now: NOW };
+    const seen = stubSession(on, { files, now: () => time.now });
+    stubOnState(on);
+    stubAfterAtOnce(on);
+    await startOn($);
+    await mainTurn($, 1);
+    // Explore closes an update while the review of turn 1 runs: the subagent backlog waits.
+    await $.agent.spawn(explore);
+    const sub = subagentId(explore.tool_use_id);
+    await append($, { ...mainRow('s1', 'assistant', 'Searching for the token parser.'), agentId: sub });
+    await $.turn.complete({ ...turnEnd('s1'), agentId: sub });
+    await failReview($, OVERLOAD);
+    await mainTurn($, 2);
+    await failReview($, OVERLOAD);
+    await mainTurn($, 3);
+    await failReview($, OVERLOAD);
+    await mainTurn($, 4);
+
+    time.now = NOW + 5 * MINUTE;
+    await $.prompt.submit(PROMPT);
+    expect(reviews(seen).at(-1)).toMatch(/Task 4\./u);
+    expect(reviews(seen).at(-1)).not.toMatch(/Searching for the token parser/u);
   });
 });
 
