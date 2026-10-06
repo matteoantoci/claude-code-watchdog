@@ -1,4 +1,5 @@
 // Stubs for an L2 test of a watched session: every `$` call and engine event the mod reaches.
+import { REVIEW_TIMEOUT_MS } from '../../hooks/constants';
 import { FRAGMENTS } from './prompts';
 import type { OnEvents } from '../../hooks/on';
 import type {
@@ -56,6 +57,8 @@ export type Seen = {
   spawns: { prompt: string; subagentType?: string; description?: string }[];
   logs: string[];
   coreToolCalls: string[];
+  // The `task_id` of each `TaskStop` call (§7.8), oldest first.
+  taskStops: string[];
   // What `$.store` holds (store key → value), as JSON round trips it.
   store: Map<string, unknown>;
   // Each `$.env.set` as [name, value]; an undefined value unsets.
@@ -134,6 +137,11 @@ type Options = {
   isOutsideGit?: boolean;
   // The caller answers `$.clock` with `mock.clock` (./delivery), so this fixture leaves `clock.now` alone.
   isClockMocked?: true;
+  // What `$.clock.now()` resolves, read at each call; default `NOW`. A test moves it without `mock.clock`.
+  now?: () => number;
+  // §7.8: the reason each `TaskStop` call denies with, after it is seen; and what runs as it arrives.
+  taskStopDeny?: string;
+  onTaskStop?: () => void;
 };
 
 // `$.session.usage({ breakdown: 'summary' })` with the given memory files; the other figures are zeros.
@@ -278,6 +286,13 @@ const stubEngine = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('turn.complete', (_$, e) => ({ text: e.answer }));
   on('tool.call', (_$, e) => {
     seen.coreToolCalls.push(e.tool);
+    if (e.tool === 'TaskStop') {
+      seen.taskStops.push(String(e.task_id));
+      options.onTaskStop?.();
+      return options.taskStopDeny === undefined
+        ? { result: 'Successfully stopped task' }
+        : { deny: options.taskStopDeny };
+    }
     return e.tool === 'Agent'
       ? {
           result: { status: 'async_launched', agentId: AGENT_TOOL_AGENT, description: e.description, prompt: e.prompt },
@@ -289,7 +304,7 @@ const stubEngine = (on: SessionStubs, seen: Seen, options: Options): void => {
     return { value: undefined };
   });
   if (options.isClockMocked === undefined) {
-    on('clock.now', () => ({ value: NOW }));
+    on('clock.now', () => ({ value: options.now?.() ?? NOW }));
   }
 };
 
@@ -303,6 +318,7 @@ export const stubSession = (on: SessionStubs, options: Options = {}): Seen => {
     spawns: [],
     logs: [],
     coreToolCalls: [],
+    taskStops: [],
     store: new Map(options.store),
     envSets: [],
     settingsReads: [],
@@ -311,6 +327,19 @@ export const stubSession = (on: SessionStubs, options: Options = {}): Seen => {
   stubEngine(on, seen, options);
   stubStore(on, seen, options);
   return seen;
+};
+
+// `$.clock.after` answered at once, so a delayed log row lands before the command resolves; `delays` gets the
+// wait of each. The 10 min review timer (§7.8) is refused, as a reload drops it, so no review times out.
+export const stubAfterAtOnce = (on: OnEvents<'clock.after'>, delays: number[] = []): number[] => {
+  on('clock.after', (_$, e) => {
+    if (e.ms === REVIEW_TIMEOUT_MS) {
+      return { deny: 'the review timer waits' };
+    }
+    delays.push(e.ms);
+    return { value: undefined };
+  });
+  return delays;
 };
 
 // A main-loop row as the engine appends it. The kit has nothing beneath the plugins for

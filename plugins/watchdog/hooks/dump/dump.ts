@@ -49,6 +49,9 @@ export const recordText = (record: LogRecord): string => {
     return reviewText(record).join('\n');
   }
   const head = `### ${isoTime(record.time)} · ${record.watchdog}`;
+  if (record.kind === 'timeout') {
+    return [`${head} · timeout`, `- stopped review ${record.agentId ?? 'with no agent id'} after 10 min`].join('\n');
+  }
   return record.kind === 'error'
     ? [`${head} · error`, `- error: ${record.error}`].join('\n')
     : `${head} · unreviewed: ${record.updates} updates`;

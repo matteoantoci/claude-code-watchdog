@@ -10,20 +10,20 @@ export type StateStubs = OnEvents<'state.get' | 'state.set'>;
 
 export type OnStateStubs = SessionStubs & StateStubs & OnEvents<'session.attach' | 'prompt.submit'>;
 
-export type StateSeen = {
+export type OnStateSeen = {
   // Each `$.state` value written under `on`, oldest first.
   onWrites: unknown[];
   // Each `$.state` value written under `health`, oldest first.
   healthWrites: unknown[];
   // Each `$.state` value written under `log` (the dump's records, §13.4), oldest first.
   logWrites: unknown[];
+  // Each `$.state` value written under `reviews` (the reviews that run and the stop map, §7.8), oldest first.
+  reviewsWrites: unknown[];
   // Each `$.state` value written under `band` (the band cards, §13.1), oldest first.
   bandWrites: unknown[];
 };
 
-export type OnStateSeen = StateSeen;
-
-// The `$.state` values at load (a reload); a read gets the last write.
+// The `$.state` values of `on`, `health` and `band` at load (a reload).
 export type StateSeed = { state?: unknown; health?: unknown; band?: unknown };
 
 // The `$.store` key of the on flag.
@@ -39,23 +39,23 @@ export const DESKTOP_ATTACH = { surface: 'desktop', clientId: 'desktop:default' 
 
 export const PROMPT = { text: 'fix the bug', wait: false, origin: { kind: 'composer' } } as const;
 
-// `$.state` alone, for a test whose other stubs come from another fixture (./delivery stubs `prompt.submit`).
-export const stubState = (on: StateStubs, seed: StateSeed = {}): StateSeen => {
-  const seen: StateSeen = { onWrites: [], healthWrites: [], logWrites: [], bandWrites: [] };
+// `$.state` alone, for a test whose other fixture stubs the prompts. A read of `on`, `health` or `band` gets
+// the last write, else the seed.
+export const stubState = (on: StateStubs, seed: StateSeed = {}): OnStateSeen => {
+  const seen: OnStateSeen = { onWrites: [], healthWrites: [], logWrites: [], reviewsWrites: [], bandWrites: [] };
+  const values: Readonly<Record<string, () => unknown>> = {
+    on: () => seen.onWrites.at(-1) ?? seed.state,
+    health: () => seen.healthWrites.at(-1) ?? seed.health,
+    band: () => seen.bandWrites.at(-1) ?? seed.band,
+  };
   const writes: Readonly<Record<string, unknown[]>> = {
     on: seen.onWrites,
     health: seen.healthWrites,
     log: seen.logWrites,
+    reviews: seen.reviewsWrites,
     band: seen.bandWrites,
   };
-  const seeds = new Map<string, unknown>([
-    ['on', seed.state],
-    ['health', seed.health],
-    ['band', seed.band],
-  ]);
-  on('state.get', (_$, e) => ({
-    value: { value: e.key === 'log' ? undefined : (writes[e.key]?.at(-1) ?? seeds.get(e.key)), version: 0 },
-  }));
+  on('state.get', (_$, e) => ({ value: { value: values[e.key]?.(), version: 0 } }));
   on('state.set', (_$, e) => {
     writes[e.key]?.push(e.value);
     return { value: { isSet: true, version: 1 } };
@@ -63,8 +63,6 @@ export const stubState = (on: StateStubs, seed: StateSeed = {}): StateSeen => {
   return seen;
 };
 
-// `state`, `health` and `band` are the `$.state` values of `on`, `health` and `band` at load (a reload); a read
-// gets the last write.
 export const stubOnState = (on: OnStateStubs, seed: StateSeed = {}): OnStateSeen => {
   const seen = stubState(on, seed);
   on('session.attach', (_$, e) => ({ clientId: e.clientId }));
