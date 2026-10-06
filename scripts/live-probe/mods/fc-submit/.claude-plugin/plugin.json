@@ -1,0 +1,6 @@
+{
+  "name": "fcsubmit",
+  "version": "0.0.1",
+  "description": "first-check probe: own prompt.submit hook for a yielded, an unyielded and a clock submit",
+  "author": { "name": "watchdog live probe" }
+}

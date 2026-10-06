@@ -1,0 +1,6 @@
+{
+  "name": "fcfork",
+  "version": "0.0.1",
+  "description": "first-check probe: a slow agent for the 30s summary fork, and register timing before session.start",
+  "author": { "name": "watchdog live probe" }
+}

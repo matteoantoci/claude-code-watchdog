@@ -8,6 +8,10 @@ model, and push short notes to it: `nit`, `concern` or `blocker`.
 Claude Code 2.1.290 or later. The npm `stable` channel (2.1.285 on 2026-10-06) has no mods. Below 2.1.290 the plugin
 shows `unsupported`. Desktop support starts when Claude.app bundles Claude Code 2.1.290 or later.
 
+The built-in "You should know" mod and the watchdog both cost tokens on the same session. "You should know" forks the
+conversation on the session's own model every 6th model request of a turn; each watchdog review is one more agent on
+its own model. Turn "You should know" off in `/plugin` if you do not want to pay for both.
+
 ## Install
 
 ```
@@ -91,6 +95,9 @@ One log row shows when a watchdog enters one of these states, and `watchdog: <na
 ## Development
 
 `npm install` sets up the tools and the pre-commit hook. `npm run check` runs the 5 checks that pre-commit and CI run.
+
+`scripts/live-probe/` is the L3 live probe (spec §16.3). It is not part of the checks above: run it by hand before a
+release and before a bump of the pinned Claude Code version, on a real model and login. See `scripts/live-probe/README.md`.
 
 ## License
 

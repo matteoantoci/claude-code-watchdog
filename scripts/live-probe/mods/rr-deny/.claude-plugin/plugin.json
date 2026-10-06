@@ -1,0 +1,6 @@
+{
+  "name": "rrdeny",
+  "version": "0.0.1",
+  "description": "live probe: --disallowedTools Agent and Task",
+  "author": { "name": "watchdog live probe" }
+}

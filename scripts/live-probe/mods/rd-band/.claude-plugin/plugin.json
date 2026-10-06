@@ -1,0 +1,6 @@
+{
+  "name": "rd-band",
+  "version": "0.0.1",
+  "description": "release-delivery probe: two band cards on digit 2, a queued-prompt context, /rdprobe fork and note",
+  "author": { "name": "watchdog live probe" }
+}

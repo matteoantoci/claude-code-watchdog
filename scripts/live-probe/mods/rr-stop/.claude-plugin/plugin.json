@@ -1,0 +1,6 @@
+{
+  "name": "rrstop",
+  "version": "0.0.1",
+  "description": "live probe: TaskStop results and the per-plugin spawn cap",
+  "author": { "name": "watchdog live probe" }
+}

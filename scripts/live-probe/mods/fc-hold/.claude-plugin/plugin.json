@@ -1,0 +1,6 @@
+{
+  "name": "fchold",
+  "version": "0.0.1",
+  "description": "first-check probe: hold the main Agent tool.call 8s and return context, or spin the hooks worker for the .catch",
+  "author": { "name": "watchdog live probe" }
+}

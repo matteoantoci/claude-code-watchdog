@@ -1,0 +1,6 @@
+{
+  "name": "rrpeer",
+  "version": "0.0.1",
+  "description": "live probe: a second plugin's spawn against the session-wide subagent cap",
+  "author": { "name": "watchdog live probe" }
+}

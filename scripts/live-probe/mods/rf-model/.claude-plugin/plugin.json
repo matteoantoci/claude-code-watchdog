@@ -1,0 +1,6 @@
+{
+  "name": "rfmodel",
+  "version": "0.0.1",
+  "description": "live probe: the model the engine runs for an agent registered with one alias",
+  "author": { "name": "watchdog live probe" }
+}

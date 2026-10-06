@@ -1,0 +1,16 @@
+{
+  "name": "fcreload",
+  "version": "0.0.1",
+  "description": "first-check probe: what survives a userConfig reload ($.state, $.store, module variables, timers)",
+  "author": { "name": "watchdog live probe" },
+  "userConfig": {
+    "mark": {
+      "type": "number",
+      "title": "Probe mark",
+      "description": "Probe: a value the probe changes in ~/.claude/settings.json to reload this plugin.",
+      "required": false,
+      "default": 1
+    }
+  },
+  "types": "./types/index.d.ts"
+}

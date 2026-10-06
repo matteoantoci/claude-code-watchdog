@@ -1,0 +1,6 @@
+{
+  "name": "rd-steer",
+  "version": "0.0.1",
+  "description": "release-delivery probe: append a wrapped note while the first reply streams, log each main step's usage",
+  "author": { "name": "watchdog live probe" }
+}

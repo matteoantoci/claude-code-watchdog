@@ -1,0 +1,6 @@
+{
+  "name": "wdprobe",
+  "version": "0.0.1",
+  "description": "watchdog live probe observer: logs the events it sees and changes none",
+  "author": { "name": "watchdog live probe" }
+}

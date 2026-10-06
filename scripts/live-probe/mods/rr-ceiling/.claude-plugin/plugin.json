@@ -1,0 +1,6 @@
+{
+  "name": "rrceiling",
+  "version": "0.0.1",
+  "description": "live probe: tool.check ceiling an org sets",
+  "author": { "name": "watchdog live probe" }
+}

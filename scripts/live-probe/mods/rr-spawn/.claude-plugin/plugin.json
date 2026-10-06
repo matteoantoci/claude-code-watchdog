@@ -1,0 +1,6 @@
+{
+  "name": "rrspawn",
+  "version": "0.0.1",
+  "description": "live probe: spawn sites the spec leaves open",
+  "author": { "name": "watchdog live probe" }
+}
