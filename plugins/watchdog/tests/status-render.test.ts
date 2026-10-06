@@ -149,7 +149,10 @@ describe('/watchdog status table through command.run (§13.3)', () => {
   });
 
   test('a problem state and its reason draw red under the row', async ($, on: Stubs) => {
-    stubSession(on, { preflightDeny: 'model opus is not in availableModels' });
+    // A full model id: the preflight reject of an alias is left to the review-time compare (§12.2).
+    const roster = JSON.stringify({ watchdogs: [{ name: 'pinned', model: 'claude-opus-4-5' }] });
+    const files = { '/repo/WATCHDOG.json': { text: roster, mtimeMs: 1 } };
+    stubSession(on, { preflightDeny: 'model claude-opus-4-5 is not in availableModels', files });
     stubRender(on);
     await $.session.start(START);
     await $.command.run(typed('on'));

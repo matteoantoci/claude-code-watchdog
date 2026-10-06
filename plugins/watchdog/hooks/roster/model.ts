@@ -44,6 +44,11 @@ export const parseModel = (text: string): ModelSetting => {
   return { kind: 'model', model: id, level };
 };
 
+// §6.2: the 4 names that the spawn accepts are aliases; each other id is a full id.
+const ALIASES: Readonly<Record<string, true>> = { sonnet: true, opus: true, haiku: true, fable: true };
+
+export const isAlias = (model: string): boolean => Object.hasOwn(ALIASES, model);
+
 // §6.2: `auto` takes the session effort at review start, else `medium`.
 export const resolveEffort = (setting: EffortSetting, session: SessionEffort): ModelEffort | number =>
   setting === 'auto' ? (session ?? 'medium') : setting;

@@ -1,10 +1,22 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { START, stubSession, typed } from './fixtures/session';
+import { REVIEW_SPAWN } from './fixtures/delivery';
+import { REVIEW_AGENT, START, USAGE, mainRow, stubAfterAtOnce, stubSession, turnEnd, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { SessionEvents, SessionStubs } from './fixtures/session';
 
 // §12.5: the row of a problem state from a `command.run` hook waits 300 ms (§13.2); the stub runs it at once.
 type DelayStubs = OnEvents<SessionEvents | 'clock.after'>;
+
+// The status head while on from `/watchdog on`; the roster lines follow it.
+const ON_HEAD = 'watchdog on · nudge 0/1 · cooldown 0\non source: /watchdog on';
+
+// A project roster of one watchdog on a full model id.
+const PINNED = {
+  '/repo/WATCHDOG.json': {
+    text: JSON.stringify({ watchdogs: [{ name: 'pinned', model: 'claude-opus-4-5' }] }),
+    mtimeMs: 1,
+  },
+};
 
 const NOTE_SCHEMA = {
   type: 'object',
@@ -71,16 +83,36 @@ describe('/watchdog on', () => {
     expect(shown).toEqual({ isOffered: true });
   });
 
-  test('a preflight the engine refuses puts the watchdog in no_model with the reason and one row', async ($, on: DelayStubs) => {
-    const seen = stubSession(on, { preflightDeny: 'model opus is not in availableModels' });
+  test('a preflight the engine refuses puts a full-id watchdog in no_model with the reason and one row', async ($, on: DelayStubs) => {
+    const seen = stubSession(on, { preflightDeny: 'model claude-opus-4-5 is not in availableModels', files: PINNED });
     on('clock.after', () => ({ value: undefined }));
     await $.session.start(START);
     await $.command.run(typed('on'));
     const status = await $.command.run(typed('status'));
     expect(status.text).toMatch(
-      /^watchdog on · nudge 0\/1 · cooldown 0\non source: \/watchdog on\ndefault no_model: .*model opus is not in availableModels$/u
+      /^watchdog on · nudge 0\/1 · cooldown 0\non source: \/watchdog on\npinned no_model: .*model claude-opus-4-5 is not in availableModels · \.\/WATCHDOG\.json$/u
     );
-    expect(seen.logs).toEqual([expect.stringMatching(/^watchdog: default no_model: .*not in availableModels$/u)]);
+    expect(seen.logs).toEqual([expect.stringMatching(/^watchdog: pinned no_model: .*not in availableModels$/u)]);
+  });
+
+  test('a preflight reject of an alias leaves it to the review-time compare, which takes the stepped-down model', async ($, on: DelayStubs) => {
+    const roster = { watchdogs: [{ name: 'probe', model: 'sonnet' }] };
+    const files = { '/repo/WATCHDOG.json': { text: JSON.stringify(roster), mtimeMs: 1 } };
+    // The engine's reject under an `availableModels` allowlist (live probe rf-stepdown-review).
+    const seen = stubSession(on, { preflightDeny: `model "sonnet" is not in this organization's allowlist`, files });
+    stubAfterAtOnce(on);
+    await $.session.start(START);
+    await $.command.run(typed('on'));
+    expect((await $.command.run(typed('status'))).text).toBe(`${ON_HEAD}\nprobe idle · ./WATCHDOG.json`);
+
+    await $.session.append(mainRow('u1', 'user', 'Fix the parser.')).catch(() => undefined);
+    await $.turn.complete(turnEnd('t1'));
+    await $.agent.spawn({ ...REVIEW_SPAWN, subagentType: 'watchdog:probe', description: 'watchdog probe review' });
+    // The spawn ran on the newest allowed sonnet.
+    await $.turn.complete({ ...turnEnd('r1'), agentId: REVIEW_AGENT, usage: { ...USAGE, model: 'claude-sonnet-4-6' } });
+    expect(seen.spawns[0]?.subagentType).toBe('watchdog:probe');
+    expect((await $.command.run(typed('status'))).text).toBe(`${ON_HEAD}\nprobe idle · ./WATCHDOG.json`);
+    expect(seen.logs).toEqual([]);
   });
 
   test('a refused note register puts the watchdog in blocked with the reason and one row', async ($, on: DelayStubs) => {

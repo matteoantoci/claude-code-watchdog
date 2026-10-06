@@ -1,4 +1,4 @@
-import { preflightProblem, preflightRequest } from '../agents/preflight';
+import { preflightProblem, preflightReject, preflightRequest } from '../agents/preflight';
 import { setRegisteredSpec } from '../agents/registered';
 import { setRoster } from '../agents/roster';
 import { agentSpec } from '../agents/spec';
@@ -80,7 +80,9 @@ const preflightAll = async (
 ): Promise<Map<string, string | undefined>> => {
   const distinct = [...new Set(models)];
   const problems = await Promise.all(
-    distinct.map(async (model) => $.model.complete(preflightRequest(model)).then(preflightProblem, errorText))
+    distinct.map(async (model) =>
+      $.model.complete(preflightRequest(model)).then(preflightProblem, preflightReject(model))
+    )
   );
   return new Map(distinct.map((model, index) => [model, problems[index]]));
 };

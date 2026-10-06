@@ -1,3 +1,4 @@
+import { isAlias } from '../roster/model';
 import type { TurnCompleteInput } from 'claude-code';
 
 // §12.2: the class of a failed review, from the text of the agent's synthetic `session.append` row.
@@ -41,12 +42,9 @@ export const classifySpawnError = (text: string): SpawnErrorClass => {
   return isCap(text) ? 'capped' : 'failed';
 };
 
-// §6.2: the 4 names that the spawn accepts are aliases; each other id is a full id.
-const ALIASES: ReadonlySet<string> = new Set(['sonnet', 'opus', 'haiku', 'fable']);
-
 // §12.2: an alias matches any model id that contains it; a full id matches only an equal id.
 export const isSameModel = (roster: string, ran: string): boolean =>
-  ALIASES.has(roster) ? ran.includes(roster) : ran === roster;
+  isAlias(roster) ? ran.includes(roster) : ran === roster;
 
 // §12.3: what a finished review or a failed spawn does to its watchdog; `error` is the text for `last error`
 // and the dump (§12.4). `kept` is a prompt too large at a later step; `halt` is billing; `dropped` is a
