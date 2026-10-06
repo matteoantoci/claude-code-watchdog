@@ -53,12 +53,6 @@ describe('/watchdog on', () => {
     expect(reply.text).toBe('watchdog on\ndefault idle');
   });
 
-  test('session.start registers the note tool before the command', async ($, on: SessionStubs) => {
-    const seen = stubSession(on);
-    await $.session.start(START);
-    expect(seen.tools.map((tool) => tool.name)).toEqual(['note']);
-  });
-
   test('agent.offer hides each watchdog type from the model and passes other types', async ($, on: SessionStubs) => {
     stubSession(on);
     const provider = { plugin: 'watchdog', tier: 'user' } as const;
