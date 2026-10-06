@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'claude-code/testing';
-import type { CommandRunInput, On } from 'claude-code';
+import type { OnEvents } from '../hooks/on';
+import type { CommandRunInput } from 'claude-code';
 
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const;
 
-const startOn = (on: On, base: string): void => {
+type Stubs = OnEvents<'session.version' | 'command.register' | 'session.start' | 'ui.log'>;
+
+const startOn = (on: Stubs, base: string): void => {
   on('session.version', () => ({ value: { version: base, base } }));
   on('command.register', () => ({ value: { command: 'watchdog' } }));
   on('session.start', (_$, e) => ({ cwd: e.cwd }));
@@ -49,7 +52,7 @@ describe('/watchdog command', () => {
 });
 
 describe('/watchdog registration', () => {
-  test('session.start registers the command after the version gate', async ($, on) => {
+  test('session.start registers the command after the version gate', async ($, on: Stubs) => {
     const calls: string[] = [];
     on('session.version', () => {
       calls.push('session.version');
@@ -64,7 +67,7 @@ describe('/watchdog registration', () => {
     expect(calls).toEqual(['session.version', 'command.register watchdog']);
   });
 
-  test('a register error writes one log row and the hook still ends', async ($, on) => {
+  test('a register error writes one log row and the hook still ends', async ($, on: Stubs) => {
     const rows: string[] = [];
     on('session.version', () => ({ value: { version: '2.1.290', base: '2.1.290' } }));
     on('command.register', () => ({ deny: 'the name watchdog belongs to another plugin' }));

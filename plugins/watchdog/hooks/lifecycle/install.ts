@@ -1,7 +1,8 @@
 import { COMMAND } from '../command/spec';
 import { setMode } from './mode';
 import { isSupportedVersion } from './version';
-import type { EngineInterface, Hook, On } from 'claude-code';
+import type { OnEvents } from '../on';
+import type { EngineInterface, Hook } from 'claude-code';
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
@@ -22,6 +23,6 @@ const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
   return next(e);
 };
 
-export const installLifecycle = (on: On): void => {
+export const installLifecycle = (on: OnEvents<'session.start'>): void => {
   on('session.start', onSessionStart);
 };

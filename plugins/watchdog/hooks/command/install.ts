@@ -2,7 +2,8 @@ import { currentMode } from '../lifecycle/mode';
 import { parseSubcommand } from './args';
 import { UNSUPPORTED_REPLY, USAGE_REPLY } from './spec';
 import { statusText } from './status';
-import type { Hook, On } from 'claude-code';
+import type { OnEvents } from '../on';
+import type { Hook } from 'claude-code';
 
 const headline = (): string =>
   currentMode() === 'unsupported' ? `watchdog unsupported: ${UNSUPPORTED_REPLY}` : `watchdog ${currentMode()}`;
@@ -21,6 +22,6 @@ const onWatchdogCommand: Hook<'command.run'> = async (_$, e, next) => {
   return next(e);
 };
 
-export const installCommand = (on: On): void => {
+export const installCommand = (on: OnEvents<'command.run'>): void => {
   on('command.run', { command: 'watchdog' }, onWatchdogCommand);
 };
