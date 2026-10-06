@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { REVIEW_AGENT, START, USAGE, mainRow, stubSession, turnEnd, typed } from './fixtures/session';
+import { REVIEW_AGENT, SESSION_ID, START, USAGE, mainRow, stubSession, turnEnd, typed } from './fixtures/session';
 import type { SessionStubs } from './fixtures/session';
-import type { AgentSpawnInput, SessionAppendInput, TurnStepInput } from 'claude-code';
+import type { AgentSpawnInput, ApiMessage, SessionAppendInput, TurnStepInput } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
 // The kit has nothing beneath the plugins for `session.append`: the call rejects after the hooks saw the row.
@@ -55,8 +55,9 @@ describe('review trigger', () => {
     expect(seen.spawns.length).toBe(1);
     expect(seen.spawns[0]?.subagentType).toBe('watchdog:default');
     expect(seen.spawns[0]?.description).toBe('watchdog default review');
-    expect(seen.spawns[0]?.prompt).toContain('user: Fix the date parser.');
-    expect(seen.spawns[0]?.prompt).toContain('assistant: I will edit parse.ts.');
+    expect(seen.spawns[0]?.prompt).toBe(
+      '### Session update\n\n**user**:\nFix the date parser.\n\n**agent**:\nI will edit parse.ts.'
+    );
   });
 
   test('turn.step index 0 is no boundary; index 1 closes the update before its own step', async ($, on: SessionStubs) => {
@@ -161,5 +162,126 @@ describe('one review at a time, and no self-review', () => {
     expect(seen.spawns.length).toBe(spawnsBefore + 1);
     expect(prompt).toContain('First task.');
     expect(prompt).not.toMatch(/WATCHDOG READS|watchdog-notes|task-notification/u);
+  });
+});
+
+const callRow = (id: string, name: string, input: unknown): SessionAppendInput => ({
+  ...mainRow(`row-${id}`, 'assistant', ''),
+  message: { type: 'assistant', role: 'assistant', content: [{ type: 'tool_use', id, name, input }] },
+});
+
+const resultRow = (id: string, tool: string, text: string): SessionAppendInput => ({
+  uuid: `result-${id}`,
+  door: 'tool-result',
+  origin: { kind: 'tool', tool },
+  message: { type: 'user', role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text }] },
+});
+
+const BASH_INPUT = { command: 'npm test', description: 'Run the tests' };
+
+// The main conversation in Messages API form, as `$.session.messages({ as: 'api' })` gives it after turn t3.
+const API_VIEW: readonly ApiMessage[] = [
+  { role: 'user', content: [{ type: 'text', text: 'Fix the date parser.' }] },
+  {
+    role: 'assistant',
+    content: [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: { file_path: '/repo/parse.ts' } }],
+  },
+  { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'export const parse = 1;' }] },
+  { role: 'user', content: [{ type: 'text', text: 'Add a test.' }] },
+  { role: 'assistant', content: [{ type: 'text', text: 'Adding one.' }] },
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: '<system-reminder>\nToday is Tuesday.\n</system-reminder>' },
+      { type: 'text', text: 'Now run it.' },
+    ],
+  },
+  { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_3', name: 'Bash', input: BASH_INPUT }] },
+  { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_3', content: '1 passed' }] },
+];
+
+// The watchdog's note history of this session in `$.store` (§14.2).
+const STORED_NOTES = new Map([
+  [
+    `notes:${SESSION_ID}`,
+    {
+      watchdogs: {
+        default: {
+          keys: [{ key: 'check the null date', severity: 'concern' }],
+          notes: [{ text: 'Check the null date.', severity: 'concern', delivery: 'steered' }],
+        },
+      },
+      lastUsed: 1,
+    },
+  ],
+]);
+
+describe('the spawn prompt of a merged review', () => {
+  test('the next review gets every waiting update in the omp form, with its markers and the recap', async ($, on: SessionStubs) => {
+    const seen = stubSession(on, {
+      messages: API_VIEW,
+      store: STORED_NOTES,
+      serverToolUses: [
+        { id: 'srvtoolu_1', name: 'advisor', input: { question: 'Is one test enough?' }, startedAt: 1, endedAt: 2 },
+      ],
+    });
+    await startOn($);
+    await append($, mainRow('u1', 'user', 'Fix the date parser.'));
+    await append($, callRow('toolu_1', 'Read', { file_path: '/repo/parse.ts' }));
+    await append($, resultRow('toolu_1', 'Read', 'export const parse = 1;'));
+    await $.turn.complete(turnEnd('t1'));
+    // The engine's spawn of the first review; the stub counts it too.
+    await $.agent.spawn(SPAWN);
+    const spawnsAfterFirst = seen.spawns.length;
+
+    await append($, mainRow('u2', 'user', 'Add a test.'));
+    await append($, mainRow('a2', 'assistant', 'Adding one.'));
+    await $.turn.complete(turnEnd('t2'));
+    await append($, mainRow('u3', 'user', 'Now run it.'));
+    await append($, callRow('toolu_3', 'Bash', BASH_INPUT));
+    await step($, { ...mainStep(0), turnId: 't3' });
+    await append($, resultRow('toolu_3', 'Bash', '1 passed'));
+    await step($, { ...mainStep(1), turnId: 't3' });
+    expect(seen.spawns.length).toBe(spawnsAfterFirst);
+
+    await $.turn.complete(reviewEnd);
+    expect(seen.spawns.length).toBe(spawnsAfterFirst + 1);
+    expect(seen.spawns.at(-1)?.prompt).toBe(
+      [
+        '### Your notes so far (newest first)',
+        '',
+        '- [concern] Check the null date. (steered)',
+        '',
+        "### The person's prompts since the watchdog started (newest first)",
+        '',
+        '**user**:\nNow run it.',
+        '',
+        '**user**:\nAdd a test.',
+        '',
+        '**user**:\nFix the date parser.',
+        '',
+        '### Earlier updates (newest first, one line for each tool call)',
+        '',
+        '→ Read(/repo/parse.ts) ⇒ ok · 1 line',
+        '',
+        '### Session update',
+        '',
+        '**user**:\nAdd a test.',
+        '',
+        '**agent**:\nAdding one.',
+        '',
+        '**user**:\nNow run it.',
+        '',
+        '**agent**:',
+        '→ Bash({"command":"npm test","description":"Run the tests"}) ⇒ ok · 1 line',
+        'Tool result:\n```text\n1 passed\n```',
+        '',
+        '→ advisor(Is one test enough?)\n⇒ advisor: done',
+        '',
+        '---',
+        '',
+        '[in progress — more steps follow]',
+      ].join('\n')
+    );
   });
 });

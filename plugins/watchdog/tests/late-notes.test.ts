@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { cooldownLeft, immuneTurnsOf, routeNote } from '../hooks/delivery/nudge';
-import { isPersonPrompt } from '../hooks/delivery/person';
+import { isPersonPrompt } from '../hooks/person';
 import type { Routing } from '../hooks/delivery/nudge';
 
 // The main loop is idle after turn 4, no nudge went out since the person prompt, and the cooldown is 3 turns.
