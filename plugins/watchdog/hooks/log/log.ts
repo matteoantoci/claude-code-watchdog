@@ -1,4 +1,5 @@
 import { LOG_RECORD_CAP, RAW_PROMPT_CAP } from '../constants';
+import { usageCost } from '../prices';
 import type { Watchdog } from '../agents/roster';
 import type { HeldNote } from '../note/notes';
 import type { PluginState, TurnCompleteInput } from 'claude-code';
@@ -64,7 +65,7 @@ export const reviewRecord = (input: {
             cache_creation_input_tokens: usage.cache_creation_input_tokens,
             model: usage.model,
           },
-    cost: null,
+    cost: usage === undefined ? null : usageCost(usage),
     notes: trace.notes,
     error: trace.error,
     refusal: end.reason === 'refusal' ? end.refusal.category : null,

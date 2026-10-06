@@ -88,6 +88,19 @@ describe('review log record', () => {
     expect(refused).toMatchObject({ reason: 'refusal', refusal: 'cyber', error: null });
   });
 
+  test('a review on a model of the price table keeps its cost (§15); the dump shows it to the 1/100 cent', () => {
+    // Sonnet 5.5: 1200 × $2 + 80 × $10 + 300 × $0.20 + 40 × $2.50 per million = $0.00336.
+    const priced = reviewRecord({
+      watchdog: DEFAULT_WATCHDOG,
+      agentId: 'afake0001',
+      time: TIME,
+      end: { ...END, usage: { ...END.usage, model: 'claude-sonnet-5-5' } },
+      trace: TRACE,
+    });
+    expect(priced.cost?.toFixed(6)).toBe('0.003360');
+    expect(recordText(priced)).toContain('\n- cost: $0.0034\n');
+  });
+
   test('the log keeps the newest 100 records', () => {
     const records = Array.from({ length: 101 }, (_unused, index) =>
       errorRecord({ watchdog: 'default', time: index, error: `e${index}` })

@@ -78,3 +78,20 @@ const HALT_FIRST_WAIT_MS = 300_000;
 const HALT_SECOND_WAIT_MS = 900_000;
 const HALT_LATER_WAIT_MS = 3_600_000;
 export const HALT_WAITS_MS: readonly number[] = [HALT_FIRST_WAIT_MS, HALT_SECOND_WAIT_MS, HALT_LATER_WAIT_MS];
+
+// §13.3, §15: a cost shows in dollars and cents; a cost above 0 and below a cent shows `<$0.01`.
+export const USD_DIGITS = 2;
+export const USD_CENT = 0.01;
+
+// §13.4: the dump shows a review's cost to 1/100 cent.
+export const DUMP_USD_DIGITS = 4;
+
+// §13.3: token counts show as `12.8k` from a thousand and as `1.3M` from a million.
+export const TOKENS_K = 1000;
+export const TOKENS_M = 1_000_000;
+
+// §13.3: below this many columns the status table narrows to `name state $`.
+export const STATUS_NARROW_COLUMNS = 80;
+
+// §13.3: the status snapshots that wait for their `CommandOutput` render or stay for a redraw, oldest out.
+export const STATUS_SNAPSHOT_CAP = 20;

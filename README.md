@@ -17,9 +17,12 @@ shows `unsupported`. Desktop support starts when Claude.app bundles Claude Code 
 
 ## Use
 
-- `/watchdog` or `/watchdog status`: a short status.
+- `/watchdog` or `/watchdog status`: a table with each watchdog's state, reviews, notes, tokens and cost, and the
+  session totals. Below 80 columns it narrows to `name state $`. The cost comes from the plugin's own price table
+  (`hooks/prices.ts`); a model that is not in it shows `$?`.
 - `/watchdog on` and `/watchdog off`: turn reviews on or off for this session.
-- `/watchdog dump` and `/watchdog dump raw`: write the review log to a file.
+- `/watchdog dump` and `/watchdog dump raw`: write the review log to a file; the reply has a button that copies
+  the path.
 
 ## Headless runs
 

@@ -1,11 +1,12 @@
 import { watchdogOf } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
+import { tallyReview } from '../status/ledger';
 import { addLogRecord, countStep, currentLog, reviewRecord, takeTrace } from './log';
 import type { OnEvents } from '../on';
 import type { EngineInterface, TurnCompleteInput } from 'claude-code';
 
 // §13.4, §14.1: one record for each review, at the review agent's own `turn.complete`; `$.state` keeps
-// the log across a reload, so a refused write loses only that carry-over.
+// the log across a reload, so a refused write loses only that carry-over. §13.3, §15: the status tallies it.
 const logReview = async ($: EngineInterface, end: TurnCompleteInput): Promise<void> => {
   const slug = watchdogOf(end.agentId);
   const watchdog = slug === undefined ? undefined : watchdogBySlug(slug);
@@ -13,7 +14,9 @@ const logReview = async ($: EngineInterface, end: TurnCompleteInput): Promise<vo
     return;
   }
   const time = await $.clock.now();
-  addLogRecord(reviewRecord({ watchdog, agentId: end.agentId, time, end, trace: takeTrace(end.agentId) }));
+  const record = reviewRecord({ watchdog, agentId: end.agentId, time, end, trace: takeTrace(end.agentId) });
+  addLogRecord(record);
+  tallyReview(watchdog.slug, record);
   await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog());
 };
 

@@ -18,7 +18,7 @@ import { dropBacklog, isUnboundReject, waitingUpdates } from './backlog';
 import { cadenceOf, countBoundary, setCadence } from './cadence';
 import { reviewPrompt } from './prompt';
 import { IDLE, isReady, learnReviewAgent, runningReview, setSlot, slotOf } from './slots';
-import { watchdogStatusLines } from './status';
+import { lastErrorStatus, rosterLines, watchdogStatusLines } from './status';
 import type { Watchdog } from '../agents/roster';
 import type { UpdateClose } from '../feed/feed';
 import type { RecapNote } from '../note/history';
@@ -229,5 +229,7 @@ export const installReview = (on: OnEvents<'turn.step' | 'turn.complete' | 'prom
   on('turn.step', onStep);
   on('turn.complete', onComplete);
   on('prompt.submit', { origin: { kind: /^/u } }, onPersonPrompt);
-  addStatusLines(watchdogStatusLines);
+  addStatusLines(watchdogStatusLines, 'watchdogs');
+  addStatusLines(rosterLines);
+  addStatusLines(lastErrorStatus, 'error');
 };
