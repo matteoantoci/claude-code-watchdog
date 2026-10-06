@@ -92,6 +92,8 @@ type Options = {
   files?: Record<string, WorkspaceFile>;
   // What `$.env.get` answers; a name not listed is unset. Default: `HOME` only.
   env?: Readonly<Record<string, string>>;
+  // What every `agent.spawn` answers instead of a start: a `{ deny }` with this text (spec §12.2).
+  spawnDeny?: string;
 };
 
 export const SESSION_ID = 'c0ffee00-0000-4000-8000-000000000001';
@@ -152,14 +154,16 @@ const stubRegisters = (on: SessionStubs, seen: Seen, options: Options): void => 
   });
 };
 
-const stubEngine = (on: SessionStubs, seen: Seen): void => {
+const stubEngine = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('agent.offer', () => ({ isOffered: true }));
   // The kit hands the mod's own `$.agent.spawn` to the hooks in the Agent tool's input shape
   // (`subagent_type`), and resolves it to the mod as `{ model: 'inherit' }` without the id (spec §16.2).
   on('agent.spawn', (_$, e) => {
     const subagentType = 'subagent_type' in e ? e.subagent_type : e.subagentType;
     seen.spawns.push({ prompt: e.prompt, subagentType: String(subagentType), description: e.description });
-    return { model: 'claude-opus-4-5', agentId: REVIEW_AGENT };
+    return options.spawnDeny === undefined
+      ? { model: 'claude-opus-4-5', agentId: REVIEW_AGENT }
+      : { deny: options.spawnDeny };
   });
   on('turn.step', async function* (_$, e) {
     yield* [];
@@ -194,7 +198,7 @@ export const stubSession = (on: SessionStubs, options: Options = {}): Seen => {
     store: new Map(options.store),
   };
   stubRegisters(on, seen, options);
-  stubEngine(on, seen);
+  stubEngine(on, seen, options);
   stubStore(on, seen, options);
   return seen;
 };

@@ -1,13 +1,26 @@
 import { addWatchdogId } from '../agents/ids';
+import { watchdogBySlug } from '../agents/roster';
 import type { Watchdog } from '../agents/roster';
+import type { PluginState } from 'claude-code';
+
+// §12.4: the problem states (their shape is the `health` key of the state contract). `no_model` and
+// `blocked` make no review until `/watchdog on`; `limited` and `halted` try one review at a person prompt
+// (§12.3), `halted` once its next-try time passed.
+export type Problem = NonNullable<PluginState['watchdog']['health']['watchdogs'][string]['problem']>;
 
 // §7.5, §12.4: each watchdog runs one review at a time. `reviewing` keeps the agent (null until its id
-// arrives) and the last row of its batch. `no_model` and `blocked` make no review until `/watchdog on`.
-// `disabled` is a roster entry with `enabled: false` (§4.2).
+// arrives) and the last row of its batch; a try keeps the problem it started from (§12.3), and the retry at
+// once of a prompt too large is compact (§12.3 item 4). `disabled` is a roster entry with `enabled: false` (§4.2).
 export type Slot =
   | { readonly state: 'idle' | 'disabled' }
-  | { readonly state: 'reviewing'; readonly agentId: string | null; readonly batchEnd: string }
-  | { readonly state: 'no_model' | 'blocked'; readonly reason: string };
+  | {
+      readonly state: 'reviewing';
+      readonly agentId: string | null;
+      readonly batchEnd: string;
+      readonly from?: Problem;
+      readonly isCompact?: boolean;
+    }
+  | Problem;
 
 export const IDLE: Slot = { state: 'idle' };
 
@@ -22,6 +35,16 @@ export const setSlot = (slug: string, slot: Slot): void => {
 // The watchdog whose running review is this agent.
 export const reviewOf = (agentId: string): string | undefined =>
   Array.from(slots).find(([, slot]) => slot.state === 'reviewing' && slot.agentId === agentId)?.[0];
+
+// The running review of this agent: the agent, its slot and its watchdog; undefined for another agent.
+export const runningReview = (agentId: string | undefined) => {
+  const slug = agentId === undefined ? undefined : reviewOf(agentId);
+  const slot = slug === undefined ? undefined : slotOf(slug);
+  const watchdog = slug === undefined ? undefined : watchdogBySlug(slug);
+  return agentId === undefined || slot?.state !== 'reviewing' || watchdog === undefined
+    ? undefined
+    : { agentId, slot, watchdog };
+};
 
 // §7.3: a review agent's id, from the first source that gives it.
 export const learnReviewAgent = (slug: string, agentId: string): void => {

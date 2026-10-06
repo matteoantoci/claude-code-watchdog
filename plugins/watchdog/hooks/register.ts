@@ -2,6 +2,7 @@ import { installAgents } from './agents/install';
 import { installCommand } from './command/install';
 import { installDelivery } from './delivery/install';
 import { installDump } from './dump/install';
+import { installFailure } from './failure/install';
 import { installFeed } from './feed/install';
 import { installLifecycle } from './lifecycle/install';
 import { installLog } from './log/install';
@@ -13,6 +14,7 @@ import type { Register } from 'claude-code';
 
 export const register: Register = (on, options) => {
   installRoster(on);
+  installFailure(on);
   installCommand(on, options);
   installDump(on);
   installLifecycle(on);

@@ -3,16 +3,28 @@ import { registeredSpec, setRegisteredSpec } from '../agents/registered';
 import { currentRoster, rosterStatusLines } from '../agents/roster';
 import { agentType, reviewDescription } from '../agents/spec';
 import { addStatusLines } from '../command/status';
+import { isPersonPrompt } from '../delivery/person';
 import { errorText } from '../errors';
-import { closeUpdate, currentFeed, moveCursor, pendingBatch, setFeed } from '../feed/feed';
+import { classifySpawnError, reviewOutcome } from '../failure/classify';
+import { dueTry } from '../failure/health';
+import {
+  applyOutcome,
+  deliveredNotes,
+  healthParts,
+  lastErrorLines,
+  setLastError,
+  takeAgentFacts,
+} from '../failure/state';
+import { closeUpdate, currentFeed, pendingBatch, setFeed } from '../feed/feed';
 import { currentMode } from '../lifecycle/mode';
-import { rememberPrompt } from '../log/log';
+import { addLogRecord, currentLog, errorRecord, rememberPrompt, traceError, traceOf } from '../log/log';
 import { resolveEffort, sessionEffort, setSessionEffort } from '../roster/model';
 import { cadenceOf, countBoundary, setCadence } from './cadence';
 import { reviewPrompt } from './prompt';
-import { IDLE, learnReviewAgent, reviewOf, setSlot, slotLine, slotOf } from './slots';
+import { learnReviewAgent, runningReview, setSlot, slotLine, slotOf } from './slots';
 import type { Watchdog } from '../agents/roster';
 import type { OnEvents } from '../on';
+import type { Problem } from './slots';
 import type { EngineInterface, Hook, TurnCompleteInput } from 'claude-code';
 
 // The live copies are module memory; `$.state` keeps them across a reload (§14.1), so a refused write
@@ -37,19 +49,47 @@ const refreshAgent = async ($: EngineInterface, watchdog: Watchdog): Promise<voi
   );
 };
 
+// How a review starts: at a boundary when its cadence is due (§7.4); as the try of a `limited` or `halted`
+// watchdog at a person prompt (§12.3 items 2, 3), which keeps the problem it starts from; or as the compact
+// retry at once of a prompt too large (§12.3 item 4), which keeps the problem of the review it repeats.
+type Start = { readonly from?: Problem; readonly isCompact?: boolean };
+
+const isReady = (slug: string, start: Start): boolean => {
+  const slot = slotOf(slug);
+  if (start.isCompact === true) {
+    return slot.state === 'idle';
+  }
+  return start.from === undefined ? slot.state === 'idle' && cadenceOf(slug).isDue : slot === start.from;
+};
+
+// §12.2: a spawn that started no agent gives `blocked`, a cap (no failure; the batch waits for the next
+// boundary) or 1 failure. The error goes to `last error` and to the dump.
+const spawnFailed = async (
+  $: EngineInterface,
+  watchdog: Watchdog,
+  failure: { error: string; from: Problem | undefined; batchEnd: string }
+): Promise<void> => {
+  const time = await $.clock.now();
+  const outcome = { kind: classifySpawnError(failure.error), error: failure.error };
+  applyOutcome(watchdog.slug, outcome, { from: failure.from, notes: 0, now: time, batchEnd: failure.batchEnd });
+  setLastError(watchdog.name, failure.error);
+  addLogRecord(errorRecord({ watchdog: watchdog.name, time, error: `review spawn failed: ${failure.error}` }));
+  await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog()).catch(() => undefined);
+};
+
 // §7.2, §7.4, §7.5: a free watchdog with a due review takes all updates that wait into one review. The spawn
 // is awaited inside a live hook, and the in-flight window spans it (§7.3). A reject or a deny started no
-// agent: the slot is free again and the batch waits for the next boundary. The agent id may come only from
-// the `agent.spawn` hook (§16.2), so a resolve without one keeps the slot.
-const spawnReview = async ($: EngineInterface, watchdog: Watchdog): Promise<void> => {
+// agent (§12.2). The agent id may come only from the `agent.spawn` hook (§16.2), so a resolve without one
+// keeps the slot.
+const spawnReview = async ($: EngineInterface, watchdog: Watchdog, start: Start = {}): Promise<void> => {
   const batch = pendingBatch(currentFeed(), watchdog.slug);
-  if (batch === undefined || slotOf(watchdog.slug).state !== 'idle' || !cadenceOf(watchdog.slug).isDue) {
+  if (batch === undefined || !isReady(watchdog.slug, start)) {
     return;
   }
-  setSlot(watchdog.slug, { state: 'reviewing', agentId: null, batchEnd: batch.end });
+  setSlot(watchdog.slug, { state: 'reviewing', agentId: null, batchEnd: batch.end, ...start });
   await refreshAgent($, watchdog);
   beginSpawn();
-  const prompt = reviewPrompt(batch.rows);
+  const prompt = reviewPrompt(batch.rows, { isCompact: start.isCompact === true });
   const spawned = await $.agent
     .spawn({
       subagentType: agentType(watchdog.slug),
@@ -59,7 +99,7 @@ const spawnReview = async ($: EngineInterface, watchdog: Watchdog): Promise<void
     .catch((error: unknown) => ({ deny: errorText(error) }))
     .finally(endSpawn);
   if (spawned.deny !== undefined) {
-    setSlot(watchdog.slug, IDLE);
+    await spawnFailed($, watchdog, { error: spawned.deny, from: start.from, batchEnd: batch.end });
     return;
   }
   setCadence(watchdog.slug, { ...cadenceOf(watchdog.slug), isDue: false });
@@ -69,8 +109,8 @@ const spawnReview = async ($: EngineInterface, watchdog: Watchdog): Promise<void
   }
 };
 
-const reviewAll = async ($: EngineInterface, watchdogs: readonly Watchdog[]): Promise<void> => {
-  await Promise.all(watchdogs.map((watchdog) => spawnReview($, watchdog)));
+const reviewAll = async ($: EngineInterface, watchdogs: readonly Watchdog[], start: Start = {}): Promise<void> => {
+  await Promise.all(watchdogs.map((watchdog) => spawnReview($, watchdog, start)));
   await save($);
 };
 
@@ -87,20 +127,44 @@ const closeMainUpdate = (agentId: string | undefined, isTurnEnd: boolean): boole
   return isBoundary;
 };
 
-// §7.5: a review's own `turn.complete` frees its watchdog. An answer or a refusal moves the cursor and
-// returns the slug; any other end puts the batch back.
-const finishReview = (e: TurnCompleteInput): string | undefined => {
-  const slug = e.agentId === undefined ? undefined : reviewOf(e.agentId);
-  const slot = slug === undefined ? IDLE : slotOf(slug);
-  if (slug === undefined || slot.state !== 'reviewing') {
+// §7.5, §12.1 to §12.3: a review's own `turn.complete` frees its watchdog and applies its outcome; the error
+// goes to `last error` and to the review's record. Returns what starts next: the compact retry at once, or
+// the next review after an answer or a refusal that left the watchdog idle (§12.2 model compare first).
+const finishReview = async (
+  $: EngineInterface,
+  e: TurnCompleteInput
+): Promise<{ slug: string; start: Start } | undefined> => {
+  const review = runningReview(e.agentId);
+  if (review === undefined) {
     return undefined;
   }
-  setSlot(slug, IDLE);
-  if (e.reason !== 'answer' && e.reason !== 'refusal') {
-    return undefined;
+  const { agentId, slot, watchdog } = review;
+  const trace = traceOf(agentId);
+  const facts = takeAgentFacts(agentId);
+  const outcome = reviewOutcome({
+    end: e,
+    errorText: facts.errorText,
+    steps: trace.steps,
+    isCompact: slot.isCompact === true,
+    model: watchdog.model,
+    ran: e.usage?.model ?? facts.spawnModel,
+  });
+  if (outcome.error !== null) {
+    traceError(agentId, outcome.error);
+    setLastError(watchdog.name, outcome.error);
   }
-  setFeed(moveCursor(currentFeed(), slug, slot.batchEnd));
-  return slug;
+  const now = await $.clock.now();
+  applyOutcome(watchdog.slug, outcome, {
+    from: slot.from,
+    notes: deliveredNotes(trace.notes),
+    now,
+    batchEnd: slot.batchEnd,
+  });
+  if (outcome.kind === 'retry') {
+    return { slug: watchdog.slug, start: { isCompact: true, from: slot.from } };
+  }
+  const isNext = (e.reason === 'answer' || e.reason === 'refusal') && slotOf(watchdog.slug).state === 'idle';
+  return isNext ? { slug: watchdog.slug, start: {} } : undefined;
 };
 
 // §7.2: main-loop `turn.step` with index ≥ 1 is a boundary; the reviews spawn after the step's stream.
@@ -118,32 +182,54 @@ const onStep: Hook<'turn.step'> = async function* ($, e, next) {
 };
 
 // §7.2: main-loop `turn.complete` is a boundary. §7.5: a review's own `turn.complete` spawns the next
-// review of that watchdog, awaited there.
+// review of that watchdog, or its compact retry (§12.3 item 4), awaited there.
 const onComplete: Hook<'turn.complete'> = async ($, e, next) => {
   const isBoundary = closeMainUpdate(e.agentId, true);
-  const finished = finishReview(e);
+  const finished = await finishReview($, e);
   const result = await next(e);
+  const isNext = (watchdog: Watchdog): boolean => watchdog.slug === finished?.slug && currentMode() === 'on';
   if (isBoundary || finished !== undefined) {
-    const isNext = (watchdog: Watchdog): boolean => watchdog.slug === finished && currentMode() === 'on';
-    await reviewAll($, isBoundary ? currentRoster() : currentRoster().filter(isNext));
+    await reviewAll($, isBoundary ? currentRoster() : currentRoster().filter(isNext), finished?.start);
   }
   return result;
 };
 
-export const installReview = (on: OnEvents<'turn.step' | 'turn.complete'>): void => {
+// §12.3 items 2, 3: a person prompt (§10) tries one review of each `limited` watchdog, and of each `halted`
+// one whose wait passed, with all updates that wait. The spawn is awaited in this live hook (§7.2).
+const onPersonPrompt: Hook<'prompt.submit'> = async ($, e, next) => {
+  const result = await next(e);
+  if (currentMode() !== 'on' || !isPersonPrompt(e.origin)) {
+    return result;
+  }
+  const now = await $.clock.now();
+  await Promise.all(
+    currentRoster().map(async (watchdog) => {
+      const from = dueTry(slotOf(watchdog.slug), now);
+      return from === undefined ? undefined : spawnReview($, watchdog, { from });
+    })
+  );
+  await save($);
+  return result;
+};
+
+export const installReview = (on: OnEvents<'turn.step' | 'turn.complete' | 'prompt.submit'>): void => {
   on('turn.step', onStep);
   on('turn.complete', onComplete);
-  // §13.3: each watchdog with its state and the file that added it, then the roster lines (§4.5, §4.6).
+  on('prompt.submit', { origin: { kind: /^/u } }, onPersonPrompt);
+  // §13.3: each watchdog with its state, its failure parts (§12.4) and the file that added it, then the
+  // roster lines (§4.5, §4.6) and the last error (§12.4).
   addStatusLines(() =>
     currentMode() === 'on'
       ? [
           ...currentRoster().map((watchdog) =>
             [
               slotLine(watchdog.name, slotOf(watchdog.slug)),
+              ...healthParts(watchdog.slug),
               ...(watchdog.source === null ? [] : [watchdog.source]),
             ].join(' · ')
           ),
           ...rosterStatusLines(),
+          ...lastErrorLines(),
         ]
       : []
   );

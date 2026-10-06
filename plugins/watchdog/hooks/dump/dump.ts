@@ -38,6 +38,7 @@ const reviewText = (record: ReviewRecord): string[] => [
   `- usage: ${usageText(record.usage)}`,
   `- cost: ${record.cost === null ? '$?' : `$${record.cost}`}`,
   `- error: ${record.error ?? 'none'}`,
+  ...(record.reason === 'refusal' ? [`- refused: ${record.refusal ?? 'no category'}`] : []),
   ...notesText(record.notes),
   record.answer === '' ? '- answer: none' : `- answer:\n\n${quote(record.answer)}`,
 ];

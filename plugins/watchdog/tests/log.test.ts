@@ -23,7 +23,11 @@ const END = {
   },
 } as const;
 
-const TRACE = { steps: 3, notes: [{ severity: 'concern', text: 'Check the null branch.', delivery: 'held' }] };
+const TRACE = {
+  steps: 3,
+  notes: [{ severity: 'concern', text: 'Check the null branch.', delivery: 'held' }],
+  error: null,
+};
 
 const record = (): LogRecord =>
   reviewRecord({ watchdog: DEFAULT_WATCHDOG, agentId: 'afake0001', time: TIME, end: END, trace: TRACE });
@@ -51,18 +55,37 @@ describe('review log record', () => {
       cost: null,
       notes: [{ severity: 'concern', text: 'Check the null branch.', delivery: 'held' }],
       error: null,
+      refusal: null,
     });
   });
 
-  test('a review with no usage keeps the roster model and no usage', () => {
+  test('a review with no usage keeps the roster model, no usage and the error of its outcome', () => {
     const failed = reviewRecord({
       watchdog: DEFAULT_WATCHDOG,
       agentId: 'afake0001',
       time: TIME,
       end: { turnId: 'r1', reason: 'error', answer: '', durationMs: 5, isAborted: false },
-      trace: { steps: 1, notes: [] },
+      trace: { steps: 1, notes: [], error: 'API Error: 529 Overloaded.' },
     });
-    expect(failed).toMatchObject({ model: 'opus', usage: null, reason: 'error', steps: 1, answerLength: 0 });
+    expect(failed).toMatchObject({
+      model: 'opus',
+      usage: null,
+      reason: 'error',
+      steps: 1,
+      answerLength: 0,
+      error: 'API Error: 529 Overloaded.',
+    });
+  });
+
+  test('a refusal keeps its refusal.category (§12.3 item 10)', () => {
+    const refused = reviewRecord({
+      watchdog: DEFAULT_WATCHDOG,
+      agentId: 'afake0001',
+      time: TIME,
+      end: { ...END, reason: 'refusal', refusal: { category: 'cyber', explanation: null } },
+      trace: TRACE,
+    });
+    expect(refused).toMatchObject({ reason: 'refusal', refusal: 'cyber', error: null });
   });
 
   test('the log keeps the newest 100 records', () => {
@@ -98,6 +121,22 @@ describe('dump format', () => {
   test('an error record renders its text', () => {
     expect(recordText(errorRecord({ watchdog: 'default', time: TIME, error: 'append rejected' }))).toBe(
       ['### 2026-10-06T09:05:03Z · default · error', '- error: append rejected'].join('\n')
+    );
+  });
+
+  test('a refused review shows its category, a failed one its error (§12.3 item 10, §12.4)', () => {
+    const review = reviewRecord({
+      watchdog: DEFAULT_WATCHDOG,
+      agentId: 'afake0001',
+      time: TIME,
+      end: END,
+      trace: TRACE,
+    });
+    const refused = { ...review, reason: 'refusal', refusal: 'cyber' } as const;
+    expect(recordText(refused)).toContain('- error: none\n- refused: cyber\n');
+    expect(recordText({ ...refused, refusal: null })).toContain('- refused: no category');
+    expect(recordText({ ...review, reason: 'error', error: 'Credit balance is too low' })).toContain(
+      '- error: Credit balance is too low\n- notes'
     );
   });
 

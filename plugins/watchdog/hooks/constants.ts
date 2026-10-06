@@ -35,3 +35,12 @@ export const COMMAND_LOG_DELAY_MS = 300;
 
 // §6.5, §14.1: the read-scope allow set keeps the newest 500 calls.
 export const ALLOW_SET_CAP = 500;
+
+// §12.3 item 2: failed reviews in a row that halt a watchdog.
+export const MAX_FAILED_REVIEWS = 3;
+
+// §12.3 item 2: the halt waits before a try at a person prompt: 5 min, then 15 min, then 60 min each time.
+const HALT_FIRST_WAIT_MS = 300_000;
+const HALT_SECOND_WAIT_MS = 900_000;
+const HALT_LATER_WAIT_MS = 3_600_000;
+export const HALT_WAITS_MS: readonly number[] = [HALT_FIRST_WAIT_MS, HALT_SECOND_WAIT_MS, HALT_LATER_WAIT_MS];

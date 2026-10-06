@@ -6,6 +6,7 @@ import { systemPrompt } from '../agents/system-prompt';
 import { COMMAND_LOG_DELAY_MS } from '../constants';
 import { addDumpLines } from '../dump/sections';
 import { errorText } from '../errors';
+import { resetFailures } from '../failure/state';
 import { EMPTY_FEED, currentFeed, setFeed, startFeed } from '../feed/feed';
 import { currentMode, setMode } from '../lifecycle/mode';
 import {
@@ -128,7 +129,7 @@ const logWarnings = ($: EngineInterface, count: number): void => {
 };
 
 // §5.2: read the roster, register, preflight, move the feed cursors to the end, then set the on flag and the
-// on source.
+// on source. §12.3 item 2: it tries each watchdog at once, so the failure counts go.
 const turnOn = async ($: EngineInterface, source: OnSource): Promise<void> => {
   const { roster, files } = await loadRoster($);
   const runnable = roster.watchdogs.filter((watchdog) => watchdog.isEnabled && watchdog.noModel === null);
@@ -138,6 +139,7 @@ const turnOn = async ($: EngineInterface, source: OnSource): Promise<void> => {
     runnable.filter((watchdog) => blocked.get(watchdog.slug) === undefined).map((watchdog) => watchdog.model)
   );
   const reviewers = slotsAfterOn(roster.watchdogs, blocked, noModel);
+  resetFailures(roster.watchdogs);
   setRoster(roster, files);
   resetCadences();
   setFeed(startFeed(reviewers));

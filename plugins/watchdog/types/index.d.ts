@@ -43,9 +43,26 @@ export type WatchdogLogRecord =
       // §15: null while no price is known for the model.
       readonly cost: number | null;
       readonly notes: readonly WatchdogLogNote[];
+      // §12.4: the error of the review's outcome: its synthetic row text, or the reason of a `no_model` compare.
       readonly error: string | null;
+      // §12.3 item 10: the `refusal.category` of a refusal; null for another end or no category.
+      readonly refusal: string | null;
     }
   | { readonly kind: 'error'; readonly watchdog: string; readonly time: number; readonly error: string };
+
+// §12.4: a problem state of one watchdog and its error text. `halted` keeps its failed tries and the time of
+// its next try (ms since the epoch).
+export type WatchdogProblem =
+  | { readonly state: 'no_model' | 'blocked' | 'limited'; readonly reason: string }
+  | { readonly state: 'halted'; readonly reason: string; readonly tries: number; readonly nextTryAt: number };
+
+// §12.3: the failure state of one watchdog: its problem (null for none), its failed reviews in a row and its
+// refusals in the session.
+export type WatchdogHealth = {
+  readonly problem: WatchdogProblem | null;
+  readonly failures: number;
+  readonly refused: number;
+};
 
 declare module 'claude-code' {
   interface PluginState {
@@ -65,6 +82,8 @@ declare module 'claude-code' {
       allow: readonly string[];
       // §6.5 item 8: the read-scope denies of each watchdog slug.
       denies: Readonly<Record<string, number>>;
+      // §12.3, §14.1: the failure state of each watchdog slug, and the last error for the status (§12.4).
+      health: { readonly watchdogs: Readonly<Record<string, WatchdogHealth>>; readonly lastError: string | null };
     };
   }
 }
