@@ -79,6 +79,9 @@ const HALT_SECOND_WAIT_MS = 900_000;
 const HALT_LATER_WAIT_MS = 3_600_000;
 export const HALT_WAITS_MS: readonly number[] = [HALT_FIRST_WAIT_MS, HALT_SECOND_WAIT_MS, HALT_LATER_WAIT_MS];
 
+// §7.8: a review that runs this long after its spawn times out.
+export const REVIEW_TIMEOUT_MS = 600_000;
+
 // §13.3, §15: a cost shows in dollars and cents; a cost above 0 and below a cent shows `<$0.01`.
 export const USD_DIGITS = 2;
 export const USD_CENT = 0.01;

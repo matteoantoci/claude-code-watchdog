@@ -33,6 +33,12 @@ export const unreviewedRecord = (input: { watchdog: string; time: number; update
   ...input,
 });
 
+// §7.8 action 6: a review that timed out.
+export const timeoutRecord = (input: { watchdog: string; agentId: string | null; time: number }): LogRecord => ({
+  kind: 'timeout',
+  ...input,
+});
+
 // §13.4: one finished review. §12.2: the model that ran is `usage.model`, else the roster's. §12.3 item 10: a
 // refusal keeps its category.
 export const reviewRecord = (input: {

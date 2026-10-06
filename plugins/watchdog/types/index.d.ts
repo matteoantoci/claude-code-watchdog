@@ -70,7 +70,9 @@ export type WatchdogLogRecord =
       readonly refusal: string | null;
     }
   | { readonly kind: 'error'; readonly watchdog: string; readonly time: number; readonly error: string }
-  | { readonly kind: 'unreviewed'; readonly watchdog: string; readonly time: number; readonly updates: number };
+  | { readonly kind: 'unreviewed'; readonly watchdog: string; readonly time: number; readonly updates: number }
+  // §7.8 action 6: a review stopped after its 10 min; `agentId` is null when its id never came.
+  | { readonly kind: 'timeout'; readonly watchdog: string; readonly agentId: string | null; readonly time: number };
 
 // §10.3: a late note of the nudge that waits, as the note hook admitted it: the watchdog slug, the review
 // agent, and the main-loop turn when it came (§10.7).
@@ -108,6 +110,17 @@ export type WatchdogHealth = {
   readonly refused: number;
 };
 
+// §7.8: why the mod stopped a review agent.
+export type WatchdogStopReason = 'timeout' | 'off' | 'session' | 'rewind';
+
+// §7.8: one review that runs: its watchdog slug, its agent (null until the id comes) and its spawn time (ms
+// since the epoch).
+export type WatchdogRunningReview = {
+  readonly watchdog: string;
+  readonly agentId: string | null;
+  readonly spawnedAt: number;
+};
+
 declare module 'claude-code' {
   interface PluginState {
     watchdog: {
@@ -130,6 +143,11 @@ declare module 'claude-code' {
       nudge: WatchdogNudge;
       // §12.3, §14.1: the failure state of each watchdog slug, and the last error for the status (§12.4).
       health: { readonly watchdogs: Readonly<Record<string, WatchdogHealth>>; readonly lastError: string | null };
+      // §7.8, §14.1: the reviews that run, and the stop map: each agent the mod stopped and why.
+      reviews: {
+        readonly running: readonly WatchdogRunningReview[];
+        readonly stops: readonly { readonly agentId: string; readonly reason: WatchdogStopReason }[];
+      };
     };
   }
 }

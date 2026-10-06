@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { DEFAULT_WATCHDOG } from '../hooks/agents/roster';
 import { dumpPath, dumpText, recordText } from '../hooks/dump/dump';
-import { appendLog, errorRecord, reviewRecord } from '../hooks/log/log';
+import { appendLog, errorRecord, reviewRecord, timeoutRecord } from '../hooks/log/log';
 import type { LogRecord } from '../hooks/log/log';
 
 // 2026-10-06T09:05:03Z
@@ -134,6 +134,15 @@ describe('dump format', () => {
   test('an error record renders its text', () => {
     expect(recordText(errorRecord({ watchdog: 'default', time: TIME, error: 'append rejected' }))).toBe(
       ['### 2026-10-06T09:05:03Z · default · error', '- error: append rejected'].join('\n')
+    );
+  });
+
+  test('a timeout record names the stopped agent (§7.8 action 6)', () => {
+    expect(recordText(timeoutRecord({ watchdog: 'default', agentId: 'afake0001', time: TIME }))).toBe(
+      ['### 2026-10-06T09:05:03Z · default · timeout', '- stopped review afake0001 after 10 min'].join('\n')
+    );
+    expect(recordText(timeoutRecord({ watchdog: 'default', agentId: null, time: TIME }))).toContain(
+      '- stopped review with no agent id after 10 min'
     );
   });
 

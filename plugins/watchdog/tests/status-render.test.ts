@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { REVIEW_SPAWN } from './fixtures/delivery';
-import { REVIEW_AGENT, START, mainRow, stubSession, turnEnd, typed } from './fixtures/session';
+import { REVIEW_AGENT, START, mainRow, stubAfterAtOnce, stubSession, turnEnd, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { SessionEvents } from './fixtures/session';
 import type { RenderSurface } from 'claude-code';
@@ -29,7 +29,7 @@ const stubRender = (on: Stubs): Rendered => {
   });
   on('session.surfaces', () => ({ value: ['terminal'] }));
   on('fs.write', () => ({ value: undefined }));
-  on('clock.after', () => ({ value: undefined }));
+  stubAfterAtOnce(on);
   return rendered;
 };
 

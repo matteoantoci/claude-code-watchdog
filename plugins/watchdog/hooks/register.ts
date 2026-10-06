@@ -11,12 +11,14 @@ import { installNote } from './note/install';
 import { installReview } from './review/install';
 import { installRoster } from './roster/install';
 import { installStatus } from './status/install';
+import { installStop } from './stop/install';
 import { installTools } from './tools/install';
 import type { Register } from 'claude-code';
 
 export const register: Register = (on, options) => {
   installRoster(on);
   installFailure(on);
+  installStop(on);
   installStatus(on);
   installCommand(on, options);
   installDump(on);

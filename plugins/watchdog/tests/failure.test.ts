@@ -1,6 +1,16 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { PROMPT, stubOnState } from './fixtures/on-state';
-import { NOW, REVIEW_AGENT, START, USAGE, mainRow, stubSession, turnEnd, typed } from './fixtures/session';
+import {
+  NOW,
+  REVIEW_AGENT,
+  START,
+  USAGE,
+  mainRow,
+  stubAfterAtOnce,
+  stubSession,
+  turnEnd,
+  typed,
+} from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { SessionEvents } from './fixtures/session';
 import type { AgentSpawnInput, SessionAppendInput, TurnCompleteInput } from 'claude-code';
@@ -33,12 +43,7 @@ type Seed = { state?: unknown; health?: unknown; spawnDeny?: string };
 const stub = (on: Stubs, seed: Seed = {}) => {
   const seen = stubSession(on, seed.spawnDeny === undefined ? {} : { spawnDeny: seed.spawnDeny });
   const state = stubOnState(on, seed);
-  const delays: number[] = [];
-  on('clock.after', (_$, e) => {
-    delays.push(e.ms);
-    return { value: undefined };
-  });
-  return { ...seen, ...state, delays };
+  return { ...seen, ...state, delays: stubAfterAtOnce(on) };
 };
 
 // The prompts of the reviews the mod spawned (the test's own `SPAWN` reaches the stub too).
