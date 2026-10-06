@@ -97,6 +97,9 @@ describe('tools of an entry (§6.3)', () => {
     expect(entries(user(doc))[0]?.tools).toEqual(['Read', 'WebFetch', 'mcp__docs__search']);
   });
 
+  // §6.3, word for word: the tools the mod always refuses.
+  const REFUSED = ['ToolSearch', 'Agent', 'SendMessage', 'AskUserQuestion', 'Bash', 'Edit', 'Write', 'NotebookEdit'];
+
   test('a refused or unknown tool is dropped with a warning, also in the user file', () => {
     const parsed = parseRosterFile(user({ watchdogs: [{ name: 'a', tools: ['Grep', 'bash', 'ToolSearch', 'Frob'] }] }));
     expect(parsed.watchdogs?.[0]?.tools).toEqual(['Grep']);
@@ -105,6 +108,17 @@ describe('tools of an entry (§6.3)', () => {
       '~/.claude/WATCHDOG.json: watchdog "a": tool "ToolSearch" is refused; tool dropped',
       '~/.claude/WATCHDOG.json: watchdog "a": unknown tool "Frob"; tool dropped',
     ]);
+  });
+
+  test('each of the 8 refused tools is dropped with a warning, from the user file and from a project file', () => {
+    for (const file of [user, project]) {
+      const doc = file({ watchdogs: [{ name: 'a', tools: ['Read', ...REFUSED] }] });
+      const parsed = parseRosterFile(doc);
+      expect(parsed.watchdogs?.[0]?.tools).toEqual(['Read']);
+      expect(parsed.warnings).toEqual(
+        REFUSED.map((tool) => `${doc.label}: watchdog "a": tool "${tool}" is refused; tool dropped`)
+      );
+    }
   });
 
   test('a project file grants only Read, Grep and Glob', () => {

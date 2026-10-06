@@ -3,6 +3,7 @@ import { REVIEW_TIMEOUT_MS } from '../../hooks/constants';
 import { FRAGMENTS } from './prompts';
 import type { OnEvents } from '../../hooks/on';
 import type {
+  AgentSpawnInput,
   AgentSpec,
   ApiMessage,
   CommandRunInput,
@@ -102,6 +103,10 @@ export const AGENT_TOOL_AGENT = 'afake0002';
 // its `tool_use_id`, so the subagents of one test get distinct ids.
 export const subagentId = (toolUseId: string): string => `asub${toolUseId.slice(-4)}`;
 
+// With `isReviewIdPerSpawn`, the agent of a review spawn: `arev` and the last 4 chars of its `tool_use_id`, so
+// the reviews that run at once get distinct ids (§7.5).
+export const reviewAgentId = (toolUseId: string): string => `arev${toolUseId.slice(-4)}`;
+
 export const USAGE = {
   input_tokens: 1200,
   output_tokens: 80,
@@ -156,6 +161,9 @@ type Options = {
   // What `$.session.messages()` resolves, read at each call: the main conversation as `SessionMessage` rows.
   // Default: none.
   transcript?: () => readonly SessionMessage[];
+  // §7.5: each `watchdog:*` spawn starts its own agent, `reviewAgentId(tool_use_id)`. Default: every review
+  // agent is `REVIEW_AGENT`.
+  isReviewIdPerSpawn?: true;
 };
 
 // `$.session.usage({ breakdown: 'summary' })` with the given memory files; the other figures are zeros.
@@ -284,6 +292,30 @@ const stubRegisters = (on: SessionStubs, seen: Seen, options: Options): void => 
   });
 };
 
+// §16.2: the model id the engine runs an agent on: the roster model the mod registered for its `watchdog:*`
+// type, an alias as a full id that contains it (§12.2), a full id as is; `claude-opus-4-5` for another type.
+const MODEL_IDS: Readonly<Record<string, string>> = {
+  opus: 'claude-opus-4-5',
+  sonnet: 'claude-sonnet-4-5',
+  haiku: 'claude-haiku-4-5',
+  fable: 'claude-fable-4-5',
+};
+
+const spawnModel = (seen: Seen, subagentType: string): string => {
+  const model = seen.agents.findLast((agent) => `watchdog:${agent.name}` === subagentType)?.model ?? 'opus';
+  return MODEL_IDS[model] ?? model;
+};
+
+// The kit drops the id of the mod's own spawn (the Agent tool shape, which has no `tool_use_id`), so only a
+// review spawn the test fires in the engine's shape gets an id of its own.
+const spawnAgentId = (subagentType: string, e: AgentSpawnInput, options: Options): string => {
+  if (!subagentType.startsWith('watchdog:')) {
+    return subagentId(e.tool_use_id);
+  }
+  const isOwnId = options.isReviewIdPerSpawn !== undefined && !('subagent_type' in e);
+  return isOwnId ? reviewAgentId(e.tool_use_id) : REVIEW_AGENT;
+};
+
 const stubEngine = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('agent.offer', () => ({ isOffered: true }));
   // The kit hands the mod's own `$.agent.spawn` to the hooks in the Agent tool's input shape
@@ -291,8 +323,10 @@ const stubEngine = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('agent.spawn', (_$, e) => {
     const subagentType = String('subagent_type' in e ? e.subagent_type : e.subagentType);
     seen.spawns.push({ prompt: e.prompt, subagentType, description: e.description });
-    const agentId = subagentType.startsWith('watchdog:') ? REVIEW_AGENT : subagentId(e.tool_use_id);
-    return options.spawnDeny === undefined ? { model: 'claude-opus-4-5', agentId } : { deny: options.spawnDeny };
+    const agentId = spawnAgentId(subagentType, e, options);
+    return options.spawnDeny === undefined
+      ? { model: spawnModel(seen, subagentType), agentId }
+      : { deny: options.spawnDeny };
   });
   on('turn.step', async function* (_$, e) {
     yield* [];

@@ -1,11 +1,15 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { NOW, REVIEW_AGENT, START, stubSession, typed } from './fixtures/session';
+import { PERSON_PROMPT, nudgeTurnText, stubDelivery, wrapped } from './fixtures/delivery';
+import { NOW, REVIEW_AGENT, START, stubSession, turnEnd, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
+import type { DeliveryEvents, DeliverySeen } from './fixtures/delivery';
 import type { SessionStubs } from './fixtures/session';
 import type { AgentSpawnInput, PluginState } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
 type Stubs = SessionStubs & OnEvents<'turn.start' | 'state.set'>;
+
+type LateStubs = OnEvents<DeliveryEvents | 'state.set'>;
 
 const NOTE = 'mcp__watchdog__note';
 const GUIDANCE_PATH = '/prompts/boundary-guidance.md';
@@ -25,10 +29,8 @@ const SPAWN: AgentSpawnInput = {
 // The test's `$` has no `state` noun: a `state.set` hook beneath keeps each value the mod writes.
 type Written = { log: PluginState['watchdog']['log']; turns?: number };
 
-const stubSteer = (on: Stubs) => {
-  const seen = stubSession(on);
+const keepWritten = (on: OnEvents<'state.set'>): Written => {
   const written: Written = { log: [] };
-  on('turn.start', (_$, e) => ({ turnId: e.turnId }));
   on('state.set', (_$, e, next) => {
     if (e.key === 'log') {
       written.log = e.value;
@@ -38,7 +40,13 @@ const stubSteer = (on: Stubs) => {
     }
     return next(e);
   });
-  return { seen, written };
+  return written;
+};
+
+const stubSteer = (on: Stubs) => {
+  const seen = stubSession(on);
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }));
+  return { seen, written: keepWritten(on) };
 };
 
 // `/watchdog on`, the review agent's id, and a main turn that runs: a steer waits only inside a turn (§10.1).
@@ -55,24 +63,72 @@ const sendNote = async ($: Engine, severity: string): Promise<void> => {
 
 const mainBash = async ($: Engine) => $.tool.call({ tool: 'Bash', command: 'npm test' });
 
+// The mod's nudges: the prompts it submitted, as the engine got them.
+const nudges = (seen: DeliverySeen): string[] =>
+  seen.prompts.filter((prompt) => prompt.text.startsWith('<watchdog-notes>')).map((prompt) => prompt.text);
+
+// §10.1: the steer append of the note rejects in the kit; the review log gets one error for it, at `time`.
+const expectOneSteerError = (written: Written, time = NOW): void => {
+  const errors = written.log.filter((record) => record.kind === 'error');
+  expect(errors.length).toBe(1);
+  expect(errors[0]).toMatchObject({ kind: 'error', watchdog: 'default', time });
+  const [record] = errors;
+  expect(record?.kind === 'error' ? record.error : undefined).toContain('steer append failed');
+};
+
+const NOTE_ELEMENT = '<note severity="concern">parseDate drops the timezone</note>';
+
 describe('steer delivery', () => {
-  test('a concern takes the steer route; the kit rejects the append, so the note stays undelivered and the review log gets one error', async ($, on: Stubs) => {
-    const { seen, written } = stubSteer(on);
+  test('a concern takes the steer route; the kit rejects the append, so the note takes the late-note route and goes out as the nudge', async ($, on: LateStubs) => {
+    const seen = stubDelivery(on);
+    const written = keepWritten(on);
     await startReview($);
     await sendNote($, 'concern');
     expect(seen.logs.at(-1)).toBe('[concern] default: parseDate drops the timezone (steered)');
 
-    const result = await mainBash($);
-    expect(result).toEqual({ result: 'core' });
+    await mainBash($);
     expect(seen.reads.filter((path) => path.endsWith(GUIDANCE_PATH)).length).toBe(1);
-    expect(written.log.length).toBe(1);
-    expect(written.log[0]).toMatchObject({ kind: 'error', watchdog: 'default', time: NOW });
-    const [record] = written.log;
-    expect(record?.kind === 'error' ? record.error : undefined).toContain('steer append failed');
+    expectOneSteerError(written);
 
     // Undelivered: the note left the steer route, so the next tool result appends nothing more.
     await mainBash($);
-    expect(written.log.length).toBe(1);
+    expectOneSteerError(written);
+
+    // §10.3: at the turn end the session is idle with the budget unspent: the late note is the nudge.
+    await $.turn.complete(turnEnd('t1'));
+    await seen.clock.advance(1999);
+    expect(nudges(seen)).toEqual([]);
+    await seen.clock.advance(1);
+    expect(nudges(seen)).toEqual([wrapped(NOTE_ELEMENT)]);
+    expectOneSteerError(written);
+  });
+
+  test('in the nudge turn the budget is spent: a steer whose append rejects waits as an aside on the next person prompt', async ($, on: LateStubs) => {
+    const seen = stubDelivery(on);
+    const written = keepWritten(on);
+    await startReview($);
+    // A blocker steered with no tool result is late at the turn end: it spends the one nudge.
+    await $.tool.call({
+      tool: NOTE,
+      agentId: REVIEW_AGENT,
+      note: 'The migration deletes the users table',
+      severity: 'blocker',
+    });
+    await $.turn.complete(turnEnd('t1'));
+    await seen.clock.advance(2000);
+    expect(nudges(seen).length).toBe(1);
+
+    await $.turn.start({ text: nudgeTurnText(nudges(seen).at(-1) ?? ''), turnId: 'n1' });
+    await sendNote($, 'concern');
+    expect(seen.logs.at(-1)).toBe('[concern] default: parseDate drops the timezone (steered)');
+    await mainBash($);
+    expectOneSteerError(written, NOW + 2000);
+
+    await $.turn.complete(turnEnd('n1'));
+    await seen.clock.advance(2000);
+    expect(nudges(seen).length).toBe(1);
+    await $.prompt.submit(PERSON_PROMPT);
+    expect(seen.prompts.at(-1)?.context).toEqual([wrapped(NOTE_ELEMENT)]);
   });
 
   test('a nit waits for the next person prompt and no tool result appends it', async ($, on: Stubs) => {
