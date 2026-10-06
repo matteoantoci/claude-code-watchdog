@@ -12,7 +12,6 @@ import { UNSAFE_ROW, isUnsafeNote } from './destructive';
 import { DROP_ACKS, judgeNote, normalizeNote, reviewSlots, setReviewSlots } from './guard';
 import {
   EMPTY_HISTORY,
-  claimErrorRow,
   isRepeat,
   liveHistory,
   notesKey,
@@ -89,17 +88,13 @@ const loadHistory = async ($: EngineInterface, agentId?: string): Promise<string
   return sessionId;
 };
 
-// §9.6, §14.2: write the live copy back with `lastUsed`. A refused write keeps the live copy and shows one
-// row for each session.
+// §9.6, §14.2: write the live copy back with `lastUsed`. A refused write keeps the live copy; the store area
+// shows it.
 const saveHistory = async ($: EngineInterface, sessionId: string, agentId?: string): Promise<void> => {
   const lastUsed = await $.clock.now();
   const history: NoteHistory = { ...(liveHistory(sessionId, agentId) ?? EMPTY_HISTORY), lastUsed };
   setLiveHistory(sessionId, history, agentId);
-  await $.store.set(notesKey(sessionId, agentId), history).catch((error: unknown) => {
-    if (claimErrorRow()) {
-      $.ui.log(`watchdog: the note history was not saved: ${errorText(error)}`);
-    }
-  });
+  await $.store.set(notesKey(sessionId, agentId), history).catch(() => undefined);
 };
 
 // §9.1: the queued entry takes the higher severity in place, and the delivery state of that severity.

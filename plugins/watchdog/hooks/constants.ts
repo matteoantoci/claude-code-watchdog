@@ -120,3 +120,6 @@ export const MESSAGES_READ_CAP = 4096;
 // §14.4: the message hash is 32-bit FNV-1a: its offset basis and its prime.
 export const FNV_OFFSET_BASIS = 2_166_136_261;
 export const FNV_PRIME = 16_777_619;
+
+// §14.2: the `$.store` prune keeps the keys of this many sessions, the newest by `lastUsed`.
+export const STORE_SESSION_CAP = 50;

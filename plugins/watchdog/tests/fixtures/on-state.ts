@@ -35,6 +35,8 @@ export type StateSeed = {
   band?: unknown;
   values?: ReadonlyMap<string, unknown>;
   sessionId?: () => string;
+  // The reason each `$.state.set` denies with; nothing is written then (§14.2).
+  setDeny?: string;
 };
 
 // A key's name in the stub: a family member's is `<key>:<id>`.
@@ -95,6 +97,9 @@ export const stubState = (on: StateStubs, seed: StateSeed = {}): OnStateSeen => 
   const read = (key: string): unknown => session().get(key)?.at(-1) ?? (live.isSeeded ? seeds.get(key) : undefined);
   on('state.get', (_$, e) => ({ value: { value: read(nameOf(e)), version: 0 } }));
   on('state.set', (_$, e) => {
+    if (seed.setDeny !== undefined) {
+      return { deny: seed.setDeny };
+    }
     writes[e.key]?.push(e.value);
     session().set(nameOf(e), [...(session().get(nameOf(e)) ?? []), e.value]);
     return { value: { isSet: true, version: 1 } };

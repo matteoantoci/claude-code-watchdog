@@ -140,14 +140,12 @@ export const readHistory = (value: unknown): NoteHistory =>
     : EMPTY_HISTORY;
 
 // §9.6, §11.4: the live copies of one session's histories in module memory (the primary agent's, and one for
-// each watched subagent by its `agentId`), and whether the session already showed a refused write (§14.2: one
-// row for each session). A new session id starts them again.
+// each watched subagent by its `agentId`). A new session id starts them again.
 const PRIMARY = '';
 
-const live: { sessionId: string | undefined; histories: Map<string, NoteHistory>; isErrorShown: boolean } = {
+const live: { sessionId: string | undefined; histories: Map<string, NoteHistory> } = {
   sessionId: undefined,
   histories: new Map(),
-  isErrorShown: false,
 };
 
 // The live copy, or undefined before the first load for this session id and watched agent.
@@ -157,15 +155,7 @@ export const liveHistory = (sessionId: string, agentId?: string): NoteHistory | 
 export const setLiveHistory = (sessionId: string, history: NoteHistory, agentId?: string): void => {
   if (live.sessionId !== sessionId) {
     live.histories.clear();
-    live.isErrorShown = false;
   }
   live.sessionId = sessionId;
   live.histories.set(agentId ?? PRIMARY, history);
-};
-
-// True once for each session: the first refused write of that session shows a row.
-export const claimErrorRow = (): boolean => {
-  const isFirst = !live.isErrorShown;
-  live.isErrorShown = true;
-  return isFirst;
 };

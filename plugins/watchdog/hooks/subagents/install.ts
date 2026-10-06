@@ -5,14 +5,12 @@ import { addStatusLines } from '../command/status';
 import { currentRouting, routeNote } from '../delivery/nudge';
 import { currentTurn } from '../delivery/turns';
 import { wrapNotes, wrappedNote } from '../delivery/wrapper';
-import { errorText } from '../errors';
 import { currentFeed } from '../feed/feed';
 import { currentMode } from '../lifecycle/mode';
 import { currentLog } from '../log/log';
 import { normalizeNote } from '../note/guard';
 import {
   EMPTY_HISTORY,
-  claimErrorRow,
   isRepeat,
   liveHistory,
   notesKey,
@@ -122,15 +120,11 @@ const loadPrimaryHistory = async ($: EngineInterface): Promise<string> => {
   return sessionId;
 };
 
-// §9.6, §14.2: the live copy written back with `lastUsed`; a refused write shows one row for each session.
+// §9.6, §14.2: the live copy written back with `lastUsed`; the store area shows a refused write.
 const savePrimaryHistory = async ($: EngineInterface, sessionId: string): Promise<void> => {
   const history = { ...(liveHistory(sessionId) ?? EMPTY_HISTORY), lastUsed: await $.clock.now() };
   setLiveHistory(sessionId, history);
-  await $.store.set(notesKey(sessionId), history).catch((error: unknown) => {
-    if (claimErrorRow()) {
-      $.ui.log(`watchdog: the note history was not saved: ${errorText(error)}`);
-    }
-  });
+  await $.store.set(notesKey(sessionId), history).catch(() => undefined);
 };
 
 // §11.4: one late note on a subagent, checked against the primary agent's key set. A repeat leaves the held list

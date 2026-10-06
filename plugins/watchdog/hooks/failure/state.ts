@@ -18,7 +18,7 @@ export type Health = PluginState['watchdog']['health'];
 // Module memory; `$.state` key `health` keeps the counts, the problems and the last error (§12.3). `shown`
 // is the problem state of the last §12.5 row of each slug, `saved` the JSON of the last `health` write.
 // `errors` and `models` hold, for each review agent, the text of its last synthetic row (§12.1) and the
-// model of its spawn (§12.2).
+// model of its spawn (§12.2). `refused` holds the session ids that showed the row of a refused write (§14.2).
 const memory: {
   counters: Map<string, Counters>;
   shown: Map<string, Problem['state']>;
@@ -26,7 +26,16 @@ const memory: {
   saved: string;
   errors: Map<string, string>;
   models: Map<string, string>;
-} = { counters: new Map(), shown: new Map(), lastError: null, saved: '', errors: new Map(), models: new Map() };
+  refused: Set<string>;
+} = {
+  counters: new Map(),
+  shown: new Map(),
+  lastError: null,
+  saved: '',
+  errors: new Map(),
+  models: new Map(),
+  refused: new Set(),
+};
 
 const countersOf = (slug: string): Counters => memory.counters.get(slug) ?? NO_FAILURES;
 
@@ -53,6 +62,17 @@ export const rememberSpawnModel = (agentId: string, model: string): void => {
 // §12.4: each error goes to `last error` in the status.
 export const setLastError = (watchdog: string, error: string): void => {
   memory.lastError = `${watchdog}: ${error}`;
+};
+
+// §14.2: a refused `$.state.set` or `$.store.set` shows as `last error`. The text of its `$.ui.log` row the
+// first time in a session, else undefined.
+export const refusedWrite = (sessionId: string, refusal: string): string | undefined => {
+  memory.lastError = refusal;
+  if (memory.refused.has(sessionId)) {
+    return undefined;
+  }
+  memory.refused.add(sessionId);
+  return `watchdog: ${refusal}`;
 };
 
 // §12.3 item 1: the notes a review delivered: admitted, and not displaced or dropped since.

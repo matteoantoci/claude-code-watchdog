@@ -91,15 +91,12 @@ describe('the note hook: destructive check, emission guard and note history', ()
   test('a refused store write keeps the note and shows one row for the session', async ($, on: SessionStubs) => {
     const seen = stubSession(on, { storeSetDeny: 'store is over 4 MiB' });
     await reviewOf($, 'Fix the parser.');
-    const logsBefore = seen.logs.length;
     expect(await note($, 'First note.', 'nit')).toEqual({ result: 'Queued. Do not re-raise.' });
     expect(await note($, 'Second note.', 'nit')).toEqual({ result: 'Queued. Do not re-raise.' });
     expect(await note($, 'first note', 'nit')).toEqual({ result: 'Dropped: already raised.' });
-    const rows = seen.logs
-      .slice(logsBefore)
-      .filter((row) => row.startsWith('watchdog: the note history was not saved: '));
-    expect(rows.length).toBe(1);
-    expect(rows[0]).toContain('store is over 4 MiB');
+    expect(seen.logs.filter((row) => row.includes(' not saved: '))).toEqual([
+      `watchdog: $.store on:${SESSION_ID} not saved: store is over 4 MiB`,
+    ]);
   });
 
   test('a full budget: a concern displaces the oldest held nit, which the history marks `displaced`', async ($, on: SessionStubs) => {

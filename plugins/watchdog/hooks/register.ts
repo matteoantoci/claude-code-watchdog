@@ -15,11 +15,13 @@ import { installRoster } from './roster/install';
 import { installSession } from './session/install';
 import { installStatus } from './status/install';
 import { installStop } from './stop/install';
+import { installStore } from './store/install';
 import { installSubagents } from './subagents/install';
 import { installTools } from './tools/install';
 import type { Register } from 'claude-code';
 
 export const register: Register = (on, options) => {
+  installStore(on);
   installBand(on);
   installSession(on);
   installRewind(on);
