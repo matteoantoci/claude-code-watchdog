@@ -1,9 +1,15 @@
 import { ownContext } from '../agents/ids';
 import { isOwnRow } from '../agents/self-review';
 import { currentMode } from '../lifecycle/mode';
+import { isPersonPrompt } from '../person';
 import { currentFeed, recordRow, setFeed } from './feed';
 import type { OnEvents } from '../on';
-import type { EngineInterface, Hook } from 'claude-code';
+import type { EngineInterface, Hook, PromptOrigin } from 'claude-code';
+
+// §10: a person prompt is known by its `prompt.submit` origin. The engine appends the prompt's row while the
+// submit runs, and in `-p` it stamps that row `unclassified` though the submit says `sdk` (live probe
+// l3-headless-prompt). So a `prompt` row that enters during a person submit takes the submit's origin.
+const memory: { submitting: PromptOrigin | undefined } = { submitting: undefined };
 
 // §7.1: `$.state` keeps the feed. The live copy is module memory, so a refused write (a value over
 // 4,194,304 characters of JSON) loses only what a reload would carry over.
@@ -17,7 +23,10 @@ const saveFeed = async ($: EngineInterface): Promise<void> => {
 const onAppend: Hook<'session.append'> = async ($, e, next) => {
   const isRecorded = currentMode() === 'on' && e.agentId === undefined && !isOwnRow(e, ownContext());
   if (isRecorded) {
-    setFeed(recordRow(currentFeed(), e));
+    const { submitting } = memory;
+    setFeed(
+      recordRow(currentFeed(), e.door === 'prompt' && submitting !== undefined ? { ...e, origin: submitting } : e)
+    );
   }
   const result = await next(e);
   if (isRecorded) {
@@ -26,6 +35,17 @@ const onAppend: Hook<'session.append'> = async ($, e, next) => {
   return result;
 };
 
-export const installFeed = (on: OnEvents<'session.append'>): void => {
+const onPersonPrompt: Hook<'prompt.submit'> = async (_$, e, next) => {
+  if (!isPersonPrompt(e.origin)) {
+    return next(e);
+  }
+  memory.submitting = e.origin;
+  return next(e).finally(() => {
+    memory.submitting = undefined;
+  });
+};
+
+export const installFeed = (on: OnEvents<'session.append' | 'prompt.submit'>): void => {
   on('session.append', onAppend);
+  on('prompt.submit', { origin: { kind: /./u } }, onPersonPrompt);
 };

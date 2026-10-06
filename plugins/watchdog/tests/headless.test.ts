@@ -29,6 +29,8 @@ type Stubs = OnEvents<SessionEvents | EndEvents>;
 
 type DeliveryEndStubs = OnEvents<DeliveryEvents | EndEvents>;
 
+type PromptStubs = OnEvents<SessionEvents | 'prompt.submit'>;
+
 type Written = { path: string; text: string }[];
 
 const stubEnd = (on: OnEvents<EndEvents>): Written => {
@@ -241,6 +243,59 @@ describe('delivery in -p', () => {
     expect(seen.prompts.filter((prompt) => prompt.text.startsWith('<watchdog-notes>'))).toEqual([]);
     await $.prompt.submit(SDK_PROMPT);
     expect(seen.prompts.at(-1)?.context).toEqual([wrapped(`<note severity="concern">${CONCERN}</note>`)]);
+  });
+});
+
+describe('the person prompt of -p (§7.6, §7.7, §10)', () => {
+  // Over the 120-char one-line cut of a row that is not a person prompt.
+  const TYPED =
+    'Use the Read tool to read math.js, then read a.txt, one tool call at a time. Then tell me in one line what add(2, 3) returns.';
+
+  test('its row, which the engine stamps unclassified, reaches the review uncut and in part 2', async ($, on: PromptStubs) => {
+    const seen = stubSession(on, {
+      env: ENV_ON,
+      messages: [{ role: 'user', content: [{ type: 'text', text: TYPED }] }],
+    });
+    // The engine appends the prompt's row while the `-p` prompt submits, with origin `unclassified` though the
+    // submit's origin is `sdk` (live probe l3-headless-prompt).
+    on('prompt.submit', async (_$, e) => {
+      const content = [{ type: 'text', text: e.text }];
+      await append($, {
+        uuid: 'u1',
+        door: 'prompt',
+        origin: { kind: 'unclassified' },
+        message: { type: 'user', role: 'user', content },
+      });
+      return { text: e.text };
+    });
+    await $.session.start(HEADLESS_START);
+    await $.prompt.submit({ ...SDK_PROMPT, text: TYPED });
+    await append($, mainRow('a1', 'assistant', 'add(2, 3) returns -1.'));
+    await $.turn.complete(turnEnd('t1'));
+
+    const prompt = seen.spawns[0]?.prompt ?? '';
+    expect(prompt).toContain(
+      `### The person's prompts since the watchdog started (newest first)\n\n**user**:\n${TYPED}`
+    );
+    expect(prompt).toContain(`### Session update\n\n**user**:\n${TYPED}\n\n**agent**:\nadd(2, 3) returns -1.`);
+    expect(prompt).not.toContain('[unclassified]');
+  });
+
+  test('an unclassified prompt row outside a person submit stays one tagged line', async ($, on: PromptStubs) => {
+    const seen = stubSession(on, { env: ENV_ON });
+    on('prompt.submit', (_$, e) => ({ text: e.text }));
+    await $.session.start(HEADLESS_START);
+    await $.prompt.submit({ ...SDK_PROMPT, text: 'Read math.js.' });
+    const content = [{ type: 'text', text: TYPED }];
+    await append($, {
+      uuid: 'u1',
+      door: 'prompt',
+      origin: { kind: 'unclassified' },
+      message: { type: 'user', role: 'user', content },
+    });
+    await $.turn.complete(turnEnd('t1'));
+
+    expect(seen.spawns[0]?.prompt).toMatch(/^### Session update\n\n\[unclassified\] Use the Read tool.{80,}…$/u);
   });
 });
 
