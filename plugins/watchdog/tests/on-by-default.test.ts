@@ -6,7 +6,7 @@ import type { OnEvents } from '../hooks/on';
 import type { OnStateStubs } from './fixtures/on-state';
 
 // The `$` calls of `/watchdog dump` on the Desktop: no clipboard, so only the file.
-type DumpStubs = OnStateStubs & OnEvents<'env.get' | 'session.surfaces' | 'fs.write'>;
+type DumpStubs = OnStateStubs & OnEvents<'session.surfaces' | 'fs.write'>;
 
 const ON_BY_DEFAULT = { options: { onByDefault: true } };
 const BY_COMMAND = { isOn: true, source: '/watchdog on' } as const;
@@ -116,7 +116,6 @@ describe('Desktop attach', () => {
       stubSession(on, { store: storedOn({ isOn: false, lastUsed: 1 }) });
       const state = stubOnState(on, { state: BY_ENV });
       const dumps: string[] = [];
-      on('env.get', (_$, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }));
       on('session.surfaces', () => ({ value: ['desktop'] as const }));
       on('fs.write', (_$, e) => {
         dumps.push(e.text);

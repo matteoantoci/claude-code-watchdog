@@ -1,10 +1,10 @@
 import { preflightProblem, preflightRequest } from '../agents/preflight';
-import { DEFAULT_WATCHDOG, setRoster } from '../agents/roster';
+import { setRegisteredSpec } from '../agents/registered';
+import { setRoster } from '../agents/roster';
 import { agentSpec } from '../agents/spec';
 import { systemPrompt } from '../agents/system-prompt';
 import { COMMAND_LOG_DELAY_MS } from '../constants';
-import { dumpPath, dumpText, configDir } from '../dump/dump';
-import { addDumpLines, dumpLines } from '../dump/sections';
+import { addDumpLines } from '../dump/sections';
 import { errorText } from '../errors';
 import { EMPTY_FEED, currentFeed, setFeed, startFeed } from '../feed/feed';
 import { currentMode, setMode } from '../lifecycle/mode';
@@ -22,16 +22,21 @@ import {
   setOnByDefault,
   setOnSource,
 } from '../lifecycle/on-order';
-import { currentLog, recentPrompts } from '../log/log';
 import { clearHeldNotes } from '../note/notes';
 import { NOTE_TOOL } from '../note/tool';
-import { setSlot, slotAfterOn, slotOf } from '../review/slots';
+import { resetCadences } from '../review/cadence';
+import { slotsAfterOn } from '../review/slots';
+import { buildRoster } from '../roster/merge';
+import { sessionEffort } from '../roster/model';
+import { searchPaths } from '../roster/paths';
 import { parseSubcommand } from './args';
 import { UNSUPPORTED_REPLY, USAGE_REPLY } from './spec';
 import { addStatusLines, statusText } from './status';
-import type { Watchdog } from '../agents/roster';
+import type { Roster, WatchedFile, Watchdog } from '../agents/roster';
 import type { OnFlag, OnSource } from '../lifecycle/on-order';
 import type { OnEvents } from '../on';
+import type { LoadedFile } from '../roster/merge';
+import type { SearchPath, Where } from '../roster/paths';
 import type { EngineInterface, Hook, PluginOptions } from 'claude-code';
 
 const headline = (): string =>
@@ -46,19 +51,27 @@ const saveOnState = async ($: EngineInterface): Promise<void> => {
   await $.state.set({ plugin: 'watchdog', key: 'feed' }, currentFeed()).catch(() => undefined);
 };
 
-// §5.2 step 1, §6.1, §8.3: the note tool, then one agent type for each watchdog. Returns the reason that
-// blocks each watchdog, or undefined.
-const registerAll = async ($: EngineInterface, roster: readonly Watchdog[]): Promise<(string | undefined)[]> => {
+// §5.2 step 1, §6.1, §8.3: the note tool, then one agent type for each watchdog that can run. Maps each slug
+// to the reason that blocks it, or undefined.
+const registerAll = async (
+  $: EngineInterface,
+  watchdogs: readonly Watchdog[]
+): Promise<Map<string, string | undefined>> => {
   const noteProblem = await $.tool.register(NOTE_TOOL).then(() => undefined, errorText);
   if (noteProblem !== undefined) {
-    return roster.map(() => noteProblem);
+    return new Map(watchdogs.map((watchdog) => [watchdog.slug, noteProblem]));
   }
   const base = await $.fs.read(`${$.plugin.root}/prompts/system.md`);
-  return Promise.all(
-    roster.map(async (watchdog) =>
-      $.agent.register(agentSpec(watchdog, systemPrompt(base, watchdog))).then(() => undefined, errorText)
-    )
+  const problems = await Promise.all(
+    watchdogs.map(async (watchdog) => {
+      const spec = agentSpec(watchdog, systemPrompt(base, watchdog), sessionEffort());
+      return $.agent.register(spec).then(() => {
+        setRegisteredSpec(spec);
+        return undefined;
+      }, errorText);
+    })
   );
+  return new Map(watchdogs.map((watchdog, index) => [watchdog.slug, problems[index]]));
 };
 
 // §5.2 step 2: one 1-token call for each distinct model. Maps each model to its `no_model` reason, or undefined.
@@ -73,23 +86,65 @@ const preflightAll = async (
   return new Map(distinct.map((model, index) => [model, problems[index]]));
 };
 
-// §5.2: register, preflight, move the feed cursors to the end, then set the on flag and the on source.
+// §4.5: a searched path and its time at the read; a path that does not stat is not there.
+const readSearchPath = async ($: EngineInterface, search: SearchPath): Promise<LoadedFile & WatchedFile> => {
+  const mtimeMs = await $.fs.stat(search.path).then(
+    (stat) => stat.mtimeMs,
+    () => null
+  );
+  if (mtimeMs === null) {
+    return { ...search, mtimeMs };
+  }
+  const content = await $.fs.read(search.path).then(
+    (text) => ({ text }),
+    (error: unknown) => ({ error: errorText(error) })
+  );
+  return { ...search, mtimeMs, content };
+};
+
+// §4.3, §4.5: the user file and the project files, read at `/watchdog on`; the roster stays frozen until the
+// next `/watchdog on`.
+const loadRoster = async ($: EngineInterface): Promise<{ roster: Roster; files: WatchedFile[] }> => {
+  const where: Where = {
+    configDir: await $.env.get('CLAUDE_CONFIG_DIR'),
+    home: await $.env.get('HOME'),
+    gitRoot: (await $.session.repo())?.root ?? null,
+    cwd: await $.session.cwd(),
+    root: await $.session.root(),
+  };
+  const files = await Promise.all(searchPaths(where, 'WATCHDOG.json').map(async (search) => readSearchPath($, search)));
+  return { roster: buildRoster(files, where), files: files.map(({ path, mtimeMs }) => ({ path, mtimeMs })) };
+};
+
+// §4.6, §13.2: one row with the warning count; it waits, so that from a `command.run` hook it lands below the
+// command echo.
+const logWarnings = ($: EngineInterface, count: number): void => {
+  if (count > 0) {
+    const text = `${count} WATCHDOG.json ${count === 1 ? 'warning' : 'warnings'}; see /watchdog status`;
+    $.clock.after(COMMAND_LOG_DELAY_MS, () => {
+      $.ui.log(text);
+    });
+  }
+};
+
+// §5.2: read the roster, register, preflight, move the feed cursors to the end, then set the on flag and the
+// on source.
 const turnOn = async ($: EngineInterface, source: OnSource): Promise<void> => {
-  const roster = [DEFAULT_WATCHDOG];
-  const blocked = await registerAll($, roster);
+  const { roster, files } = await loadRoster($);
+  const runnable = roster.watchdogs.filter((watchdog) => watchdog.isEnabled && watchdog.noModel === null);
+  const blocked = await registerAll($, runnable);
   const noModel = await preflightAll(
     $,
-    roster.filter((_watchdog, index) => blocked[index] === undefined).map((watchdog) => watchdog.model)
+    runnable.filter((watchdog) => blocked.get(watchdog.slug) === undefined).map((watchdog) => watchdog.model)
   );
-  roster.forEach((watchdog, index) => {
-    const problems = { blocked: blocked[index], noModel: noModel.get(watchdog.model) };
-    setSlot(watchdog.slug, slotAfterOn(slotOf(watchdog.slug), problems));
-  });
-  setRoster(roster);
-  setFeed(startFeed(roster.map((watchdog) => watchdog.slug)));
+  const reviewers = slotsAfterOn(roster.watchdogs, blocked, noModel);
+  setRoster(roster, files);
+  resetCadences();
+  setFeed(startFeed(reviewers));
   setMode('on');
   setOnSource(source);
   await saveOnState($);
+  logWarnings($, roster.warnings.length);
 };
 
 // §5.2: stop feed recording, clear the backlog and the held notes.
@@ -173,47 +228,8 @@ const onDesktopAttach: Hook<'session.attach'> = async ($, e, next) => {
   await applyOrder($, isDropped ? undefined : state, true);
   return result;
 };
-
-// §13.2, §13.4: on the terminal the dump text goes to the clipboard too; the row of the outcome waits, so
-// that it lands below the command echo. The desktop has no clipboard path, so it gets the file only.
-const copyDump = async ($: EngineInterface, text: string): Promise<void> => {
-  const surfaces = await $.session.surfaces();
-  if (!surfaces.includes('terminal')) {
-    return;
-  }
-  const row = await $.ui.copy({ text, surface: 'terminal' }).then(
-    (copied) => (copied.isCopied ? 'dump copied to the clipboard' : `dump not copied: ${copied.reason}`),
-    (error: unknown) => `dump not copied: ${errorText(error)}`
-  );
-  $.clock.after(COMMAND_LOG_DELAY_MS, () => {
-    $.ui.log(row);
-  });
-};
-
-// §13.4: the review log, the lines of the other areas and, for `dump raw`, the last prompts, in one file
-// under `<config>/watchdog/dumps/`. Returns the reply.
-const writeDump = async ($: EngineInterface, isRaw: boolean): Promise<string> => {
-  const config = configDir(await $.env.get('CLAUDE_CONFIG_DIR'), await $.env.get('HOME'));
-  if (config === undefined) {
-    return 'watchdog dump failed: neither CLAUDE_CONFIG_DIR nor HOME is set';
-  }
-  const sessionId = await $.session.id();
-  const time = await $.clock.now();
-  const records = currentLog();
-  const text = dumpText({
-    sessionId,
-    time,
-    lines: dumpLines(),
-    records,
-    ...(isRaw ? { prompts: recentPrompts() } : {}),
-  });
-  const path = dumpPath(config, sessionId, time);
-  await $.fs.write(path, text);
-  await copyDump($, text);
-  return `watchdog dump: ${path}`;
-};
-
-const onWatchdogCommand: Hook<'command.run'> = async ($, e) => {
+// §5.2, §13.3: on, off and status; `dump` goes to the dump hook beneath.
+const onWatchdogCommand: Hook<'command.run'> = async ($, e, next) => {
   const subcommand = parseSubcommand(e.args);
   if (subcommand === 'status') {
     return { text: statusText(headline()) };
@@ -228,10 +244,7 @@ const onWatchdogCommand: Hook<'command.run'> = async ($, e) => {
     const problem = await toggle($, subcommand === 'on').then(() => undefined, errorText);
     return { text: problem === undefined ? statusText(headline()) : `watchdog ${subcommand} failed: ${problem}` };
   }
-  const reply = await writeDump($, subcommand === 'dump raw').catch(
-    (error: unknown) => `watchdog dump failed: ${errorText(error)}`
-  );
-  return { text: reply };
+  return next(e);
 };
 
 // §5.4, §13.3, §13.4: the on source in the status while on, and always in the dump with the warnings.
