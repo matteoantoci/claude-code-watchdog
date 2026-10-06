@@ -25,6 +25,12 @@ export const errorRecord = (input: { watchdog: string; time: number; error: stri
   ...input,
 });
 
+// §7.5: the updates of one watchdog's backlog that a `-p` run left unreviewed.
+export const unreviewedRecord = (input: { watchdog: string; time: number; updates: number }): LogRecord => ({
+  kind: 'unreviewed',
+  ...input,
+});
+
 // §13.4: one finished review. §12.2: the model that ran is `usage.model`, else the roster's.
 export const reviewRecord = (input: {
   watchdog: Watchdog;

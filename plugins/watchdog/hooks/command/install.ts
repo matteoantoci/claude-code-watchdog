@@ -13,6 +13,7 @@ import {
   addOnWarning,
   currentOnSource,
   hasPrompted,
+  isEnvOn,
   isEnvOnFlag,
   isOnByDefault,
   onStoreKey,
@@ -195,7 +196,7 @@ const readStoredFlag = async ($: EngineInterface): Promise<unknown> => {
 // `onByDefault`. A failed turn-on writes one log row.
 const applyOrder = async ($: EngineInterface, state: unknown, isInteractive: boolean): Promise<void> => {
   const stored = isInteractive ? await readStoredFlag($).catch(() => undefined) : undefined;
-  const flag = pickOnFlag({ state, stored, onByDefault: isOnByDefault(), isInteractive });
+  const flag = pickOnFlag({ state, stored, onByDefault: isOnByDefault(), isInteractive, isEnvOn: isEnvOn() });
   const problem = flag === undefined ? undefined : await applyOnFlag($, flag).then(() => undefined, errorText);
   if (problem !== undefined) {
     $.ui.log(`watchdog on failed: ${problem}`);

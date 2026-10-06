@@ -1,6 +1,14 @@
 // Stubs for an L2 test of a watched session: every `$` call and engine event the mod reaches.
 import type { OnEvents } from '../../hooks/on';
-import type { AgentSpec, CommandRunInput, ModelCompleteRequest, SessionAppendInput, ToolSpec } from 'claude-code';
+import type {
+  AgentSpec,
+  CommandRunInput,
+  ModelCompleteRequest,
+  SessionAppendInput,
+  Settings,
+  SettingsSource,
+  ToolSpec,
+} from 'claude-code';
 
 export type SessionEvents =
   | 'session.version'
@@ -13,6 +21,8 @@ export type SessionEvents =
   | 'fs.read'
   | 'fs.stat'
   | 'env.get'
+  | 'env.set'
+  | 'settings.read'
   | 'session.cwd'
   | 'session.root'
   | 'session.repo'
@@ -38,9 +48,16 @@ export type Seen = {
   coreToolCalls: string[];
   // What `$.store` holds (store key → value), as JSON round trips it.
   store: Map<string, unknown>;
+  // Each `$.env.set` as [name, value]; an undefined value unsets.
+  envSets: [string, string | undefined][];
+  // The source of each `$.settings.read`; undefined for the merge.
+  settingsReads: (SettingsSource | undefined)[];
 };
 
 export const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const;
+
+// §5.3: a `-p` (or SDK) session.
+export const HEADLESS_START = { cwd: '/repo', surface: null, isInteractive: false } as const;
 
 // The workspace of every L2 session: `$HOME` is /home/me, and the cwd /repo is the git root and the session
 // root. So the user file is /home/me/.claude/WATCHDOG.json, the project files /repo/.claude/WATCHDOG.json and
@@ -90,8 +107,13 @@ type Options = {
   store?: ReadonlyMap<string, unknown>;
   storeSetDeny?: string;
   files?: Record<string, WorkspaceFile>;
-  // What `$.env.get` answers; a name not listed is unset. Default: `HOME` only.
+  // What `$.env.get` answers; a name not listed is unset. Default: `HOME` only. `$.env.set` changes it.
   env?: Readonly<Record<string, string>>;
+  // What `$.settings.read({ source })` answers for each source; a source not listed answers `{}`.
+  settings?: Partial<Record<SettingsSource, Settings>>;
+  // The reason each `agent.spawn` denies with, after it is seen. A throw in a stub only skips it, so a deny
+  // stands in for a reject: the mod handles both the same.
+  spawnDeny?: string;
   // The caller answers `$.clock` with `mock.clock` (./delivery), so this fixture leaves `clock.now` alone.
   isClockMocked?: true;
 };
@@ -114,9 +136,22 @@ const stubStore = (on: SessionStubs, seen: Seen, options: Options): void => {
 // `$.env`, and the workspace: every path not in `files` is missing. `fs.read` of another path answers the
 // shipped prompt it names.
 const stubWorkspace = (on: SessionStubs, seen: Seen, options: Options): void => {
-  const env = options.env ?? { HOME };
+  const env = new Map(Object.entries(options.env ?? { HOME }));
   const files = options.files ?? {};
-  on('env.get', (_$, e) => ({ value: env[e.name] }));
+  on('env.get', (_$, e) => ({ value: env.get(e.name) }));
+  on('env.set', (_$, e) => {
+    seen.envSets.push([e.name, e.value]);
+    if (e.value === undefined) {
+      env.delete(e.name);
+    } else {
+      env.set(e.name, e.value);
+    }
+    return { value: undefined };
+  });
+  on('settings.read', (_$, e) => {
+    seen.settingsReads.push(e.source);
+    return { value: (e.source === undefined ? undefined : options.settings?.[e.source]) ?? {} };
+  });
   on('session.cwd', () => ({ value: START.cwd }));
   on('session.root', () => ({ value: START.cwd }));
   on('session.repo', () => ({ value: { root: START.cwd, remote: null, internal: false, name: null } }));
@@ -161,7 +196,9 @@ const stubEngine = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('agent.spawn', (_$, e) => {
     const subagentType = 'subagent_type' in e ? e.subagent_type : e.subagentType;
     seen.spawns.push({ prompt: e.prompt, subagentType: String(subagentType), description: e.description });
-    return { model: 'claude-opus-4-5', agentId: REVIEW_AGENT };
+    return options.spawnDeny === undefined
+      ? { model: 'claude-opus-4-5', agentId: REVIEW_AGENT }
+      : { deny: options.spawnDeny };
   });
   on('turn.step', async function* (_$, e) {
     yield* [];
@@ -196,6 +233,8 @@ export const stubSession = (on: SessionStubs, options: Options = {}): Seen => {
     logs: [],
     coreToolCalls: [],
     store: new Map(options.store),
+    envSets: [],
+    settingsReads: [],
   };
   stubRegisters(on, seen, options);
   stubEngine(on, seen, options);

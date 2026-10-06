@@ -27,6 +27,7 @@ export type WatchdogLogUsage = {
 // §13.4: one record of the review log. `watchdog` is the display name, `time` ms since the epoch.
 // `review`: one finished review, with its `turn.complete` `reason`, step count and answer length.
 // `error`: an error of the mod that belongs to a watchdog (for example a refused steer append).
+// `unreviewed`: §7.5, the updates of a `-p` run that no review took.
 export type WatchdogLogRecord =
   | {
       readonly kind: 'review';
@@ -45,7 +46,8 @@ export type WatchdogLogRecord =
       readonly notes: readonly WatchdogLogNote[];
       readonly error: string | null;
     }
-  | { readonly kind: 'error'; readonly watchdog: string; readonly time: number; readonly error: string };
+  | { readonly kind: 'error'; readonly watchdog: string; readonly time: number; readonly error: string }
+  | { readonly kind: 'unreviewed'; readonly watchdog: string; readonly time: number; readonly updates: number };
 
 // §10.3: a late note of the nudge that waits, as the note hook admitted it: the watchdog slug, the review
 // agent, and the main-loop turn when it came (§10.7).

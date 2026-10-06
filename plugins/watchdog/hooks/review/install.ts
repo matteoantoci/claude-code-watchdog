@@ -6,8 +6,10 @@ import { addStatusLines } from '../command/status';
 import { errorText } from '../errors';
 import { closeUpdate, currentFeed, moveCursor, pendingBatch, setFeed } from '../feed/feed';
 import { currentMode } from '../lifecycle/mode';
-import { rememberPrompt } from '../log/log';
+import { isInteractiveSession } from '../lifecycle/on-order';
+import { addLogRecord, currentLog, rememberPrompt, unreviewedRecord } from '../log/log';
 import { resolveEffort, sessionEffort, setSessionEffort } from '../roster/model';
+import { dropBacklog, isUnboundReject, waitingUpdates } from './backlog';
 import { cadenceOf, countBoundary, setCadence } from './cadence';
 import { reviewPrompt } from './prompt';
 import { IDLE, learnReviewAgent, reviewOf, setSlot, slotLine, slotOf } from './slots';
@@ -37,6 +39,18 @@ const refreshAgent = async ($: EngineInterface, watchdog: Watchdog): Promise<voi
   );
 };
 
+// §7.5: in `-p` a spawn rejects with `no session is bound` once the session unbound. The watchdog's backlog
+// goes, with one `unreviewed: N updates` record for the dump file (§10.6); no failure counts.
+const dropUnbound = async ($: EngineInterface, watchdog: Watchdog, reason: string): Promise<void> => {
+  if (isInteractiveSession() || !isUnboundReject(reason)) {
+    return;
+  }
+  const updates = waitingUpdates(currentFeed(), currentFeed().cursors[watchdog.slug]);
+  setFeed(dropBacklog(currentFeed(), watchdog.slug));
+  addLogRecord(unreviewedRecord({ watchdog: watchdog.name, time: await $.clock.now(), updates }));
+  await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog()).catch(() => undefined);
+};
+
 // §7.2, §7.4, §7.5: a free watchdog with a due review takes all updates that wait into one review. The spawn
 // is awaited inside a live hook, and the in-flight window spans it (§7.3). A reject or a deny started no
 // agent: the slot is free again and the batch waits for the next boundary. The agent id may come only from
@@ -60,6 +74,7 @@ const spawnReview = async ($: EngineInterface, watchdog: Watchdog): Promise<void
     .finally(endSpawn);
   if (spawned.deny !== undefined) {
     setSlot(watchdog.slug, IDLE);
+    await dropUnbound($, watchdog, spawned.deny);
     return;
   }
   setCadence(watchdog.slug, { ...cadenceOf(watchdog.slug), isDue: false });

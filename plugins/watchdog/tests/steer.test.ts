@@ -67,7 +67,8 @@ describe('steer delivery', () => {
     expect(seen.reads.filter((path) => path.endsWith(GUIDANCE_PATH)).length).toBe(1);
     expect(written.log.length).toBe(1);
     expect(written.log[0]).toMatchObject({ kind: 'error', watchdog: 'default', time: NOW });
-    expect(written.log[0]?.error).toContain('steer append failed');
+    const [record] = written.log;
+    expect(record?.kind === 'error' ? record.error : undefined).toContain('steer append failed');
 
     // Undelivered: the note left the steer route, so the next tool result appends nothing more.
     await mainBash($);

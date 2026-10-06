@@ -28,7 +28,7 @@ describe('on flag values', () => {
 });
 
 describe('on order', () => {
-  const none = { state: undefined, stored: undefined, onByDefault: false, isInteractive: true };
+  const none = { state: undefined, stored: undefined, onByDefault: false, isInteractive: true, isEnvOn: false };
 
   test('the $.state flag wins over the stored flag and onByDefault, also a false', () => {
     expect(pickOnFlag({ ...none, state: OFF, stored: BY_COMMAND, onByDefault: true })).toEqual(OFF);
@@ -45,9 +45,15 @@ describe('on order', () => {
     expect(pickOnFlag(none)).toEqual(OFF);
   });
 
-  test('a headless session uses only the $.state flag', () => {
+  test('a headless session uses only the $.state flag, then CLAUDE_WATCHDOG', () => {
     const headless = { ...none, isInteractive: false, stored: BY_COMMAND, onByDefault: true };
     expect(pickOnFlag(headless)).toBeUndefined();
     expect(pickOnFlag({ ...headless, state: BY_COMMAND })).toEqual(BY_COMMAND);
+    expect(pickOnFlag({ ...headless, isEnvOn: true })).toEqual(BY_ENV);
+    expect(pickOnFlag({ ...headless, state: OFF, isEnvOn: true })).toEqual(OFF);
+  });
+
+  test('an interactive session ignores CLAUDE_WATCHDOG', () => {
+    expect(pickOnFlag({ ...none, isEnvOn: true })).toEqual(OFF);
   });
 });
