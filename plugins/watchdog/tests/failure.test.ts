@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { PROMPT, stubOnState } from './fixtures/on-state';
+import { PROMPT, stateIn, stubOnState } from './fixtures/on-state';
 import {
   NOW,
   REVIEW_AGENT,
+  SESSION_ID,
   START,
   USAGE,
   mainRow,
@@ -160,6 +161,19 @@ describe('§12.1 to §12.3: a review that ends with reason "error"', () => {
     await $.turn.complete(turnEnd('t4'));
     expect(reviews(seen)).toHaveLength(3);
     expect(seen.logs.slice(logsBefore)).toHaveLength(1);
+  });
+
+  test('the halt drops the backlog in $.state at once, so a reload does not bring it back', async ($, on: Stubs) => {
+    const seen = stub(on);
+    await startOn($);
+    await mainTurn($, 1);
+    await failReview($, OVERLOAD);
+    await mainTurn($, 2);
+    await failReview($, OVERLOAD);
+    await mainTurn($, 3);
+    await failReview($, OVERLOAD);
+
+    expect(stateIn(seen, SESSION_ID, 'feed')).toMatchObject({ cursors: { default: 'u3' } });
   });
 
   test('billing halts at the first failure', async ($, on: Stubs) => {
