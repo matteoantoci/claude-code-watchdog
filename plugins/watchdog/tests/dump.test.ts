@@ -1,13 +1,11 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { REVIEW_AGENT, START, USAGE, mainRow, stubSession, turnEnd, typed } from './fixtures/session';
+import { REVIEW_AGENT, SESSION_ID, START, USAGE, mainRow, stubSession, turnEnd, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { SessionEvents } from './fixtures/session';
 import type { AgentSpawnInput, RenderSurface } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
-type Stubs = OnEvents<
-  SessionEvents | 'env.get' | 'session.id' | 'session.surfaces' | 'fs.write' | 'ui.copy' | 'clock.after'
->;
+type Stubs = OnEvents<SessionEvents | 'env.get' | 'session.surfaces' | 'fs.write' | 'ui.copy' | 'clock.after'>;
 
 type Dumped = { writes: { path: string; text: string }[]; copies: string[]; delays: number[] };
 
@@ -30,7 +28,6 @@ const stubDump = (on: Stubs, options: DumpOptions = {}): Dumped => {
   const dumped: Dumped = { writes: [], copies: [], delays: [] };
   const env = options.env ?? { CLAUDE_CONFIG_DIR: '/cfg', HOME: '/home/me' };
   on('env.get', (_$, e) => ({ value: env[e.name] }));
-  on('session.id', () => ({ value: 'sess-1' }));
   on('session.surfaces', () => ({ value: options.surfaces ?? ['terminal'] }));
   on('fs.write', (_$, e) => {
     dumped.writes.push({ path: e.path, text: e.text });
@@ -112,7 +109,7 @@ describe('/watchdog dump', () => {
     await runReview($);
     const reply = await $.command.run(typed('dump'));
 
-    const path = '/cfg/watchdog/dumps/sess-1-20261006-090503.md';
+    const path = `/cfg/watchdog/dumps/${SESSION_ID}-20261006-090503.md`;
     expect(dumped.writes.map((write) => write.path)).toEqual([path]);
     expect(dumped.writes[0]?.text).toContain('### 2026-10-06T09:05:03Z · default · review afake0001');
     expect(dumped.writes[0]?.text).toContain('- end: answer, 2 steps, answer 4 chars');
@@ -150,7 +147,7 @@ describe('/watchdog dump', () => {
     await runReview($);
     const reply = await $.command.run(typed('dump raw'));
 
-    const path = '/home/me/.claude/watchdog/dumps/sess-1-20261006-090503.md';
+    const path = `/home/me/.claude/watchdog/dumps/${SESSION_ID}-20261006-090503.md`;
     expect(reply.text).toBe(`watchdog dump: ${path}`);
     expect(dumped.writes[0]?.path).toBe(path);
     expect(dumped.writes[0]?.text).toContain('## Prompts of the last reviews\n\n### default\n\n> New updates');
@@ -160,7 +157,6 @@ describe('/watchdog dump', () => {
   test('a refused write replies with the error', async ($, on: Stubs) => {
     stubSession(on);
     on('env.get', (_$, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }));
-    on('session.id', () => ({ value: 'sess-1' }));
     on('fs.write', () => ({ deny: 'read-only file system' }));
     await $.session.start(START);
     const reply = await $.command.run(typed('dump'));

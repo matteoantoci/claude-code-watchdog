@@ -1,15 +1,14 @@
+import { normalizeNote } from './guard';
 import type { Severity } from './tool';
 
 // Build-session choice "Delivery state labels": one list for the card header, the log row, the recap
 // and the dump.
-export type DeliveryState =
-  | 'steered'
-  | 'aside on next prompt'
-  | 'nudged'
-  | 'held'
-  | 'displaced'
-  | 'discarded'
-  | `dropped:${string}`;
+const DELIVERY_STATES = ['steered', 'aside on next prompt', 'nudged', 'held', 'displaced', 'discarded'] as const;
+
+export type DeliveryState = (typeof DELIVERY_STATES)[number] | `dropped:${string}`;
+
+export const isDeliveryState = (value: unknown): value is DeliveryState =>
+  typeof value === 'string' && (DELIVERY_STATES.some((state) => state === value) || value.startsWith('dropped:'));
 
 // One note a watchdog sent; `watchdog` is its slug, `turn` the main-loop turn counter when it came (§10.7).
 export type Note = {
@@ -22,7 +21,8 @@ export type Note = {
 
 export type HeldNote = Note & { readonly delivery: DeliveryState };
 
-// A guard drops a note before admission (§9, §12.6): it returns the ack the watchdog reads, or undefined.
+// Another area's guard drops a note after the destructive check (§12.6) and before the emission guard (§9):
+// it returns the ack the watchdog reads, or undefined.
 export type NoteGuard = (note: Note) => string | undefined;
 
 // A delivery route claims an admitted note (§10, §11.3): it returns its delivery state, or undefined.
@@ -52,6 +52,18 @@ export const deliveryFor = (note: Note): DeliveryState =>
 // Admitted notes that wait for their delivery, oldest first.
 export const holdNote = (note: HeldNote): void => {
   held.push(note);
+};
+
+// §9.1: the queued entry of a watchdog for one normalized text, while it waits for delivery.
+export const heldNoteOf = (watchdog: string, key: string): HeldNote | undefined =>
+  held.find((note) => note.watchdog === watchdog && normalizeNote(note.text) === key);
+
+// §9.1: a raise replaces the queued entry in place; §9.4: a displaced note leaves with no replacement.
+export const replaceHeldNote = (note: HeldNote, replacement?: HeldNote): void => {
+  const at = held.indexOf(note);
+  if (at !== -1) {
+    held.splice(at, 1, ...(replacement === undefined ? [] : [replacement]));
+  }
 };
 
 // A delivery takes the held notes in one state out of the list, oldest first.

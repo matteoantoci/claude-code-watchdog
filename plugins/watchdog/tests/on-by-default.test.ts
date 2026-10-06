@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { DESKTOP_DROP_WARNING } from '../hooks/lifecycle/on-order';
-import { DESKTOP_ATTACH, DESKTOP_START, PROMPT, SESSION_ID, stubOnState } from './fixtures/on-state';
+import { DESKTOP_ATTACH, DESKTOP_START, ON_STORE_KEY, PROMPT, storedOn, stubOnState } from './fixtures/on-state';
 import { START, stubSession, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { OnStateStubs } from './fixtures/on-state';
@@ -9,7 +9,6 @@ import type { OnStateStubs } from './fixtures/on-state';
 type DumpStubs = OnStateStubs & OnEvents<'env.get' | 'session.surfaces' | 'fs.write'>;
 
 const ON_BY_DEFAULT = { options: { onByDefault: true } };
-const STORE_KEY = `on:${SESSION_ID}`;
 const BY_COMMAND = { isOn: true, source: '/watchdog on' } as const;
 const BY_ENV = { isOn: true, source: 'CLAUDE_WATCHDOG' } as const;
 
@@ -39,15 +38,15 @@ describe('on order at session.start', () => {
   });
 
   test('the stored on:<sessionId> flag wins over onByDefault', ON_BY_DEFAULT, async ($, on: OnStateStubs) => {
-    stubSession(on);
-    stubOnState(on, { stored: { isOn: false, lastUsed: 1 } });
+    stubSession(on, { store: storedOn({ isOn: false, lastUsed: 1 }) });
+    stubOnState(on);
     await $.session.start(START);
     expect((await $.command.run(typed('status'))).text).toBe('watchdog off');
   });
 
   test('a new process restores the stored on flag with its source', async ($, on: OnStateStubs) => {
-    stubSession(on);
-    stubOnState(on, { stored: { ...BY_COMMAND, lastUsed: 1 } });
+    stubSession(on, { store: storedOn({ ...BY_COMMAND, lastUsed: 1 }) });
+    stubOnState(on);
     await $.session.start(START);
     expect((await $.command.run(typed('status'))).text).toBe('watchdog on\non source: /watchdog on\ndefault idle');
   });
@@ -56,8 +55,8 @@ describe('on order at session.start', () => {
     'the $.state flag of a reload wins over the stored flag and onByDefault, also a false',
     ON_BY_DEFAULT,
     async ($, on: OnStateStubs) => {
-      const seen = stubSession(on);
-      stubOnState(on, { state: { isOn: false }, stored: { ...BY_COMMAND, lastUsed: 1 } });
+      const seen = stubSession(on, { store: storedOn({ ...BY_COMMAND, lastUsed: 1 }) });
+      stubOnState(on, { state: { isOn: false } });
       await $.session.start(START);
       expect((await $.command.run(typed('status'))).text).toBe('watchdog off');
       expect(seen.agents).toEqual([]);
@@ -68,21 +67,21 @@ describe('on order at session.start', () => {
     'a headless session keeps the $.state flag and ignores the stored flag and onByDefault',
     ON_BY_DEFAULT,
     async ($, on: OnStateStubs) => {
-      stubSession(on);
-      stubOnState(on, { stored: { ...BY_COMMAND, lastUsed: 1 } });
+      stubSession(on, { store: storedOn({ ...BY_COMMAND, lastUsed: 1 }) });
+      stubOnState(on);
       await $.session.start({ cwd: '/repo', surface: null, isInteractive: false });
       expect((await $.command.run(typed('status'))).text).toBe('watchdog off');
     }
   );
 
   test('/watchdog on and off store the flag under on:<sessionId>', async ($, on: OnStateStubs) => {
-    stubSession(on);
-    const state = stubOnState(on);
+    const seen = stubSession(on);
+    stubOnState(on);
     await $.session.start(START);
     await $.command.run(typed('on'));
-    expect(state.store.get(STORE_KEY)).toEqual({ ...BY_COMMAND, lastUsed: expect.any(Number) });
+    expect(seen.store.get(ON_STORE_KEY)).toEqual({ ...BY_COMMAND, lastUsed: expect.any(Number) });
     await $.command.run(typed('off'));
-    expect(state.store.get(STORE_KEY)).toEqual({ isOn: false, lastUsed: expect.any(Number) });
+    expect(seen.store.get(ON_STORE_KEY)).toEqual({ isOn: false, lastUsed: expect.any(Number) });
   });
 });
 
@@ -110,8 +109,8 @@ describe('Desktop attach', () => {
     'the attach drops an on state from CLAUDE_WATCHDOG with a dump warning; the stored flag wins',
     ON_BY_DEFAULT,
     async ($, on: DumpStubs) => {
-      stubSession(on);
-      const state = stubOnState(on, { state: BY_ENV, stored: { isOn: false, lastUsed: 1 } });
+      stubSession(on, { store: storedOn({ isOn: false, lastUsed: 1 }) });
+      const state = stubOnState(on, { state: BY_ENV });
       const dumps: string[] = [];
       on('env.get', (_$, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }));
       on('session.surfaces', () => ({ value: ['desktop'] as const }));

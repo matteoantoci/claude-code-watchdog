@@ -16,6 +16,9 @@ export type SessionEvents =
   | 'turn.complete'
   | 'tool.call'
   | 'ui.log'
+  | 'session.id'
+  | 'store.get'
+  | 'store.set'
   | 'clock.now';
 
 export type SessionStubs = OnEvents<SessionEvents>;
@@ -28,6 +31,8 @@ export type Seen = {
   spawns: { prompt: string; subagentType?: string; description?: string }[];
   logs: string[];
   coreToolCalls: string[];
+  // What `$.store` holds (store key → value), as JSON round trips it.
+  store: Map<string, unknown>;
 };
 
 export const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const;
@@ -66,7 +71,27 @@ const answer = (text: string) => ({
   usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
 });
 
-type Options = { preflightDeny?: string; noteDeny?: string };
+type Options = {
+  preflightDeny?: string;
+  noteDeny?: string;
+  store?: ReadonlyMap<string, unknown>;
+  storeSetDeny?: string;
+};
+
+export const SESSION_ID = 'c0ffee00-0000-4000-8000-000000000001';
+
+// `$.session.id` and a `$.store` in memory that round trips each value through JSON.
+const stubStore = (on: SessionStubs, seen: Seen, options: Options): void => {
+  on('session.id', () => ({ value: SESSION_ID }));
+  on('store.get', (_$, e) => ({ value: seen.store.get(e.key) }));
+  on('store.set', (_$, e) => {
+    if (options.storeSetDeny !== undefined) {
+      return { deny: options.storeSetDeny };
+    }
+    seen.store.set(e.key, JSON.parse(JSON.stringify(e.value)) as unknown);
+    return { value: undefined };
+  });
+};
 
 const stubRegisters = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('session.version', () => ({ value: { version: '2.1.290', base: '2.1.290' } }));
@@ -123,9 +148,19 @@ const stubEngine = (on: SessionStubs, seen: Seen): void => {
 
 // Registers every stub; call it before the test's first `$` call.
 export const stubSession = (on: SessionStubs, options: Options = {}): Seen => {
-  const seen: Seen = { tools: [], agents: [], reads: [], preflights: [], spawns: [], logs: [], coreToolCalls: [] };
+  const seen: Seen = {
+    tools: [],
+    agents: [],
+    reads: [],
+    preflights: [],
+    spawns: [],
+    logs: [],
+    coreToolCalls: [],
+    store: new Map(options.store),
+  };
   stubRegisters(on, seen, options);
   stubEngine(on, seen);
+  stubStore(on, seen, options);
   return seen;
 };
 
