@@ -57,6 +57,8 @@ declare module 'claude-code' {
       feed: WatchdogFeed;
       // §13.4: the review log, newest last; no render hook reads it, so a write draws nothing.
       log: readonly WatchdogLogRecord[];
+      // §10.7: the main-loop `turn.start` counter of `turns_ago`.
+      turns: number;
     };
   }
 }

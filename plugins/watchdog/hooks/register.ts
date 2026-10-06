@@ -1,5 +1,6 @@
 import { installAgents } from './agents/install';
 import { installCommand } from './command/install';
+import { installDelivery } from './delivery/install';
 import { installFeed } from './feed/install';
 import { installLifecycle } from './lifecycle/install';
 import { installLog } from './log/install';
@@ -15,4 +16,5 @@ export const register: Register = (on) => {
   installReview(on);
   installLog(on);
   installNote(on);
+  installDelivery(on);
 };

@@ -96,7 +96,7 @@ describe('review log', () => {
         '- cost: $?',
         '- error: none',
         '- notes: 1',
-        '  - [concern] Check the null branch. (held)',
+        '  - [concern] Check the null branch. (steered)',
         '- answer:',
         '',
         '> done',
