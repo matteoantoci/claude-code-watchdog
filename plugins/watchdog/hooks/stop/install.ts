@@ -218,11 +218,16 @@ const onPrompt: Hook<'prompt.submit'> = async ($, e, next) => {
   return result;
 };
 
-// §5.2: `/watchdog off` beneath turned the session off: each review that runs stops with reason `off`.
-// `/watchdog on` may disable a watchdog whose review runs.
+// §5.2 off step 1 before step 2: each review that runs stops with reason `off` before the command beneath clears
+// the held notes, so the note guard drops a note that the review sends while the off runs; after it, a review
+// that a boundary spawned in that window stops too. `/watchdog on` may disable a watchdog whose review runs.
 const onCommand: Hook<'command.run'> = async ($, e, next) => {
+  const isOff = parseSubcommand(e.args) === 'off' && currentMode() === 'on';
+  if (isOff) {
+    await stopReviews($, 'off');
+  }
   const result = await next(e);
-  await (parseSubcommand(e.args) === 'off' && currentMode() === 'off' ? stopReviews($, 'off') : trackAll($));
+  await (isOff && currentMode() === 'off' ? stopReviews($, 'off') : trackAll($));
   return result;
 };
 

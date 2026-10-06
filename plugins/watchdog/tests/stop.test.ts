@@ -268,6 +268,24 @@ describe('§5.2 `/watchdog off` stops each review', () => {
       lastError: null,
     });
   });
+
+  test('the stop comes before the clear: a note that the review sends while the off runs is dropped', async ($, on: ClockStubs) => {
+    // The note arrives inside the off's own `$.state` write of the on flag, after the held notes were cleared.
+    const acks: ToolCallResult[] = [];
+    on('state.set', { key: 'on' }, async (_$, e, next) => {
+      if (e.key === 'on' && !e.value.isOn) {
+        acks.push(await note($, 'the migration deletes the users table'));
+      }
+      return next(e);
+    });
+    const seen = stubDelivery(on);
+    stubState(on);
+    await startReview($);
+    await $.command.run(typed('off'));
+
+    expect(acks).toEqual([{ result: DROPPED }]);
+    expect(seen.logs.filter((row) => row.includes('the migration deletes'))).toEqual([]);
+  });
 });
 
 describe('§7.8, §11.2 a review of a subagent', () => {
@@ -324,5 +342,25 @@ describe('§7.8, §11.2 a review of a subagent', () => {
       watchdogs: { default: { problem: null, failures: 0, refused: 0 } },
       lastError: null,
     });
+  });
+
+  test('a review that a subagent boundary spawns while the off stops the first one stops too', async ($, on: ClockStubs) => {
+    // The subagent's next boundary comes inside the off's first `$.state` write of the stop map.
+    const window = { isOpen: true };
+    on('state.set', { key: 'reviews' }, async (_$, e, next) => {
+      if (window.isOpen && e.key === 'reviews' && e.value.stops.length > 0) {
+        window.isOpen = false;
+        await subagentEnd($);
+      }
+      return next(e);
+    });
+    const seen = stubDelivery(on, { files: EXPLORE_ON });
+    stubState(on);
+    await startSubagentReview($);
+    await $.command.run(typed('off'));
+    expect(reviews(seen)).toHaveLength(2);
+
+    await $.command.run(typed('on'));
+    expect(await status($)).toContain('default idle');
   });
 });
