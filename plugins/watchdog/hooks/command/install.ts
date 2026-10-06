@@ -7,6 +7,7 @@ import { COMMAND_LOG_DELAY_MS } from '../constants';
 import { addDumpLines } from '../dump/sections';
 import { errorText } from '../errors';
 import { EMPTY_FEED, currentFeed, setFeed, startFeed } from '../feed/feed';
+import { freezeGuidance } from '../guidance/memory';
 import { currentMode, setMode } from '../lifecycle/mode';
 import {
   DESKTOP_DROP_WARNING,
@@ -103,8 +104,8 @@ const readSearchPath = async ($: EngineInterface, search: SearchPath): Promise<L
   return { ...search, mtimeMs, content };
 };
 
-// §4.3, §4.5: the user file and the project files, read at `/watchdog on`; the roster stays frozen until the
-// next `/watchdog on`.
+// §4.3, §4.5: the user file and the project files of `WATCHDOG.json` and `WATCHDOG.md`, read at `/watchdog on`;
+// the roster and the guidance (§4.4) stay frozen until the next `/watchdog on`.
 const loadRoster = async ($: EngineInterface): Promise<{ roster: Roster; files: WatchedFile[] }> => {
   const where: Where = {
     configDir: await $.env.get('CLAUDE_CONFIG_DIR'),
@@ -113,8 +114,12 @@ const loadRoster = async ($: EngineInterface): Promise<{ roster: Roster; files: 
     cwd: await $.session.cwd(),
     root: await $.session.root(),
   };
-  const files = await Promise.all(searchPaths(where, 'WATCHDOG.json').map(async (search) => readSearchPath($, search)));
-  return { roster: buildRoster(files, where), files: files.map(({ path, mtimeMs }) => ({ path, mtimeMs })) };
+  const read = async (name: string): Promise<(LoadedFile & WatchedFile)[]> =>
+    Promise.all(searchPaths(where, name).map(async (search) => readSearchPath($, search)));
+  const [files, guides] = await Promise.all([read('WATCHDOG.json'), read('WATCHDOG.md')]);
+  freezeGuidance(guides);
+  const watched = [...files, ...guides].map(({ path, mtimeMs }) => ({ path, mtimeMs }));
+  return { roster: buildRoster(files, where), files: watched };
 };
 
 // §4.6, §13.2: one row with the warning count; it waits, so that from a `command.run` hook it lands below the
@@ -129,9 +134,10 @@ const logWarnings = ($: EngineInterface, count: number): void => {
 };
 
 // §5.2: read the roster, register, preflight, move the feed cursors to the end, then set the on flag and the
-// on source.
+// on source. The roster is set before the register, whose system prompt reads it (§8.1).
 const turnOn = async ($: EngineInterface, source: OnSource): Promise<void> => {
   const { roster, files } = await loadRoster($);
+  setRoster(roster, files);
   const runnable = roster.watchdogs.filter((watchdog) => watchdog.isEnabled && watchdog.noModel === null);
   const blocked = await registerAll($, runnable);
   const noModel = await preflightAll(
@@ -139,7 +145,6 @@ const turnOn = async ($: EngineInterface, source: OnSource): Promise<void> => {
     runnable.filter((watchdog) => blocked.get(watchdog.slug) === undefined).map((watchdog) => watchdog.model)
   );
   const reviewers = slotsAfterOn(roster.watchdogs, blocked, noModel);
-  setRoster(roster, files);
   resetCadences();
   setFeed(startFeed(reviewers));
   setMode('on');

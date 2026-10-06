@@ -7,6 +7,7 @@ import { errorText } from '../errors';
 import { currentMode } from '../lifecycle/mode';
 import { addLogRecord, currentLog, errorRecord } from '../log/log';
 import { addDeliveryRoute, heldNotes, holdNote, rerouteNotes, takeNotes } from '../note/notes';
+import { isPersonPrompt } from '../person';
 import {
   currentNudgeClock,
   currentRouting,
@@ -21,7 +22,6 @@ import {
   setNudgeClock,
   startMainTurn,
 } from './nudge';
-import { isPersonPrompt } from './person';
 import { countTurn, currentTurn, restoreTurn } from './turns';
 import { wrapNotes, wrappedNote } from './wrapper';
 import type { DeliveryState, HeldNote, Note } from '../note/notes';

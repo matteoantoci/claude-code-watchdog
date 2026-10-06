@@ -9,11 +9,11 @@ export const isUnboundReject = (reason: string): boolean => reason.includes('no 
 // took. A null or unknown `from` counts every update.
 export const waitingUpdates = (feed: Feed, from: string | null | undefined): number => {
   const start = feed.rows.findIndex((row) => row.uuid === from);
-  return feed.ends.filter((end) => feed.rows.findIndex((row) => row.uuid === end) > start).length;
+  return feed.ends.filter((end) => feed.rows.findIndex((row) => row.uuid === end.uuid) > start).length;
 };
 
 // §7.5: the backlog goes: the watchdog's cursor moves past the last closed update.
 export const dropBacklog = (feed: Feed, slug: string): Feed => {
-  const end = feed.ends.at(-1);
+  const end = feed.ends.at(-1)?.uuid;
   return end === undefined ? feed : moveCursor(feed, slug, end);
 };

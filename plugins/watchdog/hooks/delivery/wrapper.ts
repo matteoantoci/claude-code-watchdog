@@ -13,8 +13,8 @@ export type WrappedNote = {
 
 const XML_ESCAPES: Readonly<Record<string, string>> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 
-// §10.7: XML-escapes a note text or an attribute value.
-const escapeXml = (text: string): string => text.replaceAll(/[&<>"]/gu, (char) => XML_ESCAPES[char] ?? char);
+// §10.7: XML-escapes a note text or an attribute value; §7.6: the text of a `<primary-context>` block.
+export const escapeXml = (text: string): string => text.replaceAll(/[&<>"]/gu, (char) => XML_ESCAPES[char] ?? char);
 
 const attribute = (name: string, value: string | undefined): string =>
   value === undefined ? '' : ` ${name}="${escapeXml(value)}"`;
