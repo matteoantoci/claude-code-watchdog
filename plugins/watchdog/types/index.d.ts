@@ -138,6 +138,29 @@ export type WatchdogRunningReview = {
   readonly spawnedAt: number;
 };
 
+// §13.1: one band card: an admitted note since the last person prompt. `key` is the watchdog slug and the
+// normalized text (§9.1), `seq` the order of admission (newest highest), `name` the watchdog's display name,
+// `turn` the main-loop turn when it came (§10.7), `subagent` the type of a watched subagent (§11.3).
+export type WatchdogCard = {
+  readonly key: string;
+  readonly seq: number;
+  readonly name: string;
+  readonly severity: 'nit' | 'concern' | 'blocker';
+  readonly text: string;
+  readonly turn: number;
+  readonly delivery: string;
+  readonly subagent?: string;
+};
+
+// §13.1: the cards, the session totals of the count line, the turn counter the card ages count from (0 with
+// no card), and the last `seq` given.
+export type WatchdogBand = {
+  readonly cards: readonly WatchdogCard[];
+  readonly totals: { readonly blocker: number; readonly concern: number; readonly nit: number };
+  readonly turn: number;
+  readonly seq: number;
+};
+
 declare module 'claude-code' {
   interface PluginState {
     watchdog: {
@@ -167,6 +190,8 @@ declare module 'claude-code' {
         readonly running: readonly WatchdogRunningReview[];
         readonly stops: readonly { readonly agentId: string; readonly reason: WatchdogStopReason }[];
       };
+      // §13.1: the band cards; the band hook reads it, so each write draws the band again.
+      band: WatchdogBand;
     };
   }
 }

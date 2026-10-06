@@ -98,3 +98,18 @@ export const STATUS_NARROW_COLUMNS = 80;
 
 // §13.3: the status snapshots that wait for their `CommandOutput` render or stay for a redraw, oldest out.
 export const STATUS_SNAPSHOT_CAP = 20;
+
+// §13.1: the band shows this many cards, then `+N more`.
+export const BAND_CARD_LIMIT = 3;
+
+// §13.1, §12.5: below this many `bodyColumns`, one line for each note and the short failure line.
+export const BAND_LINE_COLUMNS = 80;
+
+// §13.1: below this many `bodyColumns`, the note text is cut.
+export const BAND_TINY_COLUMNS = 50;
+
+// §13.1: the longest note text of the cut form.
+export const BAND_TINY_TEXT_MAX = 40;
+
+// §12.5: the halt's next try shows in whole minutes.
+export const MINUTE_MS = 60_000;

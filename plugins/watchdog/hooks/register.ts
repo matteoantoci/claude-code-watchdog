@@ -1,4 +1,5 @@
 import { installAgents } from './agents/install';
+import { installBand } from './band/install';
 import { installCommand } from './command/install';
 import { installDelivery } from './delivery/install';
 import { installDump } from './dump/install';
@@ -17,6 +18,7 @@ import { installTools } from './tools/install';
 import type { Register } from 'claude-code';
 
 export const register: Register = (on, options) => {
+  installBand(on);
   installRoster(on);
   installFailure(on);
   installStop(on);

@@ -43,6 +43,22 @@ const routes: DeliveryRoute[] = [];
 const bindings: NoteBinding[] = [];
 const held: HeldNote[] = [];
 
+// §13.1: a watcher sees each note that the held list gets (`before` undefined) or changes in place (a raise,
+// a new route); a note that leaves the list (taken for delivery, displaced) reaches no watcher.
+export type HeldNoteWatcher = (before: HeldNote | undefined, after: HeldNote) => void;
+
+const watchers: HeldNoteWatcher[] = [];
+
+export const watchHeldNotes = (watcher: HeldNoteWatcher): void => {
+  watchers.push(watcher);
+};
+
+const tell = (before: HeldNote | undefined, after: HeldNote): void => {
+  watchers.forEach((watcher) => {
+    watcher(before, after);
+  });
+};
+
 // Guards, routes and bindings run in the order the areas add them, in their `installX(on)`.
 export const addNoteGuard = (guard: NoteGuard): void => {
   guards.push(guard);
@@ -69,6 +85,7 @@ export const deliveryFor = (note: Note): DeliveryState =>
 // Admitted notes that wait for their delivery, oldest first.
 export const holdNote = (note: HeldNote): void => {
   held.push(note);
+  tell(undefined, note);
 };
 
 // §9.1, §11.4: the queued entry of a watchdog for one normalized text on one watched agent, while it waits
@@ -86,6 +103,9 @@ export const replaceHeldNote = (note: HeldNote, replacement?: HeldNote): void =>
   const at = held.indexOf(note);
   if (at !== -1) {
     held.splice(at, 1, ...(replacement === undefined ? [] : [replacement]));
+  }
+  if (at !== -1 && replacement !== undefined) {
+    tell(note, replacement);
   }
 };
 
@@ -112,7 +132,9 @@ export const rerouteNotes = (route: (note: HeldNote) => DeliveryState): void => 
   held.forEach((note, index) => {
     const delivery = isBound(note) ? note.delivery : route(note);
     if (delivery !== note.delivery) {
-      held[index] = { ...note, delivery };
+      const rerouted = { ...note, delivery };
+      held[index] = rerouted;
+      tell(note, rerouted);
     }
   });
 };
