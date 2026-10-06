@@ -6,8 +6,8 @@ import { installNote } from './note/install';
 import { installReview } from './review/install';
 import type { Register } from 'claude-code';
 
-export const register: Register = (on) => {
-  installCommand(on);
+export const register: Register = (on, options) => {
+  installCommand(on, options);
   installLifecycle(on);
   installAgents(on);
   installFeed(on);

@@ -15,8 +15,10 @@ export type WatchdogFeed = {
 declare module 'claude-code' {
   interface PluginState {
     watchdog: {
-      // §5.2, §14.1: the on flag and the on source.
-      on: { readonly isOn: true; readonly source: '/watchdog on' } | { readonly isOn: false };
+      // §5.2, §5.4, §14.1: the on flag and the on source.
+      on:
+        | { readonly isOn: true; readonly source: '/watchdog on' | 'onByDefault' | 'CLAUDE_WATCHDOG' }
+        | { readonly isOn: false };
       // §7.3: the id set as an array (a Set becomes `{}` in JSON): each review agent and its watchdog slug.
       ids: readonly { readonly agentId: string; readonly watchdog: string }[];
       feed: WatchdogFeed;
