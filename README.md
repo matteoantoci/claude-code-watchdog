@@ -44,7 +44,8 @@ CLAUDE_WATCHDOG=on claude -p "…"
 - A project `env` setting (`.claude/settings.json` or `.claude/settings.local.json`) is ignored: the run stays off.
   The shell, the user settings, `--settings` and managed settings can set it.
 - `total_cost_usd` can leave out the review cost.
-- `claude -p "/watchdog on <prompt>"` does not work: the command turns on, but the model never sees the prompt.
+- `claude -p "/watchdog on <prompt>"` does not work: `/watchdog` takes no prompt, so the run replies with the usage
+  line and stays off. Use `CLAUDE_WATCHDOG=on` instead.
 
 ## Configure the watchdogs
 

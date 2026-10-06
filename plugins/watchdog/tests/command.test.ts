@@ -50,6 +50,14 @@ describe('/watchdog command', () => {
     const reply = await $.command.run(typed('of'));
     expect(reply.text).toBe('usage: /watchdog [on|off|status|dump [raw]]');
   });
+
+  test('/watchdog on <prompt> takes no prompt: it replies with the usage and the session stays off (§3)', async ($, on) => {
+    startOn(on, '2.1.290');
+    await $.session.start(START);
+    const reply = await $.command.run(typed('on fix the parser'));
+    expect(reply.text).toBe('usage: /watchdog [on|off|status|dump [raw]]');
+    expect((await $.command.run(typed('status'))).text).toBe('watchdog off');
+  });
 });
 
 describe('/watchdog registration', () => {
