@@ -11,12 +11,13 @@ export type DeliveryState =
   | 'discarded'
   | `dropped:${string}`;
 
-// One note a watchdog sent; `watchdog` is its slug.
+// One note a watchdog sent; `watchdog` is its slug, `turn` the main-loop turn counter when it came (§10.7).
 export type Note = {
   readonly watchdog: string;
   readonly agentId: string;
   readonly severity: Severity;
   readonly text: string;
+  readonly turn: number;
 };
 
 export type HeldNote = Note & { readonly delivery: DeliveryState };
@@ -51,6 +52,14 @@ export const deliveryFor = (note: Note): DeliveryState =>
 // Admitted notes that wait for their delivery, oldest first.
 export const holdNote = (note: HeldNote): void => {
   held.push(note);
+};
+
+// A delivery takes the held notes in one state out of the list, oldest first.
+export const takeNotes = (delivery: DeliveryState): HeldNote[] => {
+  const taken = held.filter((note) => note.delivery === delivery);
+  const kept = held.filter((note) => note.delivery !== delivery);
+  held.splice(0, held.length, ...kept);
+  return taken;
 };
 
 // §5.2: `/watchdog off` clears the held notes.

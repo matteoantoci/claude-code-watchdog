@@ -1,5 +1,6 @@
 import { watchdogOf } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
+import { currentTurn } from '../delivery/turns';
 import { errorText } from '../errors';
 import { deliveryFor, guardNote, holdNote, logRow } from './notes';
 import { parseNote } from './tool';
@@ -25,7 +26,7 @@ const admitNote = ($: EngineInterface, e: NoteCall): ToolCallResult => {
   if (input === undefined) {
     return { deny: BAD_ARGUMENTS };
   }
-  const note = { watchdog, agentId: e.agentId, ...input };
+  const note = { watchdog, agentId: e.agentId, turn: currentTurn(), ...input };
   const dropped = guardNote(note);
   if (dropped !== undefined) {
     return { result: dropped };

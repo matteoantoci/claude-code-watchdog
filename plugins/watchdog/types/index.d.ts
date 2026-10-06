@@ -12,6 +12,14 @@ export type WatchdogFeed = {
   readonly cursors: Readonly<Record<string, string | null>>;
 };
 
+// §13.4: one review log record; an error of a delivery or a review.
+export type WatchdogLogRecord = {
+  readonly kind: 'error';
+  readonly watchdog: string;
+  readonly time: number;
+  readonly error: string;
+};
+
 declare module 'claude-code' {
   interface PluginState {
     watchdog: {
@@ -22,6 +30,10 @@ declare module 'claude-code' {
       // §7.3: the id set as an array (a Set becomes `{}` in JSON): each review agent and its watchdog slug.
       ids: readonly { readonly agentId: string; readonly watchdog: string }[];
       feed: WatchdogFeed;
+      // §13.4: the review log, newest last; no render hook reads it, so a write draws nothing.
+      log: readonly WatchdogLogRecord[];
+      // §10.7: the main-loop `turn.start` counter of `turns_ago`.
+      turns: number;
     };
   }
 }
