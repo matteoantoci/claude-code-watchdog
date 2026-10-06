@@ -1,3 +1,4 @@
+import { DUMP_USD_DIGITS } from '../constants';
 import type { LogRecord, ReviewPrompt, ReviewRecord } from '../log/log';
 
 // §13.4: `<config>` is `CLAUDE_CONFIG_DIR`, else `$HOME/.claude`; undefined when neither is set.
@@ -40,7 +41,7 @@ const reviewText = (record: ReviewRecord): string[] => [
   `- model: ${record.model}, effort ${record.effort}`,
   `- end: ${record.reason}, ${record.steps} steps, answer ${record.answerLength} chars`,
   `- usage: ${usageText(record.usage)}`,
-  `- cost: ${record.cost === null ? '$?' : `$${record.cost}`}`,
+  `- cost: ${record.cost === null ? '$?' : `$${record.cost.toFixed(DUMP_USD_DIGITS)}`}`,
   `- error: ${record.error ?? 'none'}`,
   ...(record.reason === 'refusal' ? [`- refused: ${record.refusal ?? 'no category'}`] : []),
   ...notesText(record.notes),

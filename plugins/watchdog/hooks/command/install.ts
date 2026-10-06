@@ -33,16 +33,13 @@ import { sessionEffort } from '../roster/model';
 import { searchPaths } from '../roster/paths';
 import { parseSubcommand } from './args';
 import { UNSUPPORTED_REPLY, USAGE_REPLY } from './spec';
-import { addStatusLines, statusText } from './status';
+import { addStatusLines, statusHeadline, statusText } from './status';
 import type { Roster, WatchedFile, Watchdog } from '../agents/roster';
 import type { OnFlag, OnSource } from '../lifecycle/on-order';
 import type { OnEvents } from '../on';
 import type { LoadedFile } from '../roster/merge';
 import type { SearchPath, Where } from '../roster/paths';
 import type { EngineInterface, Hook, PluginOptions } from 'claude-code';
-
-const headline = (): string =>
-  currentMode() === 'unsupported' ? `watchdog unsupported: ${UNSUPPORTED_REPLY}` : `watchdog ${currentMode()}`;
 
 // §5.2 step 4, §14.1: `$.state` keeps the on flag and the feed. The live copies are module memory, so a
 // refused write loses only what a reload would carry over.
@@ -238,7 +235,7 @@ const onDesktopAttach: Hook<'session.attach'> = async ($, e, next) => {
 const onWatchdogCommand: Hook<'command.run'> = async ($, e, next) => {
   const subcommand = parseSubcommand(e.args);
   if (subcommand === 'status') {
-    return { text: statusText(headline()) };
+    return { text: statusText(statusHeadline()) };
   }
   if (subcommand === 'unknown') {
     return { text: USAGE_REPLY };
@@ -248,7 +245,7 @@ const onWatchdogCommand: Hook<'command.run'> = async ($, e, next) => {
   }
   if (subcommand === 'on' || subcommand === 'off') {
     const problem = await toggle($, subcommand === 'on').then(() => undefined, errorText);
-    return { text: problem === undefined ? statusText(headline()) : `watchdog ${subcommand} failed: ${problem}` };
+    return { text: problem === undefined ? statusText(statusHeadline()) : `watchdog ${subcommand} failed: ${problem}` };
   }
   return next(e);
 };

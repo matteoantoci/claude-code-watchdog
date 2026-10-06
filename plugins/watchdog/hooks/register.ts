@@ -10,6 +10,7 @@ import { installLog } from './log/install';
 import { installNote } from './note/install';
 import { installReview } from './review/install';
 import { installRoster } from './roster/install';
+import { installStatus } from './status/install';
 import { installStop } from './stop/install';
 import { installSubagents } from './subagents/install';
 import { installTools } from './tools/install';
@@ -19,6 +20,7 @@ export const register: Register = (on, options) => {
   installRoster(on);
   installFailure(on);
   installStop(on);
+  installStatus(on);
   installCommand(on, options);
   installDump(on);
   installLifecycle(on);
