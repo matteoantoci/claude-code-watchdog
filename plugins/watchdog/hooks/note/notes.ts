@@ -10,12 +10,13 @@ export type DeliveryState = (typeof DELIVERY_STATES)[number] | `dropped:${string
 export const isDeliveryState = (value: unknown): value is DeliveryState =>
   typeof value === 'string' && (DELIVERY_STATES.some((state) => state === value) || value.startsWith('dropped:'));
 
-// One note a watchdog sent; `watchdog` is its slug.
+// One note a watchdog sent; `watchdog` is its slug, `turn` the main-loop turn counter when it came (§10.7).
 export type Note = {
   readonly watchdog: string;
   readonly agentId: string;
   readonly severity: Severity;
   readonly text: string;
+  readonly turn: number;
 };
 
 export type HeldNote = Note & { readonly delivery: DeliveryState };
@@ -63,6 +64,14 @@ export const replaceHeldNote = (note: HeldNote, replacement?: HeldNote): void =>
   if (at !== -1) {
     held.splice(at, 1, ...(replacement === undefined ? [] : [replacement]));
   }
+};
+
+// A delivery takes the held notes in one state out of the list, oldest first.
+export const takeNotes = (delivery: DeliveryState): HeldNote[] => {
+  const taken = held.filter((note) => note.delivery === delivery);
+  const kept = held.filter((note) => note.delivery !== delivery);
+  held.splice(0, held.length, ...kept);
+  return taken;
 };
 
 // §5.2: `/watchdog off` clears the held notes.

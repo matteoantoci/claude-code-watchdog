@@ -1,8 +1,10 @@
 import { watchdogOf } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
 import { DEFAULT_MAX_NOTES_PER_REVIEW } from '../constants';
+import { currentTurn } from '../delivery/turns';
 import { errorText } from '../errors';
 import { batchRows, currentFeed } from '../feed/feed';
+import { traceNote } from '../log/log';
 import { reviewOf, slotOf } from '../review/slots';
 import { UNSAFE_ROW, isUnsafeNote } from './destructive';
 import { DROP_ACKS, judgeNote, normalizeNote, reviewSlots, setReviewSlots } from './guard';
@@ -34,14 +36,16 @@ const NOT_A_WATCHDOG = 'Only watchdog agents can call this tool.';
 const ADMITTED = 'Queued. Do not re-raise.';
 const BAD_ARGUMENTS = 'A note needs `note` text and a `severity` of nit, concern or blocker.';
 
-// §8.3: the note of a known watchdog, or the deny.
+// §8.3: the note of a known watchdog, with the main-loop turn when it came (§10.7), or the deny.
 const noteOf = (e: NoteCall): Note | { readonly deny: string } => {
   const watchdog = watchdogOf(e.agentId);
   if (watchdog === undefined || e.agentId === undefined) {
     return { deny: NOT_A_WATCHDOG };
   }
   const input = parseNote(e);
-  return input === undefined ? { deny: BAD_ARGUMENTS } : { watchdog, agentId: e.agentId, ...input };
+  return input === undefined
+    ? { deny: BAD_ARGUMENTS }
+    : { watchdog, agentId: e.agentId, turn: currentTurn(), ...input };
 };
 
 // §12.6: the rendered rows that the mod gave the running review of this agent; none when no review of it runs.
@@ -88,13 +92,14 @@ const raiseHeld = (history: NoteHistory, queued: HeldNote, severity: Severity) =
   return { shown, history: updateNote(history, queued.watchdog, change) };
 };
 
-// §9.4: the displaced note leaves the held list, and the history marks it `displaced`.
+// §9.4: the displaced note leaves the held list, and the history and the review log mark it `displaced`.
 const displaceHeld = (history: NoteHistory, watchdog: string, key: string | undefined): NoteHistory => {
   const gone = key === undefined ? undefined : heldNoteOf(watchdog, key);
   if (gone === undefined || key === undefined) {
     return history;
   }
   replaceHeldNote(gone);
+  traceNote({ ...gone, delivery: 'displaced' });
   return updateNote(history, watchdog, { key, delivery: 'displaced' });
 };
 
@@ -121,7 +126,8 @@ const judge = (history: NoteHistory, note: Note, key: string): Verdict =>
     }
   );
 
-// §9: an admitted note waits for its delivery, joins the live history and writes one row; the ack.
+// §9: an admitted note waits for its delivery, joins the live history and the review log, and writes one
+// row; the ack.
 const emitNote = ($: EngineInterface, sessionId: string, note: Note): string => {
   const key = normalizeNote(note.text);
   const history = liveHistory(sessionId) ?? EMPTY_HISTORY;
@@ -136,6 +142,7 @@ const emitNote = ($: EngineInterface, sessionId: string, note: Note): string => 
       ? raiseHeld(history, queued, note.severity)
       : holdNew(history, note, 'displaced' in verdict ? verdict.displaced : undefined);
   setLiveHistory(sessionId, next.history);
+  traceNote({ ...next.shown, agentId: note.agentId });
   $.ui.log(logRow(next.shown, watchdogBySlug(note.watchdog)?.name ?? note.watchdog));
   return ADMITTED;
 };
@@ -148,9 +155,11 @@ const admitNote = async ($: EngineInterface, e: NoteCall): Promise<ToolCallResul
     return note;
   }
   if (isUnsafeNote(note.text, batchTextOf(note.agentId))) {
+    traceNote({ ...note, delivery: 'dropped:unsafe' });
     $.ui.log(UNSAFE_ROW);
     return { result: DROP_ACKS.unsafe };
   }
+
   const dropped = guardNote(note);
   if (dropped !== undefined) {
     return { result: dropped };

@@ -17,3 +17,12 @@ export const NOTE_KEY_CAP = 200;
 
 // §7.7, §14.2: the newest notes of one watchdog that `notes:<sessionId>` keeps in full for the recap.
 export const RECAP_NOTE_CAP = 20;
+
+// §13.4: the review log keeps the newest records.
+export const LOG_RECORD_CAP = 100;
+
+// §13.4: module memory keeps the full prompts of the newest reviews for `/watchdog dump raw`.
+export const RAW_PROMPT_CAP = 5;
+
+// §13.2: a `$.ui.log` row from a `command.run` hook waits, so that it lands below the command echo.
+export const COMMAND_LOG_DELAY_MS = 300;
