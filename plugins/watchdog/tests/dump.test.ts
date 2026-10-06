@@ -150,8 +150,9 @@ describe('/watchdog dump', () => {
     const path = `/home/me/.claude/watchdog/dumps/${SESSION_ID}-20261006-090503.md`;
     expect(reply.text).toBe(`watchdog dump: ${path}`);
     expect(dumped.writes[0]?.path).toBe(path);
-    expect(dumped.writes[0]?.text).toContain('## Prompts of the last reviews\n\n### default\n\n> New updates');
-    expect(dumped.writes[0]?.text).toContain('> user: Fix the date parser.');
+    expect(dumped.writes[0]?.text).toContain(
+      '## Prompts of the last reviews\n\n### default\n\n> ### Session update\n>\n> **user**:\n> Fix the date parser.'
+    );
   });
 
   test('a refused write replies with the error', async ($, on: Stubs) => {

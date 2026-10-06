@@ -1,6 +1,15 @@
 // Stubs for an L2 test of a watched session: every `$` call and engine event the mod reaches.
 import type { OnEvents } from '../../hooks/on';
-import type { AgentSpec, CommandRunInput, ModelCompleteRequest, SessionAppendInput, ToolSpec } from 'claude-code';
+import type {
+  AgentSpec,
+  ApiMessage,
+  CommandRunInput,
+  ModelCompleteRequest,
+  SessionAppendInput,
+  ToolSpec,
+  TurnStepResult,
+  TurnStepServerToolUse,
+} from 'claude-code';
 
 export type SessionEvents =
   | 'session.version'
@@ -17,6 +26,7 @@ export type SessionEvents =
   | 'tool.call'
   | 'ui.log'
   | 'session.id'
+  | 'session.messages'
   | 'store.get'
   | 'store.set'
   | 'clock.now';
@@ -76,13 +86,18 @@ type Options = {
   noteDeny?: string;
   store?: ReadonlyMap<string, unknown>;
   storeSetDeny?: string;
+  // What `$.session.messages({ as: 'api' })` resolves: the main conversation in Messages API form.
+  messages?: readonly ApiMessage[];
+  // The server tool calls of each step result (`serverToolUses`).
+  serverToolUses?: readonly TurnStepServerToolUse[];
 };
 
 export const SESSION_ID = 'c0ffee00-0000-4000-8000-000000000001';
 
-// `$.session.id` and a `$.store` in memory that round trips each value through JSON.
+// `$.session.id`, the main conversation, and a `$.store` in memory that round trips each value through JSON.
 const stubStore = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('session.id', () => ({ value: SESSION_ID }));
+  on('session.messages', () => ({ value: [...(options.messages ?? [])] }));
   on('store.get', (_$, e) => ({ value: seen.store.get(e.key) }));
   on('store.set', (_$, e) => {
     if (options.storeSetDeny !== undefined) {
@@ -117,7 +132,7 @@ const stubRegisters = (on: SessionStubs, seen: Seen, options: Options): void => 
   });
 };
 
-const stubEngine = (on: SessionStubs, seen: Seen): void => {
+const stubEngine = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('agent.offer', () => ({ isOffered: true }));
   // The kit hands the mod's own `$.agent.spawn` to the hooks in the Agent tool's input shape
   // (`subagent_type`), and resolves it to the mod as `{ model: 'inherit' }` without the id (spec §16.2).
@@ -128,7 +143,15 @@ const stubEngine = (on: SessionStubs, seen: Seen): void => {
   });
   on('turn.step', async function* (_$, e) {
     yield* [];
-    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'tool_use', usage: null };
+    const step: TurnStepResult = {
+      turnId: e.turnId,
+      index: e.index,
+      answer: '',
+      toolUses: [],
+      stopReason: 'tool_use',
+      usage: null,
+    };
+    return options.serverToolUses === undefined ? step : { ...step, serverToolUses: options.serverToolUses };
   });
   on('turn.complete', (_$, e) => ({ text: e.answer }));
   on('tool.call', (_$, e) => {
@@ -159,7 +182,7 @@ export const stubSession = (on: SessionStubs, options: Options = {}): Seen => {
     store: new Map(options.store),
   };
   stubRegisters(on, seen, options);
-  stubEngine(on, seen);
+  stubEngine(on, seen, options);
   stubStore(on, seen, options);
   return seen;
 };
