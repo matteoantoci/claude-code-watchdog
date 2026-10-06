@@ -106,8 +106,8 @@ const dropUnbound = async ($: EngineInterface, watchdog: Watchdog, reason: strin
   return true;
 };
 
-// §12.2: a spawn that started no agent gives `blocked`, a cap (no failure; the batch waits for the next
-// boundary) or 1 failure; the error goes to `last error` and to the dump. The `-p` unbind is §7.5.
+// §12.2: a spawn that started no agent gives `blocked`, a cap (no failure, no record: it retries at each boundary,
+// and the 100-record log keeps the reviews) or 1 failure; the error goes to `last error`. The `-p` unbind is §7.5.
 const spawnFailed = async (
   $: EngineInterface,
   watchdog: Watchdog,
@@ -122,8 +122,10 @@ const spawnFailed = async (
   const { from, batchEnd, subagent } = failure;
   applyOutcome(watchdog.slug, outcome, { from, notes: 0, now: time, batchEnd, subagent });
   setLastError(watchdog.name, failure.error);
-  addLogRecord(errorRecord({ watchdog: watchdog.name, time, error: `review spawn failed: ${failure.error}` }));
-  await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog()).catch(() => undefined);
+  if (outcome.kind !== 'capped') {
+    addLogRecord(errorRecord({ watchdog: watchdog.name, time, error: `review spawn failed: ${failure.error}` }));
+    await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog()).catch(() => undefined);
+  }
 };
 
 // §7.2, §7.4, §7.5, §11.2: a free watchdog merges the backlog with the oldest due update into one review with
