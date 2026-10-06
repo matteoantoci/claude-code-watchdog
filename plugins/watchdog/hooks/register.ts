@@ -3,6 +3,7 @@ import { installCommand } from './command/install';
 import { installDelivery } from './delivery/install';
 import { installDump } from './dump/install';
 import { installFeed } from './feed/install';
+import { installGuidance } from './guidance/install';
 import { installLifecycle } from './lifecycle/install';
 import { installLog } from './log/install';
 import { installNote } from './note/install';
@@ -16,6 +17,7 @@ export const register: Register = (on, options) => {
   installCommand(on, options);
   installDump(on);
   installLifecycle(on);
+  installGuidance(on);
   installAgents(on);
   installFeed(on);
   installReview(on);

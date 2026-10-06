@@ -22,15 +22,15 @@ const save = async ($: EngineInterface): Promise<void> => {
   await $.state.set({ plugin: 'watchdog', key: 'ids' }, watchdogIds()).catch(() => undefined);
 };
 
-// §4.5, §6.2: before each spawn, the `:auto` effort of now; the type registers again only when it changed.
-// A register reject keeps the type as it was (§6.1).
+// §4.5, §6.2: before each spawn the spec is built again, with the `:auto` effort of now; the guidance area's
+// `agent.register` hook adds the context of now and lets only a spec that differs reach the engine. A
+// register reject keeps the type as it was (§6.1).
 const refreshAgent = async ($: EngineInterface, watchdog: Watchdog): Promise<void> => {
   const registered = registeredSpec(watchdog.slug);
-  const effort = resolveEffort(watchdog.effort, sessionEffort());
-  if (registered === undefined || registered.effort === effort) {
+  if (registered === undefined) {
     return;
   }
-  const spec = { ...registered, effort };
+  const spec = { ...registered, effort: resolveEffort(watchdog.effort, sessionEffort()) };
   await $.agent.register(spec).then(
     () => setRegisteredSpec(spec),
     () => undefined

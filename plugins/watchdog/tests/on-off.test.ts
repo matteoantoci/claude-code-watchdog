@@ -35,7 +35,12 @@ describe('/watchdog on', () => {
         inputSchema: NOTE_SCHEMA,
       },
     ]);
-    expect(seen.reads).toEqual([expect.stringMatching(/\/prompts\/system\.md$/u)]);
+    expect(seen.reads.map((path) => path.slice(path.lastIndexOf('/prompts/')))).toEqual([
+      '/prompts/system.md',
+      '/prompts/context-files.md',
+      '/prompts/memory-context.md',
+      '/prompts/active-repo-watchdog.md',
+    ]);
     expect(seen.agents).toEqual([
       {
         name: 'default',

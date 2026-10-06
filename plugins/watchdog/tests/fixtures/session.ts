@@ -1,6 +1,15 @@
 // Stubs for an L2 test of a watched session: every `$` call and engine event the mod reaches.
+import { FRAGMENTS } from './prompts';
 import type { OnEvents } from '../../hooks/on';
-import type { AgentSpec, CommandRunInput, ModelCompleteRequest, SessionAppendInput, ToolSpec } from 'claude-code';
+import type {
+  AgentSpec,
+  CommandRunInput,
+  ContextMemoryFile,
+  ModelCompleteRequest,
+  SessionAppendInput,
+  SessionUsage,
+  ToolSpec,
+} from 'claude-code';
 
 export type SessionEvents =
   | 'session.version'
@@ -12,6 +21,9 @@ export type SessionEvents =
   | 'agent.spawn'
   | 'fs.read'
   | 'fs.stat'
+  | 'fs.list'
+  | 'fs.exists'
+  | 'session.usage'
   | 'env.get'
   | 'session.cwd'
   | 'session.root'
@@ -92,6 +104,47 @@ type Options = {
   files?: Record<string, WorkspaceFile>;
   // What `$.env.get` answers; a name not listed is unset. Default: `HOME` only.
   env?: Readonly<Record<string, string>>;
+  // §8.2: the memory files of the session's context, as `$.session.usage` lists them. Default: none.
+  memoryFiles?: readonly ContextMemoryFile[];
+  // `$.session.repo()` answers null: the cwd /repo is outside git.
+  isOutsideGit?: boolean;
+};
+
+// `$.session.usage({ breakdown: 'summary' })` with the given memory files; the other figures are zeros.
+const usage = (memoryFiles: readonly ContextMemoryFile[]): SessionUsage => ({
+  startedAt: NOW,
+  rateLimits: [],
+  context: {
+    window: 200_000,
+    breakdown: {
+      categories: [],
+      totalTokens: 0,
+      maxTokens: 200_000,
+      rawMaxTokens: 200_000,
+      autocompactSource: 'model-default',
+      percentage: 0,
+      gridRows: [],
+      model: 'claude-opus-4-5',
+      memoryFiles: [...memoryFiles],
+      mcpTools: [],
+      agents: [],
+      isAutoCompactEnabled: true,
+      apiUsage: null,
+    },
+  },
+});
+
+// The entries of directory `dir` in a workspace given as file paths: a name with more path below it is a dir.
+const listDir = (paths: readonly string[], dir: string) => {
+  const below = paths.filter((path) => path.startsWith(`${dir}/`)).map((path) => path.slice(dir.length + 1));
+  const names = [...new Set(below.map((rest) => rest.split('/')[0] ?? ''))];
+  return names.map((name) => ({
+    name,
+    kind: below.includes(name) ? ('file' as const) : ('dir' as const),
+    size: 0,
+    mtimeMs: 0,
+    isLink: false,
+  }));
 };
 
 export const SESSION_ID = 'c0ffee00-0000-4000-8000-000000000001';
@@ -109,24 +162,31 @@ const stubStore = (on: SessionStubs, seen: Seen, options: Options): void => {
   });
 };
 
-// `$.env`, and the workspace: every path not in `files` is missing. `fs.read` of another path answers the
-// shipped prompt it names.
+// `$.env`, and the workspace: every path not in `files` is missing, and a directory exists when a file is
+// below it. `fs.read` of another path answers the shipped prompt it names.
 const stubWorkspace = (on: SessionStubs, seen: Seen, options: Options): void => {
   const env = options.env ?? { HOME };
   const files = options.files ?? {};
+  const paths = Object.keys(files);
   on('env.get', (_$, e) => ({ value: env[e.name] }));
   on('session.cwd', () => ({ value: START.cwd }));
   on('session.root', () => ({ value: START.cwd }));
-  on('session.repo', () => ({ value: { root: START.cwd, remote: null, internal: false, name: null } }));
+  on('session.repo', () => ({
+    value: options.isOutsideGit === true ? null : { root: START.cwd, remote: null, internal: false, name: null },
+  }));
+  on('session.usage', () => ({ value: usage(options.memoryFiles ?? []) }));
   on('fs.stat', (_$, e) => {
     const file = files[e.path];
     return file === undefined
       ? { deny: `ENOENT: no such file or directory, stat '${e.path}'` }
       : { value: { kind: 'file', size: file.text.length, mtimeMs: file.mtimeMs, isLink: false } };
   });
+  on('fs.list', (_$, e) => ({ value: listDir(paths, e.path ?? START.cwd) }));
+  on('fs.exists', (_$, e) => ({ value: paths.some((path) => path === e.path || path.startsWith(`${e.path}/`)) }));
   on('fs.read', (_$, e) => {
     seen.reads.push(e.path);
-    const shipped = e.path.endsWith('/prompts/boundary-guidance.md') ? GUIDANCE : SYSTEM_TEMPLATE;
+    const name = e.path.slice(e.path.lastIndexOf('/') + 1);
+    const shipped = name === 'boundary-guidance.md' ? GUIDANCE : (FRAGMENTS[name] ?? SYSTEM_TEMPLATE);
     return { value: files[e.path]?.text ?? shipped };
   });
 };
