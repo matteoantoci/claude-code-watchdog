@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { REVIEW_AGENT, SESSION_ID, START, USAGE, mainRow, stubSession, turnEnd, typed } from './fixtures/session';
+import {
+  REVIEW_AGENT,
+  SESSION_ID,
+  START,
+  USAGE,
+  mainRow,
+  stubAfterAtOnce,
+  stubSession,
+  turnEnd,
+  typed,
+} from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { SessionEvents } from './fixtures/session';
 import type { AgentSpawnInput, RenderSurface } from 'claude-code';
@@ -38,10 +48,7 @@ const stubDump = (on: Stubs, options: DumpOptions = {}): Dumped => {
     dumped.copies.push(e.text);
     return { value: { isCopied: true } };
   });
-  on('clock.after', (_$, e) => {
-    dumped.delays.push(e.ms);
-    return { value: undefined };
-  });
+  stubAfterAtOnce(on, dumped.delays);
   return dumped;
 };
 

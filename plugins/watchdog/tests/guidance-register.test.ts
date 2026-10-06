@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { HOME, REVIEW_AGENT, START, USAGE, mainRow, stubSession, turnEnd, typed } from './fixtures/session';
+import {
+  HOME,
+  REVIEW_AGENT,
+  START,
+  USAGE,
+  mainRow,
+  stubAfterAtOnce,
+  stubSession,
+  turnEnd,
+  typed,
+} from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { SessionEvents, WorkspaceFile } from './fixtures/session';
 import type { AgentSpawnInput, ContextMemoryFile } from 'claude-code';
@@ -142,7 +152,7 @@ describe('system prompt at /watchdog on (§8.1, §8.2, §4.4)', () => {
 
 describe('the spec is built again before each spawn (§4.5)', () => {
   test('an unchanged spec registers nothing; a changed CLAUDE.md registers again; WATCHDOG.md stays frozen', async ($, on: Stubs) => {
-    on('clock.after', () => ({ value: undefined }));
+    stubAfterAtOnce(on);
     const files = workspace();
     const memoryFiles = [...MEMORY_FILES];
     const seen = stubSession(on, { files, memoryFiles });

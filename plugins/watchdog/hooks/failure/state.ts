@@ -54,10 +54,15 @@ export const setLastError = (watchdog: string, error: string): void => {
   memory.lastError = `${watchdog}: ${error}`;
 };
 
+// §12.3 item 1: the notes a review delivered: admitted, and not displaced or dropped since.
+export const deliveredNotes = (agentId: string): number =>
+  traceOf(agentId).notes.filter((note) => note.delivery !== 'displaced' && !note.delivery.startsWith('dropped:'))
+    .length;
+
 // §12.1 to §12.3: the outcome of a running review's own `turn.complete`, from what the mod saw of its agent:
 // the text of its last synthetic row, its step count and the model of its spawn, taken now because the agent
 // never runs again. The error goes to the review's record and to `last error`. With the notes the review
-// delivered (§12.3 item 1): admitted, and not displaced or dropped since.
+// delivered.
 export const endOutcome = (e: TurnCompleteInput, review: RunningReview): { outcome: Outcome; notes: number } => {
   const { agentId, slot, watchdog } = review;
   const trace = traceOf(agentId);
@@ -75,8 +80,7 @@ export const endOutcome = (e: TurnCompleteInput, review: RunningReview): { outco
     traceError(agentId, outcome.error);
     setLastError(watchdog.name, outcome.error);
   }
-  const notes = trace.notes.filter((note) => note.delivery !== 'displaced' && !note.delivery.startsWith('dropped:'));
-  return { outcome, notes: notes.length };
+  return { outcome, notes: deliveredNotes(agentId) };
 };
 
 // §7.5, §12.3: one outcome of a review (or of its spawn) moves its watchdog's slot, counts and backlog.
