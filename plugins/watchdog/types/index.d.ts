@@ -12,6 +12,41 @@ export type WatchdogFeed = {
   readonly cursors: Readonly<Record<string, string | null>>;
 };
 
+// §13.4: one note of a review, as the dump shows it.
+export type WatchdogLogNote = { readonly severity: string; readonly text: string; readonly delivery: string };
+
+// §13.4: the token counts of a review's `turn.complete` usage, and the model that ran.
+export type WatchdogLogUsage = {
+  readonly input_tokens: number;
+  readonly output_tokens: number;
+  readonly cache_read_input_tokens: number;
+  readonly cache_creation_input_tokens: number;
+  readonly model: string;
+};
+
+// §13.4: one record of the review log. `watchdog` is the display name, `time` ms since the epoch.
+// `review`: one finished review, with its `turn.complete` `reason`, step count and answer length.
+// `error`: an error of the mod that belongs to a watchdog (for example a refused steer append).
+export type WatchdogLogRecord =
+  | {
+      readonly kind: 'review';
+      readonly watchdog: string;
+      readonly agentId: string;
+      readonly time: number;
+      readonly model: string;
+      readonly effort: string;
+      readonly reason: 'answer' | 'aborted' | 'refusal' | 'error';
+      readonly steps: number;
+      readonly answerLength: number;
+      readonly answer: string;
+      readonly usage: WatchdogLogUsage | null;
+      // §15: null while no price is known for the model.
+      readonly cost: number | null;
+      readonly notes: readonly WatchdogLogNote[];
+      readonly error: string | null;
+    }
+  | { readonly kind: 'error'; readonly watchdog: string; readonly time: number; readonly error: string };
+
 declare module 'claude-code' {
   interface PluginState {
     watchdog: {
@@ -20,6 +55,8 @@ declare module 'claude-code' {
       // §7.3: the id set as an array (a Set becomes `{}` in JSON): each review agent and its watchdog slug.
       ids: readonly { readonly agentId: string; readonly watchdog: string }[];
       feed: WatchdogFeed;
+      // §13.4: the review log, newest last; no render hook reads it, so a write draws nothing.
+      log: readonly WatchdogLogRecord[];
     };
   }
 }

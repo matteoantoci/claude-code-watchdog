@@ -11,3 +11,12 @@ export const MAX_TURNS = 12;
 
 // §5.2: the preflight asks each distinct model for one token.
 export const PREFLIGHT_MAX_TOKENS = 1;
+
+// §13.4: the review log keeps the newest records.
+export const LOG_RECORD_CAP = 100;
+
+// §13.4: module memory keeps the full prompts of the newest reviews for `/watchdog dump raw`.
+export const RAW_PROMPT_CAP = 5;
+
+// §13.2: a `$.ui.log` row from a `command.run` hook waits, so that it lands below the command echo.
+export const COMMAND_LOG_DELAY_MS = 300;
