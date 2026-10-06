@@ -16,6 +16,9 @@ setup: the cached `~/.cache/claude-code-2.1.290/node_modules/.bin/claude` by its
 - A **deterministic** check fails the run (exit 1). An **advisory** check is model behavior or an engine fact the
   plugin does not depend on: it is reported and never fails the run.
 - **inconclusive** means the model did not do the action the check needs, so the fact could not be seen. Rerun it.
+- A deterministic check that this machine cannot run fails the run too (exit 1): the TUI checks need `tmux`. The
+  summary line `missing on this machine: ...` names the missing capability and each check it kept from running. A
+  check that you leave out with `--only`, `--skip`, `--kind`, `--with` or `--no-user-settings` does not fail the run.
 - Some checks need an account state or an org setting. They are skipped unless you opt in, and they must be true when
   you do: `--with account:limit` (the account is at its subscription limit), `--with account:billing` (an API-key
   account with no credit), `--with account:api-key` (an API-key account), `--with org:ceiling`, `--with org:managed`.

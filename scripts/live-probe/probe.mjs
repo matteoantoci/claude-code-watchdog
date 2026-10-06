@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 import { CHECKS, SCENARIOS } from './checks/index.mjs';
 import { PINNED_VERSION, PLUGIN_DIR, REPO_DIR, checkBinary, claudeBin, hasTmux } from './lib/env.mjs';
 import { sweepDumps } from './lib/files.mjs';
-import { isFailedRun, summaryText, writeReport } from './lib/report.mjs';
+import { isFailedRun, summaryText, unavailableChecks, unavailableText, writeReport } from './lib/report.mjs';
 import { killTmuxServer } from './lib/tui.mjs';
 
 const USAGE = `usage: node scripts/live-probe/probe.mjs [options]
@@ -51,18 +51,30 @@ const matches = (list, check) =>
 
 const stamp = () => new Date().toISOString().replaceAll(/[-:]/gu, '').replace('T', '-').slice(0, 15);
 
-// Why a check does not run: filtered out, a capability it needs is off, or it is a manual check.
-const skipReason = (check, opts, caps) => {
+// The capabilities that come from a tool on this machine, not from an option.
+const MACHINE = { tui: 'tmux' };
+
+// Why a check does not run: a capability it needs is off, or it is a manual check. `unavailable` lists the needs this
+// machine lacks when no option turned off the check too; such a skipped deterministic check fails the run (§16.3).
+const skipReason = (check, caps) => {
   if (check.kind === 'manual') {
-    return 'manual: see the Desktop checklist in scripts/live-probe/README.md';
+    return { reason: 'manual: see the Desktop checklist in scripts/live-probe/README.md', unavailable: [] };
   }
   const scenario = SCENARIOS.get(check.scenario);
   const needs = [...(check.needs ?? []), ...(scenario?.needs ?? [])];
   const missing = needs.filter((need) => !caps.has(need));
-  if (missing.length > 0) {
-    return `needs ${missing.join(', ')}${missing.some((need) => OPT_IN.includes(need)) ? ' (opt in with --with)' : ''}`;
+  if (missing.length === 0) {
+    return null;
   }
-  return null;
+  const tools = missing.filter((need) => Object.hasOwn(MACHINE, need)).map((need) => MACHINE[need]);
+  const hints = [
+    ...(missing.some((need) => OPT_IN.includes(need)) ? ['opt in with --with'] : []),
+    ...(tools.length > 0 ? [`${tools.join(', ')} not found on this machine`] : []),
+  ];
+  return {
+    reason: `needs ${missing.join(', ')}${hints.length > 0 ? ` (${hints.join('; ')})` : ''}`,
+    unavailable: tools.length === missing.length ? missing.map((need) => `${need} (${MACHINE[need]})`) : [],
+  };
 };
 
 const selected = (check, opts) => {
@@ -211,8 +223,8 @@ const main = async () => {
   const results = [];
   const toRun = [];
   for (const check of chosen) {
-    const reason = skipReason(check, opts, caps);
-    if (reason) {
+    const skip = skipReason(check, caps);
+    if (skip) {
       results.push({
         id: check.id,
         title: check.title,
@@ -220,7 +232,8 @@ const main = async () => {
         source: check.source,
         scenario: check.scenario ?? null,
         status: check.kind === 'manual' ? 'manual' : 'skipped',
-        reason,
+        reason: skip.reason,
+        ...(skip.unavailable.length > 0 ? { unavailable: skip.unavailable } : {}),
         evidence: check.manual ?? [],
       });
     } else {
@@ -229,6 +242,9 @@ const main = async () => {
   }
   console.log(`claude: ${bin} (${binary.text}); report: ${path.join(outDir, 'report.md')}`);
   console.log(`checks: ${toRun.length} to run, ${results.length} skipped or manual`);
+  if (unavailableChecks(results).length > 0) {
+    console.log(`${unavailableText(results)}\nthe run will fail: install the missing tools and run again`);
+  }
   const order = [...SCENARIOS.keys()].filter((id) => toRun.some((check) => check.scenario === id));
   try {
     for (const id of order) {

@@ -16,8 +16,17 @@ export const tally = (results) => {
   return { deterministic: count('deterministic'), advisory: count('advisory'), manual: count('manual') };
 };
 
-// The run fails when a deterministic check fails or errors.
+// The deterministic checks that did not run because this machine lacks a capability they need (`unavailable`, set by
+// probe.mjs). A check that an option left out (--only, --skip, --kind, --with, --no-user-settings) is not one.
+export const unavailableChecks = (results) =>
+  results.filter(
+    (result) => result.kind === 'deterministic' && result.status === 'skipped' && result.unavailable?.length > 0
+  );
+
+// §16.3, "a deterministic check fails the run": the run fails when a deterministic check fails or errors, or when this
+// machine could not run one.
 export const isFailedRun = (results) =>
+  unavailableChecks(results).length > 0 ||
   results.some((result) => result.kind === 'deterministic' && (result.status === 'fail' || result.status === 'error'));
 
 const line = (counts) =>
@@ -25,12 +34,21 @@ const line = (counts) =>
     .map((status) => `${counts[status]} ${status}`)
     .join(', ') || 'none';
 
+// One line that names the missing capabilities and the deterministic checks they kept from running.
+export const unavailableText = (results) => {
+  const skipped = unavailableChecks(results);
+  const caps = [...new Set(skipped.flatMap((result) => result.unavailable))];
+  const ids = skipped.map((result) => result.id).join(', ');
+  return `missing on this machine: ${caps.join(', ')}; ${skipped.length} deterministic checks not run: ${ids}`;
+};
+
 export const summaryText = (results) => {
   const t = tally(results);
   return [
     `deterministic: ${line(t.deterministic)}`,
     `advisory: ${line(t.advisory)}`,
     `manual: ${line(t.manual)}`,
+    ...(unavailableChecks(results).length > 0 ? [unavailableText(results)] : []),
     `run: ${isFailedRun(results) ? 'FAILED' : 'passed'}`,
   ].join('\n');
 };

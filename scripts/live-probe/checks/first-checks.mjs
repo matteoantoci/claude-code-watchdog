@@ -56,20 +56,27 @@ const SPIN_PROMPT = agentPrompt('', 'FCSPIN-');
 const HOLD_TUI_PROMPT = agentPrompt(' with run_in_background set to false', 'FCHOLD-');
 const REJECTED = "doesn't want to proceed";
 
-// §16.4 item 7: the watchdog reads OUTSIDE, the main loop reads MAIN_OUTSIDE (another path, so the §6.5 allow set
-// of the main loop's read does not cover the watchdog's).
+// §16.4 item 7: in each review the watchdog calls Read, Grep and Glob outside the cwd (the calls of
+// prototypes/first-checks/read-outside), then reads math.js. OUTSIDE_PATHS is the path each tool's call names, which
+// the plugin's deny text names too. The main loop reads MAIN_OUTSIDE (another path, so the §6.5 allow set of the main
+// loop's read does not cover the watchdog's calls).
 const OUTSIDE = '/etc/hosts';
+const OUTSIDE_DIR = '/etc';
+const OUTSIDE_PATHS = { Read: OUTSIDE, Grep: OUTSIDE, Glob: OUTSIDE_DIR };
 const MAIN_OUTSIDE = '/etc/shells';
 const OUTSIDE_INSTRUCTIONS =
-  'In every review, call the Read tool exactly twice, one call at a time, and do not retry a denied read. ' +
-  `First read the absolute file ${OUTSIDE}. Then read math.js in the working directory. Then call note once ` +
-  'with severity concern and a one-line text that starts with WDPROBE and names which read was denied. Then ' +
-  'end the review with done.';
+  'In every review, make the four calls below, one call at a time, and do not retry a denied call. ' +
+  `First call Read on the absolute file ${OUTSIDE}. Then call Grep with pattern "localhost" and path ` +
+  `"${OUTSIDE}". Then call Glob with pattern "hosts" and path "${OUTSIDE_DIR}". Then call Read on math.js in the ` +
+  'working directory. Then call note once with severity concern and a one-line text that starts with WDPROBE and ' +
+  'names which calls were denied. Then end the review with done.';
 const OUTSIDE_P_PROMPT =
   'Read math.js with the Read tool and reply in one line what add returns. Do not read any other file.';
 const OUTSIDE_TUI_PROMPT =
   `Read ${MAIN_OUTSIDE} with the Read tool, then read math.js, one tool call at a time. Then reply in one line ` +
   'what add returns.';
+// §16.4 item 7, plan mode: the main loop must not leave plan mode (prototypes/first-checks/read-outside, tui-plan-*).
+const PLAN_PREFIX = 'This is not a planning task: do not write a plan and do not call ExitPlanMode. ';
 // §6.5 item 6: the start of the plugin's deny text (plugins/watchdog/hooks/tools/scope.ts readScopeDeny).
 const SCOPE_DENY = 'Outside the watchdog read scope: ';
 const WATCHDOG_DIALOG = /from the watchdog plugin/iu;
@@ -257,21 +264,23 @@ const toolResultRows = (transcript, id, phrase) =>
 
 const decision = (result) => json(result)?.decision ?? null;
 
-// §16.4 item 7, §6.5: the engine verdicts (mods/fc-scope) and the final verdicts (observer) of the watchdog's reads
-// of OUTSIDE. A watchdog call is one with origin `watchdog`, so a check without `agentId` still counts.
-const scopeFacts = (label, scope, events) => {
+// §16.4 item 7, §6.5: the engine verdicts (mods/fc-scope) and the final verdicts (observer) of the watchdog's `tool`
+// calls on OUTSIDE_PATHS[tool]. A watchdog call is one with origin `watchdog`, so a check without `agentId` still
+// counts.
+const scopeFacts = (label, tool, scope, events) => {
   const ids = watchdogAgentIds(events);
+  const target = OUTSIDE_PATHS[tool];
   const engine = scope.filter(
     (event) =>
       event.ev === 'engine' &&
-      event.tool === 'Read' &&
+      event.tool === tool &&
       event.origin?.plugin === 'watchdog' &&
-      String(event.input).includes(OUTSIDE)
+      String(event.input).includes(target)
   );
   const final = ofEvent(
     events,
     'tool.check',
-    (event) => event.tool === 'Read' && event.origin?.plugin === 'watchdog' && String(event.input).includes(OUTSIDE)
+    (event) => event.tool === tool && event.origin?.plugin === 'watchdog' && String(event.input).includes(target)
   );
   const reasons = final.map((event) => String(json(event.result)?.reason ?? ''));
   return {
@@ -285,7 +294,7 @@ const scopeFacts = (label, scope, events) => {
       [`${label}: the plugin denies with the §6.5 text`]:
         final.length > 0 &&
         final.every((event) => decision(event.result) === 'deny') &&
-        reasons.every((reason) => reason.startsWith(SCOPE_DENY) && reason.includes(OUTSIDE)),
+        reasons.every((reason) => reason.startsWith(SCOPE_DENY) && reason.includes(target)),
     },
     lines: [
       `${label}: engine ${engine.map((event) => `${event.decision} agentId=${event.agentId}`).join(', ') || 'none'}`,
@@ -465,47 +474,66 @@ const submitTui = async (ctx) => {
   }
 };
 
-// §16.4 items 7 and 8: CLAUDE_WATCHDOG=on -p; the watchdog reads OUTSIDE, then math.js. No --allowedTools: a rule
-// `Read` would allow every path. --thinking-display summarized gives -p thinking text.
-const outsideHeadless = async (ctx) => {
-  const run = createRun(ctx, 'fc7-outside-p', {
+// §16.4 item 7: the `--permission-mode` flags and the prompt prefix of a default or a plan-mode fc7 session.
+const modeArgs = (mode) => (mode === 'plan' ? ['--permission-mode', 'plan'] : []);
+const modePrompt = (mode, prompt) => (mode === 'plan' ? `${PLAN_PREFIX}${prompt}` : prompt);
+
+// The permission mode a TUI started in, from its footer `⏸ <mode> mode on` (`manual` is the default mode).
+const tuiMode = (screen) => /⏸ (\w+) mode on/u.exec(screen)?.[1] ?? 'unknown';
+
+// §16.4 items 7 and 8: CLAUDE_WATCHDOG=on -p in `mode`; the watchdog reads, greps and globs OUTSIDE_PATHS, then reads
+// math.js. No --allowedTools: a rule `Read` would allow every path. --thinking-display summarized gives -p thinking
+// text.
+const outsideHeadless = async (ctx, { id, mode }) => {
+  const run = createRun(ctx, id, {
     files: { 'WATCHDOG.json': probeRoster({ instructions: OUTSIDE_INSTRUCTIONS }) },
   });
   const p = await runHeadless(run, {
     label: 'p',
     env: { CLAUDE_WATCHDOG: 'on' },
-    args: ['--thinking-display', 'summarized'],
+    args: ['--thinking-display', 'summarized', ...modeArgs(mode)],
     plugins: pluginDirs(run, { mods: ['fc-scope'] }),
     timeoutMs: 200_000,
     closeAfterMs: 5000,
     input: async (send) => {
-      send(OUTSIDE_P_PROMPT);
+      send(modePrompt(mode, OUTSIDE_P_PROMPT));
       await waitObs(run, (events) => agentTurnCompletes(events).length >= 1, { timeoutMs: 150_000 });
     },
   });
   await sleep(1000);
-  return { run, p, events: readObs(run), scope: modLog(run, 'fc-scope.jsonl') };
+  return {
+    run,
+    p,
+    mode: p.init?.permissionMode ?? 'no init',
+    events: readObs(run),
+    scope: modLog(run, 'fc-scope.jsonl'),
+  };
 };
 
-// §16.4 item 7: the TUI; the main loop reads MAIN_OUTSIDE (a dialog, answered Yes) and math.js, the watchdog reads
-// OUTSIDE. Each dialog on screen is kept.
-const outsideTui = async (ctx) => {
-  const run = createRun(ctx, 'fc7-outside-tui', {
+// §16.4 item 7: the TUI in `mode`; the main loop reads MAIN_OUTSIDE (a dialog, answered Yes) and math.js, the watchdog
+// reads, greps and globs OUTSIDE_PATHS. Each dialog on screen is kept.
+const outsideTui = async (ctx, { id, mode }) => {
+  const run = createRun(ctx, id, {
     files: { 'WATCHDOG.json': probeRoster({ instructions: OUTSIDE_INSTRUCTIONS }) },
   });
-  const tui = await startTui(run, { label: 'tui', plugins: pluginDirs(run, { mods: ['fc-scope'] }) });
+  const tui = await startTui(run, {
+    label: 'tui',
+    plugins: pluginDirs(run, { mods: ['fc-scope'] }),
+    args: modeArgs(mode),
+  });
   try {
+    const started = tuiMode(tui.screen());
     const began = Date.now();
     await tui.type('/watchdog on');
     await waitObs(run, (events) => commandOut(events, 'on', began), { timeoutMs: 30_000 });
-    await tui.type(OUTSIDE_TUI_PROMPT);
+    await tui.type(modePrompt(mode, OUTSIDE_TUI_PROMPT));
     const dialogs = await watchDialogs(tui, {
       answer: 'Enter',
       timeoutMs: 160_000,
       until: async () => agentTurnCompletes(readObs(run)).length >= 1,
     });
     await tui.waitIdle({ timeoutMs: 60_000 });
-    return { run, events: readObs(run), scope: modLog(run, 'fc-scope.jsonl'), dialogs };
+    return { run, mode: started, events: readObs(run), scope: modLog(run, 'fc-scope.jsonl'), dialogs };
   } finally {
     await tui.stop();
   }
@@ -675,15 +703,28 @@ export const scenarios = [
   },
   {
     id: 'fc7-outside-p',
-    title: 'CLAUDE_WATCHDOG=on -p: the watchdog reads /etc/hosts and math.js; thinking summaries on',
+    title: 'CLAUDE_WATCHDOG=on -p: the watchdog reads and greps /etc/hosts, globs /etc; thinking summaries on',
     needs: [],
-    run: (ctx) => outsideHeadless(ctx),
+    run: (ctx) => outsideHeadless(ctx, { id: 'fc7-outside-p', mode: 'default' }),
   },
   {
     id: 'fc7-outside-tui',
-    title: 'TUI: the main loop reads /etc/shells (dialog), the watchdog reads /etc/hosts and math.js',
+    title: 'TUI: the main loop reads /etc/shells (dialog), the watchdog reads and greps /etc/hosts, globs /etc',
     needs: ['tui'],
-    run: (ctx) => outsideTui(ctx),
+    run: (ctx) => outsideTui(ctx, { id: 'fc7-outside-tui', mode: 'default' }),
+  },
+  {
+    id: 'fc7-plan-p',
+    title: 'Plan-mode CLAUDE_WATCHDOG=on -p: the watchdog reads and greps /etc/hosts, globs /etc',
+    needs: [],
+    run: (ctx) => outsideHeadless(ctx, { id: 'fc7-plan-p', mode: 'plan' }),
+  },
+  {
+    id: 'fc7-plan-tui',
+    title:
+      'Plan-mode TUI: the main loop reads /etc/shells (dialog), the watchdog reads and greps /etc/hosts, globs /etc',
+    needs: ['tui'],
+    run: (ctx) => outsideTui(ctx, { id: 'fc7-plan-tui', mode: 'plan' }),
   },
   {
     id: 'fc9-billing',
@@ -710,6 +751,53 @@ export const scenarios = [
     run: (ctx) => reloadTui(ctx),
   },
 ];
+
+// §16.4 item 7, §6.5: the check of one watchdog read tool (Read, Grep, Glob) in one fc7 scenario (`surface` p or tui,
+// `mode` default or plan). Each watchdog call of `tool` outside the cwd is an engine ask with the spawn's agentId and
+// gets the plugin's §6.5 deny; in the TUI no dialog opens for it. A plan-mode session must start in plan mode, and a
+// main-loop ExitPlanMode call makes the check inconclusive, since the session may have left plan mode.
+const scopeCheck = ({ tool, surface, mode }) => {
+  const isTui = surface === 'tui';
+  const isPlan = mode === 'plan';
+  const label = `${isPlan ? 'plan ' : ''}${isTui ? 'tui' : '-p'}`;
+  return {
+    id: `fc7-scope-${isPlan ? 'plan-' : ''}${tool.toLowerCase()}-${surface}`,
+    title:
+      `In ${isTui ? 'the TUI' : '-p'}${isPlan ? ' in plan mode' : ''} a watchdog ${tool} outside the cwd is an ` +
+      `engine ask with agentId, and the plugin denies it with the §6.5 text${isTui ? ', and no dialog opens' : ''}`,
+    source: '§16.4 #7',
+    kind: 'deterministic',
+    scenario: `fc7-${isPlan ? 'plan' : 'outside'}-${surface}`,
+    verify: (obs) => {
+      const facts = scopeFacts(label, tool, obs.scope, obs.events);
+      const evidence = [...facts.lines, `${label}: permission mode at start ${obs.mode}`];
+      if (!facts.isTried) {
+        return inconclusive([`the watchdog never called ${tool} on ${OUTSIDE_PATHS[tool]}`, ...evidence, obs.run.logs]);
+      }
+      const exits = ofEvent(obs.events, 'tool.check', (event) => event.tool === 'ExitPlanMode');
+      if (isPlan && exits.length > 0) {
+        return inconclusive([
+          `the main loop called ExitPlanMode ${exits.length} times, so it may have left plan mode`,
+          ...evidence,
+          obs.run.logs,
+        ]);
+      }
+      const dialogs = isTui ? obs.dialogs.filter((dialog) => WATCHDOG_DIALOG.test(dialog.text)) : [];
+      return expectAll(
+        {
+          ...(isPlan ? { [`${label}: the session started in plan mode`]: obs.mode === 'plan' } : {}),
+          ...facts.conditions,
+          ...(isTui ? { [`${label}: no dialog for the watchdog calls`]: dialogs.length === 0 } : {}),
+        },
+        [
+          ...evidence,
+          ...(isTui ? [`dialogs ${obs.dialogs.length}, from the watchdog plugin ${dialogs.length}`] : []),
+          obs.run.logs,
+        ]
+      );
+    },
+  };
+};
 
 export const checks = [
   {
@@ -1220,43 +1308,18 @@ export const checks = [
       );
     },
   },
-  {
-    id: 'fc7-scope-p',
-    title:
-      'In -p a watchdog Read outside the cwd is an engine ask with agentId, and the plugin denies it with ' +
-      'the §6.5 text',
-    source: '§16.4 #7',
-    kind: 'deterministic',
-    scenario: 'fc7-outside-p',
-    verify: (obs) => {
-      const facts = scopeFacts('-p', obs.scope, obs.events);
-      if (!facts.isTried) {
-        return inconclusive([`the watchdog never read ${OUTSIDE}`, ...facts.lines, obs.run.logs]);
-      }
-      return expectAll(facts.conditions, [...facts.lines, obs.run.logs]);
-    },
-  },
-  {
-    id: 'fc7-scope-tui',
-    title:
-      'In the TUI a watchdog Read outside the cwd is an engine ask with agentId, the plugin denies it, and ' +
-      'no dialog opens',
-    source: '§16.4 #7',
-    kind: 'deterministic',
-    scenario: 'fc7-outside-tui',
-    verify: (obs) => {
-      const facts = scopeFacts('tui', obs.scope, obs.events);
-      if (!facts.isTried) {
-        return inconclusive([`the watchdog never read ${OUTSIDE}`, ...facts.lines, obs.run.logs]);
-      }
-      const dialogs = obs.dialogs.filter((dialog) => WATCHDOG_DIALOG.test(dialog.text));
-      return expectAll({ ...facts.conditions, 'tui: no dialog for the watchdog read': dialogs.length === 0 }, [
-        ...facts.lines,
-        `dialogs ${obs.dialogs.length}, from the watchdog plugin ${dialogs.length}`,
-        obs.run.logs,
-      ]);
-    },
-  },
+  scopeCheck({ tool: 'Read', surface: 'p', mode: 'default' }),
+  scopeCheck({ tool: 'Grep', surface: 'p', mode: 'default' }),
+  scopeCheck({ tool: 'Glob', surface: 'p', mode: 'default' }),
+  scopeCheck({ tool: 'Read', surface: 'tui', mode: 'default' }),
+  scopeCheck({ tool: 'Grep', surface: 'tui', mode: 'default' }),
+  scopeCheck({ tool: 'Glob', surface: 'tui', mode: 'default' }),
+  scopeCheck({ tool: 'Read', surface: 'p', mode: 'plan' }),
+  scopeCheck({ tool: 'Grep', surface: 'p', mode: 'plan' }),
+  scopeCheck({ tool: 'Glob', surface: 'p', mode: 'plan' }),
+  scopeCheck({ tool: 'Read', surface: 'tui', mode: 'plan' }),
+  scopeCheck({ tool: 'Grep', surface: 'tui', mode: 'plan' }),
+  scopeCheck({ tool: 'Glob', surface: 'tui', mode: 'plan' }),
   {
     id: 'fc7-main-dialog',
     title: 'In the TUI a main-loop Read outside the cwd is an engine ask that opens a permission dialog',
