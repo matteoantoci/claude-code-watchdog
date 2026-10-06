@@ -32,6 +32,9 @@ export const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } 
 
 export const SYSTEM_TEMPLATE = 'BASE {{tool_sentence}} max {{max_notes_per_review}}.';
 
+// The shipped `prompts/boundary-guidance.md` (§10.7), as `$.fs.read` returns it.
+export const GUIDANCE = 'Weigh these notes.\n';
+
 export const REVIEW_AGENT = 'afake0001';
 
 // The agent that the core `Agent` tool stub starts.
@@ -76,7 +79,7 @@ const stubRegisters = (on: SessionStubs, seen: Seen, options: Options): void => 
   });
   on('fs.read', (_$, e) => {
     seen.reads.push(e.path);
-    return { value: SYSTEM_TEMPLATE };
+    return { value: e.path.endsWith('/prompts/boundary-guidance.md') ? GUIDANCE : SYSTEM_TEMPLATE };
   });
   on('model.complete', (_$, e) => {
     seen.preflights.push(e);
