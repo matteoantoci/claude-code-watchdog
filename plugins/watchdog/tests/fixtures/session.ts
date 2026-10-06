@@ -2,7 +2,7 @@
 import type { OnEvents } from '../../hooks/on';
 import type { AgentSpec, CommandRunInput, ModelCompleteRequest, SessionAppendInput, ToolSpec } from 'claude-code';
 
-export type SessionStubs = OnEvents<
+export type SessionEvents =
   | 'session.version'
   | 'session.start'
   | 'command.register'
@@ -16,7 +16,9 @@ export type SessionStubs = OnEvents<
   | 'turn.complete'
   | 'tool.call'
   | 'ui.log'
->;
+  | 'clock.now';
+
+export type SessionStubs = OnEvents<SessionEvents>;
 
 export type Seen = {
   tools: ToolSpec[];
@@ -32,7 +34,13 @@ export const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } 
 
 export const SYSTEM_TEMPLATE = 'BASE {{tool_sentence}} max {{max_notes_per_review}}.';
 
+// The shipped `prompts/boundary-guidance.md` (§10.7), as `$.fs.read` returns it.
+export const GUIDANCE = 'Weigh these notes.\n';
+
 export const REVIEW_AGENT = 'afake0001';
+
+// What `$.clock.now()` resolves: 2026-10-06T09:05:03Z.
+export const NOW = Date.UTC(2026, 9, 6, 9, 5, 3);
 
 // The agent that the core `Agent` tool stub starts.
 export const AGENT_TOOL_AGENT = 'afake0002';
@@ -76,7 +84,7 @@ const stubRegisters = (on: SessionStubs, seen: Seen, options: Options): void => 
   });
   on('fs.read', (_$, e) => {
     seen.reads.push(e.path);
-    return { value: SYSTEM_TEMPLATE };
+    return { value: e.path.endsWith('/prompts/boundary-guidance.md') ? GUIDANCE : SYSTEM_TEMPLATE };
   });
   on('model.complete', (_$, e) => {
     seen.preflights.push(e);
@@ -110,6 +118,7 @@ const stubEngine = (on: SessionStubs, seen: Seen): void => {
     seen.logs.push(e.text);
     return { value: undefined };
   });
+  on('clock.now', () => ({ value: NOW }));
 };
 
 // Registers every stub; call it before the test's first `$` call.

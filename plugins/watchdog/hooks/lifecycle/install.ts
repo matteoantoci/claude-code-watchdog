@@ -2,6 +2,7 @@ import { COMMAND } from '../command/spec';
 import { errorText } from '../errors';
 import { NOTE_TOOL } from '../note/tool';
 import { setMode } from './mode';
+import { notePrompt } from './on-order';
 import { isSupportedVersion } from './version';
 import type { OnEvents } from '../on';
 import type { EngineInterface, Hook } from 'claude-code';
@@ -33,6 +34,13 @@ const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
   return next(e);
 };
 
-export const installLifecycle = (on: OnEvents<'session.start'>): void => {
+// §5.3: a Desktop attach counts only before the first prompt.
+const onPromptSubmit: Hook<'prompt.submit'> = async (_$, e, next) => {
+  notePrompt();
+  return next(e);
+};
+
+export const installLifecycle = (on: OnEvents<'session.start' | 'prompt.submit'>): void => {
   on('session.start', onSessionStart);
+  on('prompt.submit', { text: /^/u }, onPromptSubmit);
 };
