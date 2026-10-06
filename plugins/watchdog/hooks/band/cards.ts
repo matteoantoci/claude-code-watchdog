@@ -14,8 +14,9 @@ export const EMPTY_BAND: Band = { cards: [], totals: { blocker: 0, concern: 0, n
 // The live band is module memory; `$.state` key `band` keeps a copy, which the band hook draws.
 const memory: { band: Band } = { band: EMPTY_BAND };
 
-// §9.1: the guard tells notes of one watchdog apart by their normalized text.
-const cardKey = (note: Pick<HeldNote, 'watchdog' | 'text'>): string => `${note.watchdog}\n${normalizeNote(note.text)}`;
+// §9.1, §11.4: the guard tells notes of one watchdog on one watched agent apart by their normalized text.
+const cardKey = (note: Pick<HeldNote, 'watchdog' | 'text' | 'subagent'>): string =>
+  `${note.watchdog}\n${note.subagent?.agentId ?? ''}\n${normalizeNote(note.text)}`;
 
 const count = (totals: Band['totals'], severity: Severity, by: number): Band['totals'] => ({
   ...totals,
@@ -29,7 +30,8 @@ export const bandState = (turn: number): Band => ({
   turn: memory.band.cards.length === 0 ? 0 : turn,
 });
 
-// §13.1: an admitted note becomes the newest card and counts in the session totals.
+// §13.1, §11.3: an admitted note becomes the newest card and counts in the session totals; a note on a
+// subagent shows its type.
 export const addCard = (note: HeldNote): void => {
   const { band } = memory;
   const card: Card = {
@@ -40,6 +42,7 @@ export const addCard = (note: HeldNote): void => {
     text: note.text,
     turn: note.turn,
     delivery: note.delivery,
+    ...(note.subagent === undefined ? {} : { subagent: note.subagent.type }),
   };
   memory.band = {
     ...band,

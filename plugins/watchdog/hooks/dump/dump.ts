@@ -31,8 +31,12 @@ const usageText = (usage: ReviewRecord['usage']): string =>
     ? 'none'
     : `${usage.input_tokens} input, ${usage.output_tokens} output, ${usage.cache_read_input_tokens} cache read, ${usage.cache_creation_input_tokens} cache write`;
 
+// §11.4: the heading of a review of a subagent also names its type and `agentId`.
 const reviewText = (record: ReviewRecord): string[] => [
-  `### ${isoTime(record.time)} · ${record.watchdog} · review ${record.agentId}`,
+  [
+    `### ${isoTime(record.time)} · ${record.watchdog} · review ${record.agentId}`,
+    ...(record.subagent === undefined ? [] : [`subagent ${record.subagent.type} ${record.subagent.agentId}`]),
+  ].join(' · '),
   `- model: ${record.model}, effort ${record.effort}`,
   `- end: ${record.reason}, ${record.steps} steps, answer ${record.answerLength} chars`,
   `- usage: ${usageText(record.usage)}`,

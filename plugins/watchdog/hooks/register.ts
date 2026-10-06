@@ -12,6 +12,7 @@ import { installNote } from './note/install';
 import { installReview } from './review/install';
 import { installRoster } from './roster/install';
 import { installStop } from './stop/install';
+import { installSubagents } from './subagents/install';
 import { installTools } from './tools/install';
 import type { Register } from 'claude-code';
 
@@ -29,6 +30,7 @@ export const register: Register = (on, options) => {
   installReview(on);
   installLog(on);
   installNote(on);
+  installSubagents(on);
   installDelivery(on, options);
   installTools(on);
 };

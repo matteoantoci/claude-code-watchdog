@@ -32,6 +32,19 @@ export type WatchdogFeed = {
   readonly prompts: number;
 };
 
+// §11.1: the watched subagent a note or a review is about: its `agentId` and its `agent.spawn` `subagentType`.
+export type WatchdogSubagentRef = { readonly agentId: string; readonly type: string };
+
+// §11.1, §11.2: one watched subagent: its type, the spawn `prompt` (its task), the watchdog slugs that review it,
+// its own feed (one backlog and cursor for each of those watchdogs), and whether its loop still runs (§11.3).
+export type WatchdogSubagent = {
+  readonly type: string;
+  readonly task: string;
+  readonly watchdogs: readonly string[];
+  readonly feed: WatchdogFeed;
+  readonly isRunning: boolean;
+};
+
 // §13.4: one note of a review, as the dump shows it.
 export type WatchdogLogNote = { readonly severity: string; readonly text: string; readonly delivery: string };
 
@@ -68,6 +81,8 @@ export type WatchdogLogRecord =
       readonly error: string | null;
       // §12.3 item 10: the `refusal.category` of a refusal; null for another end or no category.
       readonly refusal: string | null;
+      // §11.4: a review of a subagent; absent for a review of the primary agent.
+      readonly subagent?: WatchdogSubagentRef;
     }
   | { readonly kind: 'error'; readonly watchdog: string; readonly time: number; readonly error: string }
   | { readonly kind: 'unreviewed'; readonly watchdog: string; readonly time: number; readonly updates: number }
@@ -82,6 +97,8 @@ export type WatchdogNudgeNote = {
   readonly severity: 'nit' | 'concern' | 'blocker';
   readonly text: string;
   readonly turn: number;
+  // §10.7: the subagent of a late note on a subagent.
+  readonly subagent?: WatchdogSubagentRef;
 };
 
 // §10.3, §10.4: the nudge budget of the current person prompt, the cooldown start and the nudge that waits.
@@ -164,6 +181,8 @@ declare module 'claude-code' {
       denies: Readonly<Record<string, number>>;
       // §10.3, §10.4, §14.1: the nudge budget, the cooldown and the nudge that waits.
       nudge: WatchdogNudge;
+      // §11.2, build-session choice "`$.state` key names": each watched subagent, by its `agentId`.
+      subagents: StateFamily<WatchdogSubagent>;
       // §12.3, §14.1: the failure state of each watchdog slug, and the last error for the status (§12.4).
       health: { readonly watchdogs: Readonly<Record<string, WatchdogHealth>>; readonly lastError: string | null };
       // §7.8, §14.1: the reviews that run, and the stop map: each agent the mod stopped and why.

@@ -247,6 +247,41 @@ describe('band clear and off (§13.1, §5.2)', () => {
   });
 });
 
+describe('band after a reload (§14.6, §11.3)', () => {
+  // The `band` key as an earlier module instance wrote it: one blocker on an Explore subagent, one turn old.
+  const STORED = {
+    cards: [
+      {
+        key: `default\nasub0001\n${BLOCKER.toLowerCase()}`,
+        seq: 1,
+        name: 'default',
+        severity: 'blocker',
+        text: BLOCKER,
+        turn: 1,
+        delivery: 'steered',
+        subagent: 'Explore',
+      },
+    ],
+    totals: { blocker: 1, concern: 0, nit: 0 },
+    turn: 2,
+    seq: 1,
+  };
+
+  test('the cards come back from $.state; a note on a subagent shows its type', async ($, on: Stubs) => {
+    stubBand(on, {}, { state: { isOn: true, source: '/watchdog on' }, band: STORED });
+    await $.session.start(START);
+    expect(await rows($)).toEqual(
+      onBoth({
+        'watchdog-count': 'watchdog · 1 blocker',
+        'watchdog-card-0': ` BLOCKER  default · Explore · 1 turn ago · steered${BLOCKER}`,
+      })
+    );
+    expect((await rows($, { bodyColumns: 75 })).map((shown) => shown['watchdog-card-0'])).toEqual(
+      onBoth(`[blocker · Explore] ${BLOCKER}`)
+    );
+  });
+});
+
 describe('failure line (§12.5)', () => {
   const HALTED = {
     watchdogs: {

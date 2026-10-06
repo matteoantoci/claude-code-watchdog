@@ -5,10 +5,12 @@ import type { RecapNote } from '../note/history';
 import type { RecapSource } from './recap';
 
 // §7.7: what one spawn prompt is built from: the new updates (part 4), the watchdog's newest 20 notes
-// (part 1, oldest first as `notes:<sessionId>` keeps them), and the recap source of parts 2 and 3.
+// (part 1, oldest first as `notes:<sessionId>` keeps them), and the recap source of parts 2 and 3. §11.2:
+// `subagent` is the type of a watched subagent; its part 2 is its task.
 export type ReviewInput = RecapSource & {
   readonly updates: readonly Update[];
   readonly notes: readonly RecapNote[];
+  readonly subagent?: string;
 };
 
 const part = (heading: string, body: string): string[] => (body === '' ? [] : [`### ${heading}\n\n${body}`]);
@@ -27,10 +29,18 @@ export const reviewPrompt = (input: ReviewInput, options: { readonly isCompact?:
         .map((note) => `- [${note.severity}] ${note.text} (${note.delivery})`)
         .join('\n')
     ),
-    ...part("The person's prompts since the watchdog started (newest first)", recapPrompts(input)),
+    ...part(
+      input.subagent === undefined
+        ? "The person's prompts since the watchdog started (newest first)"
+        : "The subagent's task",
+      recapPrompts(input)
+    ),
     ...part(
       'Earlier updates (newest first, one line for each tool call)',
       options.isCompact === true ? '' : recapUpdates(input)
     ),
-    ...part('Session update', renderBatch(input.updates, options)),
+    ...part(
+      input.subagent === undefined ? 'Session update' : `Session update: subagent ${input.subagent}`,
+      renderBatch(input.updates, options)
+    ),
   ].join('\n\n');

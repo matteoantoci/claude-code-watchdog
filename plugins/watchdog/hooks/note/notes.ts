@@ -1,5 +1,6 @@
 import { normalizeNote } from './guard';
 import type { Severity } from './tool';
+import type { PluginState } from 'claude-code';
 
 // Build-session choice "Delivery state labels": one list for the card header, the log row, the recap
 // and the dump.
@@ -10,13 +11,18 @@ export type DeliveryState = (typeof DELIVERY_STATES)[number] | `dropped:${string
 export const isDeliveryState = (value: unknown): value is DeliveryState =>
   typeof value === 'string' && (DELIVERY_STATES.some((state) => state === value) || value.startsWith('dropped:'));
 
+// §11.3: the watched subagent that a note is about (`WatchdogSubagentRef` of the state contract).
+export type SubagentRef = NonNullable<PluginState['watchdog']['nudge']['notes'][number]['subagent']>;
+
 // One note a watchdog sent; `watchdog` is its slug, `turn` the main-loop turn counter when it came (§10.7).
+// §11.3: `subagent` is the watched subagent of a review of a subagent.
 export type Note = {
   readonly watchdog: string;
   readonly agentId: string;
   readonly severity: Severity;
   readonly text: string;
   readonly turn: number;
+  readonly subagent?: SubagentRef;
 };
 
 export type HeldNote = Note & { readonly delivery: DeliveryState };
@@ -28,8 +34,13 @@ export type NoteGuard = (note: Note) => string | undefined;
 // A delivery route claims an admitted note (§10, §11.3): it returns its delivery state, or undefined.
 export type DeliveryRoute = (note: Note) => DeliveryState | undefined;
 
+// §11.3: a binding marks a held note that waits for a subagent's own tool result; the primary agent's
+// deliveries neither take nor reroute it.
+export type NoteBinding = (note: HeldNote) => boolean;
+
 const guards: NoteGuard[] = [];
 const routes: DeliveryRoute[] = [];
+const bindings: NoteBinding[] = [];
 const held: HeldNote[] = [];
 
 // §13.1: a watcher sees each note that the held list gets (`before` undefined) or changes in place (a raise,
@@ -48,7 +59,7 @@ const tell = (before: HeldNote | undefined, after: HeldNote): void => {
   });
 };
 
-// Guards and routes run in the order the areas add them, in their `installX(on)`.
+// Guards, routes and bindings run in the order the areas add them, in their `installX(on)`.
 export const addNoteGuard = (guard: NoteGuard): void => {
   guards.push(guard);
 };
@@ -56,6 +67,12 @@ export const addNoteGuard = (guard: NoteGuard): void => {
 export const addDeliveryRoute = (route: DeliveryRoute): void => {
   routes.push(route);
 };
+
+export const addNoteBinding = (binding: NoteBinding): void => {
+  bindings.push(binding);
+};
+
+const isBound = (note: HeldNote): boolean => bindings.some((binding) => binding(note));
 
 // The first guard that drops the note gives its ack.
 export const guardNote = (note: Note): string | undefined =>
@@ -71,9 +88,15 @@ export const holdNote = (note: HeldNote): void => {
   tell(undefined, note);
 };
 
-// §9.1: the queued entry of a watchdog for one normalized text, while it waits for delivery.
-export const heldNoteOf = (watchdog: string, key: string): HeldNote | undefined =>
-  held.find((note) => note.watchdog === watchdog && normalizeNote(note.text) === key);
+// §9.1, §11.4: the queued entry of a watchdog for one normalized text on one watched agent, while it waits
+// for delivery.
+export const heldNoteOf = (note: Pick<Note, 'watchdog' | 'subagent'>, key: string): HeldNote | undefined =>
+  held.find(
+    (queued) =>
+      queued.watchdog === note.watchdog &&
+      queued.subagent?.agentId === note.subagent?.agentId &&
+      normalizeNote(queued.text) === key
+  );
 
 // §9.1: a raise replaces the queued entry in place; §9.4: a displaced note leaves with no replacement.
 export const replaceHeldNote = (note: HeldNote, replacement?: HeldNote): void => {
@@ -86,13 +109,19 @@ export const replaceHeldNote = (note: HeldNote, replacement?: HeldNote): void =>
   }
 };
 
-// A delivery takes the held notes in the given states out of the list, oldest first.
-export const takeNotes = (...deliveries: readonly DeliveryState[]): HeldNote[] => {
-  const taken = held.filter((note) => deliveries.includes(note.delivery));
-  const kept = held.filter((note) => !deliveries.includes(note.delivery));
-  held.splice(0, held.length, ...kept);
+const take = (isTaken: (note: HeldNote) => boolean): HeldNote[] => {
+  const taken = held.filter(isTaken);
+  held.splice(0, held.length, ...held.filter((note) => !isTaken(note)));
   return taken;
 };
+
+// A delivery to the primary agent takes the held notes in the given states out of the list, oldest first.
+export const takeNotes = (...deliveries: readonly DeliveryState[]): HeldNote[] =>
+  take((note) => deliveries.includes(note.delivery) && !isBound(note));
+
+// §11.3: a steer into a subagent takes the bound notes on it, oldest first.
+export const takeBoundNotes = (agentId: string): HeldNote[] =>
+  take((note) => note.subagent?.agentId === agentId && isBound(note));
 
 // The held notes, oldest first, as they wait now.
 export const heldNotes = (): readonly HeldNote[] => held;
@@ -101,7 +130,7 @@ export const heldNotes = (): readonly HeldNote[] => held;
 // whose wait a new turn ended).
 export const rerouteNotes = (route: (note: HeldNote) => DeliveryState): void => {
   held.forEach((note, index) => {
-    const delivery = route(note);
+    const delivery = isBound(note) ? note.delivery : route(note);
     if (delivery !== note.delivery) {
       const rerouted = { ...note, delivery };
       held[index] = rerouted;
@@ -115,6 +144,6 @@ export const clearHeldNotes = (): void => {
   held.length = 0;
 };
 
-// §13.2: the `$.ui.log` row of one note.
+// §13.2, §11.3: the `$.ui.log` row of one note; a note on a subagent shows its type beside the severity.
 export const logRow = (note: HeldNote, name: string): string =>
-  `[${note.severity}] ${name}: ${note.text} (${note.delivery})`;
+  `[${[note.severity, ...(note.subagent === undefined ? [] : [note.subagent.type])].join(' · ')}] ${name}: ${note.text} (${note.delivery})`;
