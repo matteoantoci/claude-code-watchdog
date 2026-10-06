@@ -2,8 +2,9 @@ import { addWatchdogId } from '../agents/ids';
 
 // §7.5, §12.4: each watchdog runs one review at a time. `reviewing` keeps the agent (null until its id
 // arrives) and the last row of its batch. `no_model` and `blocked` make no review until `/watchdog on`.
+// `disabled` is a roster entry with `enabled: false` (§4.2).
 export type Slot =
-  | { readonly state: 'idle' }
+  | { readonly state: 'idle' | 'disabled' }
   | { readonly state: 'reviewing'; readonly agentId: string | null; readonly batchEnd: string }
   | { readonly state: 'no_model' | 'blocked'; readonly reason: string };
 
@@ -30,8 +31,15 @@ export const learnReviewAgent = (slug: string, agentId: string): void => {
   addWatchdogId(agentId, slug);
 };
 
-// §5.2 steps 1, 2 and 5: `/watchdog on` tries each watchdog again; a running review keeps its slot.
-export const slotAfterOn = (slot: Slot, problems: { blocked?: string; noModel?: string }): Slot => {
+// §5.2 steps 1, 2 and 5: `/watchdog on` tries each watchdog again; a running review keeps its slot, unless the
+// roster now disables its watchdog.
+export const slotAfterOn = (
+  slot: Slot,
+  problems: { isDisabled?: boolean; blocked?: string | undefined; noModel?: string | undefined }
+): Slot => {
+  if (problems.isDisabled === true) {
+    return { state: 'disabled' };
+  }
   if (slot.state === 'reviewing') {
     return slot;
   }

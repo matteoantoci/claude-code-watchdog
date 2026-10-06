@@ -11,3 +11,12 @@ export const MAX_TURNS = 12;
 
 // §5.2: the preflight asks each distinct model for one token.
 export const PREFLIGHT_MAX_TOKENS = 1;
+
+// §4.2: `maxNotesPerReview` is an integer from 1 to this value.
+export const MAX_NOTES_PER_REVIEW = 32;
+
+// §4.2: the most characters of a watchdog slug.
+export const SLUG_MAX_LENGTH = 64;
+
+// §13.2: a `$.ui.log` row from a `command.run` hook waits this long, so it lands below the command echo.
+export const COMMAND_LOG_DELAY_MS = 300;

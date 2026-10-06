@@ -2,7 +2,7 @@
 import type { OnEvents } from '../../hooks/on';
 import type { AgentSpec, CommandRunInput, ModelCompleteRequest, SessionAppendInput, ToolSpec } from 'claude-code';
 
-export type SessionStubs = OnEvents<
+export type SessionEvents =
   | 'session.version'
   | 'session.start'
   | 'command.register'
@@ -11,12 +11,18 @@ export type SessionStubs = OnEvents<
   | 'agent.offer'
   | 'agent.spawn'
   | 'fs.read'
+  | 'fs.stat'
+  | 'env.get'
+  | 'session.cwd'
+  | 'session.root'
+  | 'session.repo'
   | 'model.complete'
   | 'turn.step'
   | 'turn.complete'
   | 'tool.call'
-  | 'ui.log'
->;
+  | 'ui.log';
+
+export type SessionStubs = OnEvents<SessionEvents>;
 
 export type Seen = {
   tools: ToolSpec[];
@@ -29,6 +35,14 @@ export type Seen = {
 };
 
 export const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const;
+
+// The workspace of every L2 session: `$HOME` is /home/me, and the cwd /repo is the git root and the session
+// root. So the user file is /home/me/.claude/WATCHDOG.json, the project files /repo/.claude/WATCHDOG.json and
+// /repo/WATCHDOG.json (spec §4.3).
+export const HOME = '/home/me';
+
+// A file of the workspace; a test may change it after the mod read it.
+export type WorkspaceFile = { text: string; mtimeMs: number };
 
 export const SYSTEM_TEMPLATE = 'BASE {{tool_sentence}} max {{max_notes_per_review}}.';
 
@@ -58,7 +72,25 @@ const answer = (text: string) => ({
   usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
 });
 
-type Options = { preflightDeny?: string; noteDeny?: string };
+type Options = { preflightDeny?: string; noteDeny?: string; files?: Record<string, WorkspaceFile> };
+
+// Every path not in `files` is missing; `fs.read` of any other path answers the system prompt template.
+const stubWorkspace = (on: SessionStubs, seen: Seen, files: Record<string, WorkspaceFile>): void => {
+  on('env.get', (_$, e) => ({ value: e.name === 'HOME' ? HOME : undefined }));
+  on('session.cwd', () => ({ value: START.cwd }));
+  on('session.root', () => ({ value: START.cwd }));
+  on('session.repo', () => ({ value: { root: START.cwd, remote: null, internal: false, name: null } }));
+  on('fs.stat', (_$, e) => {
+    const file = files[e.path];
+    return file === undefined
+      ? { deny: `ENOENT: no such file or directory, stat '${e.path}'` }
+      : { value: { kind: 'file', size: file.text.length, mtimeMs: file.mtimeMs, isLink: false } };
+  });
+  on('fs.read', (_$, e) => {
+    seen.reads.push(e.path);
+    return { value: files[e.path]?.text ?? SYSTEM_TEMPLATE };
+  });
+};
 
 const stubRegisters = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('session.version', () => ({ value: { version: '2.1.290', base: '2.1.290' } }));
@@ -74,10 +106,7 @@ const stubRegisters = (on: SessionStubs, seen: Seen, options: Options): void => 
     seen.agents.push(e);
     return { value: { agent: `watchdog:${e.name}` } };
   });
-  on('fs.read', (_$, e) => {
-    seen.reads.push(e.path);
-    return { value: SYSTEM_TEMPLATE };
-  });
+  stubWorkspace(on, seen, options.files ?? {});
   on('model.complete', (_$, e) => {
     seen.preflights.push(e);
     return options.preflightDeny === undefined ? { value: answer('O') } : { deny: options.preflightDeny };
