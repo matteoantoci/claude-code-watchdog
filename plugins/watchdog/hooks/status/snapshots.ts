@@ -7,6 +7,17 @@ import type { StatusTable } from './table';
 const waiting: StatusTable[] = [];
 const taken = new Map<string, StatusTable>();
 
+// d.ts `CommandOutput` `text`: the engine draws the `text` a hook answered under its plugin's name, joined by `+`
+// with each other plugin whose `command.run` hook the run passed (live probe l3-status-table:
+// `wdprobe+watchdog: watchdog on · …`).
+const ANSWERED_BY = /^(?<names>[^\s:]+): /u;
+
+// The reply inside an output row's text: the text without the plugin names, when they name this plugin.
+export const replyOf = (text: string): string => {
+  const names = ANSWERED_BY.exec(text)?.groups?.names;
+  return names?.split('+').includes('watchdog') === true ? text.replace(ANSWERED_BY, '') : text;
+};
+
 export const queueSnapshot = (table: StatusTable): void => {
   waiting.push(table);
   waiting.splice(0, waiting.length - STATUS_SNAPSHOT_CAP);
@@ -18,7 +29,8 @@ export const snapshotFor = (requestId: string, text: string): StatusTable | unde
   if (known !== undefined) {
     return known;
   }
-  const index = waiting.findIndex((table) => table.text === text);
+  const reply = replyOf(text);
+  const index = waiting.findIndex((table) => table.text === reply);
   const [table] = index === -1 ? [] : waiting.splice(index, 1);
   if (table === undefined) {
     return undefined;

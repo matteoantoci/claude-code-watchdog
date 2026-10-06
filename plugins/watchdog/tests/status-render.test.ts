@@ -69,7 +69,14 @@ const mountOutput = async (
     ...(row.requestId === undefined ? {} : { requestId: row.requestId }),
   });
 
+// d.ts `CommandOutput` `text`: the engine draws the `text` a hook answered under its plugin's name, and under
+// each plugin's name whose `command.run` hook the run passed (live probe l3-status-table:
+// `wdprobe+watchdog: watchdog on · …`).
+const shown = (reply: string | undefined, names = 'watchdog'): string => `${names}: ${reply ?? ''}`;
+
 const TERMINAL = { surface: 'terminal', columns: 120 } as const;
+
+const DESKTOP = { surface: 'desktop', columns: 120 } as const;
 
 // The table of `runReview`'s session, while on.
 const expectTable = async (ui: Mounted<RenderSurface, 'CommandOutput'>): Promise<void> => {
@@ -94,11 +101,18 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     expect(reply.text).toBe('watchdog on · nudge 0/1 · cooldown 0\non source: /watchdog on\ndefault idle');
 
     // One row, drawn on the terminal and on the desktop.
-    const terminal = await mountOutput($, { args: 'status', text: reply.text, requestId: 'row-1' }, TERMINAL);
+    const terminal = await mountOutput($, { args: 'status', text: shown(reply.text), requestId: 'row-1' }, TERMINAL);
     await expectTable(terminal);
     await terminal.unmount();
-    const desktop = { surface: 'desktop', columns: 120 } as const;
-    await expectTable(await mountOutput($, { args: 'status', text: reply.text, requestId: 'row-1' }, desktop));
+    await expectTable(await mountOutput($, { args: 'status', text: shown(reply.text), requestId: 'row-1' }, DESKTOP));
+  });
+
+  test('the row of the reply under another plugin name too draws the table', async ($, on: Stubs) => {
+    stubSession(on);
+    stubRender(on);
+    await runReview($, OPUS_USAGE);
+    const reply = await $.command.run(typed('status'));
+    await expectTable(await mountOutput($, { args: 'status', text: shown(reply.text, 'wdprobe+watchdog') }, TERMINAL));
   });
 
   test('a bare /watchdog draws the table too; below 80 columns a row is `name state $`', async ($, on: Stubs) => {
@@ -106,7 +120,7 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     stubRender(on);
     await runReview($, { ...OPUS_USAGE, model: 'claude-opus-4-5' });
     const reply = await $.command.run(typed(''));
-    const ui = await mountOutput($, { args: '', text: reply.text }, { surface: 'terminal', columns: 79 });
+    const ui = await mountOutput($, { args: '', text: shown(reply.text) }, { surface: 'terminal', columns: 79 });
     expect((await ui.find({ key: 'row:default' }))?.text).toBe('default idle $?');
     expect((await ui.find({ key: 'session' }))?.text).toBe('session $?');
     expect(await ui.find({ key: 'header' })).toBeUndefined();
@@ -118,7 +132,7 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     await $.session.start(START);
     await $.command.run(typed('on'));
     const before = await $.command.run(typed('status'));
-    const first = await mountOutput($, { args: 'status', text: before.text, requestId: 'first' }, TERMINAL);
+    const first = await mountOutput($, { args: 'status', text: shown(before.text), requestId: 'first' }, TERMINAL);
     expect((await first.find({ key: 'session' }))?.text).toMatch(/\$0\.00$/u);
     await $.session.append(mainRow('u1', 'user', 'Fix the date parser.')).catch(() => undefined);
     await $.turn.complete(turnEnd('t1'));
@@ -126,11 +140,11 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     await $.turn.complete({ ...turnEnd('r1'), agentId: REVIEW_AGENT, usage: OPUS_USAGE });
     const after = await $.command.run(typed('status'));
     expect(after.text).toBe(before.text);
-    const second = await mountOutput($, { args: 'status', text: after.text }, TERMINAL);
+    const second = await mountOutput($, { args: 'status', text: shown(after.text) }, TERMINAL);
     expect((await second.find({ key: 'session' }))?.text).toMatch(/\$0\.15$/u);
     // A redraw of the first row (a scroll, a resize) draws its own snapshot again.
     await first.unmount();
-    const redrawn = await mountOutput($, { args: 'status', text: before.text, requestId: 'first' }, TERMINAL);
+    const redrawn = await mountOutput($, { args: 'status', text: shown(before.text), requestId: 'first' }, TERMINAL);
     expect((await redrawn.find({ key: 'session' }))?.text).toMatch(/\$0\.00$/u);
   });
 
@@ -140,7 +154,7 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     await $.session.start(START);
     await $.command.run(typed('on'));
     const reply = await $.command.run(typed('status'));
-    const ui = await mountOutput($, { args: 'status', text: reply.text }, TERMINAL);
+    const ui = await mountOutput($, { args: 'status', text: shown(reply.text) }, TERMINAL);
     const colors = async (text: string | RegExp) =>
       (await ui.findAll({ type: 'Text', text })).map((element) => element.props['color']);
     expect(await colors('no_model')).toContain('error');
@@ -151,7 +165,7 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     stubSession(on);
     stubRender(on);
     await $.session.start(START);
-    const ui = await mountOutput($, { args: 'status', text: 'watchdog on · nudge 0/1 · cooldown 0' }, TERMINAL);
+    const ui = await mountOutput($, { args: 'status', text: shown('watchdog on · nudge 0/1 · cooldown 0') }, TERMINAL);
     expect(await ui.find({ text: 'engine row' })).toBeDefined();
   });
 });
@@ -181,7 +195,7 @@ describe('a subagent review in the status table (§11.4, §13.3, §15)', () => {
     await $.agent.spawn(REVIEW_SPAWN);
     await $.turn.complete({ ...turnEnd('r1'), agentId: REVIEW_AGENT, usage: OPUS_USAGE });
     const reply = await $.command.run(typed('status'));
-    const ui = await mountOutput($, { args: 'status', text: reply.text }, TERMINAL);
+    const ui = await mountOutput($, { args: 'status', text: shown(reply.text) }, TERMINAL);
     expect(await ui.find({ type: 'Text', text: 'subagents: Explore 1 review' })).toBeDefined();
     expect((await ui.find({ key: 'row:default' }))?.text).toMatch(
       /^default\s*claude-opus-5-5\/medium\s*idle\s*1\s*0B 0C 0N\s*27\.5k\s*\$0\.15/u
@@ -199,7 +213,7 @@ describe('/watchdog dump row (§13.4)', () => {
     expect(reply.text).toMatch(/^watchdog dump: \/home\/me\/\.claude\/watchdog\/dumps\/.+\.md$/u);
     const path = (reply.text ?? '').replace('watchdog dump: ', '');
     rendered.copies.length = 0;
-    const ui = await mountOutput($, { args: 'dump', text: reply.text }, { surface: 'desktop', columns: 120 });
+    const ui = await mountOutput($, { args: 'dump', text: shown(reply.text, 'wdprobe+watchdog') }, DESKTOP);
     expect((await ui.find({ type: 'Button' }))?.text).toBe('copy path');
     await ui.press({ key: 'copy-path' });
     expect(rendered.copies).toEqual([{ text: path, surface: 'desktop' }]);

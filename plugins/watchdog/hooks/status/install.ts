@@ -8,7 +8,7 @@ import { slotOf } from '../review/slots';
 import { displayPath } from '../roster/paths';
 import { drawStatus } from './draw';
 import { sessionTally, tallyOf } from './ledger';
-import { queueSnapshot, snapshotFor } from './snapshots';
+import { queueSnapshot, replyOf, snapshotFor } from './snapshots';
 import { statusTable } from './table';
 import type { OnEvents } from '../on';
 import type { TableElements } from './draw';
@@ -98,7 +98,9 @@ export const installStatus = (on: OnEvents<'command.run' | 'ui.render'>): void =
         return drawStatus($.ui.resolve(e), table, e.viewport?.columns);
       }
       const path =
-        subcommand === 'dump' || subcommand === 'dump raw' ? DUMP_REPLY.exec(e.props.text)?.groups?.path : undefined;
+        subcommand === 'dump' || subcommand === 'dump raw'
+          ? DUMP_REPLY.exec(replyOf(e.props.text))?.groups?.path
+          : undefined;
       return path === undefined ? next(e) : drawDump($, $.ui.resolve(e), path);
     }
   );
