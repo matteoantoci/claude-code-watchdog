@@ -50,7 +50,7 @@ describe('/watchdog on', () => {
       },
     ]);
     expect(seen.preflights).toEqual([{ model: 'opus', prompt: expect.any(String), maxTokens: 1 }]);
-    expect(reply.text).toBe('watchdog on\non source: /watchdog on\ndefault idle');
+    expect(reply.text).toBe('watchdog on · nudge 0/1 · cooldown 0\non source: /watchdog on\ndefault idle');
   });
 
   test('agent.offer hides each watchdog type from the model and passes other types', async ($, on: SessionStubs) => {
@@ -68,7 +68,7 @@ describe('/watchdog on', () => {
     await $.command.run(typed('on'));
     const status = await $.command.run(typed('status'));
     expect(status.text).toMatch(
-      /^watchdog on\non source: \/watchdog on\ndefault no_model: .*model opus is not in availableModels$/u
+      /^watchdog on · nudge 0\/1 · cooldown 0\non source: \/watchdog on\ndefault no_model: .*model opus is not in availableModels$/u
     );
   });
 
@@ -78,7 +78,7 @@ describe('/watchdog on', () => {
     await $.command.run(typed('on'));
     const status = await $.command.run(typed('status'));
     expect(status.text).toMatch(
-      /^watchdog on\non source: \/watchdog on\ndefault blocked: .*allowedMcpServers refuses watchdog$/u
+      /^watchdog on · nudge 0\/1 · cooldown 0\non source: \/watchdog on\ndefault blocked: .*allowedMcpServers refuses watchdog$/u
     );
   });
 });

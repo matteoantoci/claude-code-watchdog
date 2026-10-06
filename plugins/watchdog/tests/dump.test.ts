@@ -58,7 +58,8 @@ const agentStep = async ($: Engine, index: number): Promise<void> => {
   await stream.result;
 };
 
-// One whole review: a main turn, the spawn, one note, two agent steps, the agent's own `turn.complete`.
+// One whole review: a main turn, the spawn, one nit (an aside, so no nudge waits), two agent steps, the
+// agent's own `turn.complete`.
 const runReview = async ($: Engine): Promise<void> => {
   await $.session.start(START);
   await $.command.run(typed('on'));
@@ -69,7 +70,7 @@ const runReview = async ($: Engine): Promise<void> => {
     tool: 'mcp__watchdog__note',
     agentId: REVIEW_AGENT,
     note: 'Check the null branch.',
-    severity: 'concern',
+    severity: 'nit',
   });
   await agentStep($, 0);
   await agentStep($, 1);
@@ -93,7 +94,7 @@ describe('review log', () => {
         '- cost: $?',
         '- error: none',
         '- notes: 1',
-        '  - [concern] Check the null branch. (steered)',
+        '  - [nit] Check the null branch. (aside on next prompt)',
         '- answer:',
         '',
         '> done',

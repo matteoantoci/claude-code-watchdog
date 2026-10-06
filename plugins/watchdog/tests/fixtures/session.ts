@@ -76,6 +76,8 @@ type Options = {
   noteDeny?: string;
   store?: ReadonlyMap<string, unknown>;
   storeSetDeny?: string;
+  // The caller answers `$.clock` with `mock.clock` (./delivery), so this fixture leaves `clock.now` alone.
+  isClockMocked?: true;
 };
 
 export const SESSION_ID = 'c0ffee00-0000-4000-8000-000000000001';
@@ -117,7 +119,7 @@ const stubRegisters = (on: SessionStubs, seen: Seen, options: Options): void => 
   });
 };
 
-const stubEngine = (on: SessionStubs, seen: Seen): void => {
+const stubEngine = (on: SessionStubs, seen: Seen, options: Options): void => {
   on('agent.offer', () => ({ isOffered: true }));
   // The kit hands the mod's own `$.agent.spawn` to the hooks in the Agent tool's input shape
   // (`subagent_type`), and resolves it to the mod as `{ model: 'inherit' }` without the id (spec §16.2).
@@ -143,7 +145,9 @@ const stubEngine = (on: SessionStubs, seen: Seen): void => {
     seen.logs.push(e.text);
     return { value: undefined };
   });
-  on('clock.now', () => ({ value: NOW }));
+  if (options.isClockMocked === undefined) {
+    on('clock.now', () => ({ value: NOW }));
+  }
 };
 
 // Registers every stub; call it before the test's first `$` call.
@@ -159,7 +163,7 @@ export const stubSession = (on: SessionStubs, options: Options = {}): Seen => {
     store: new Map(options.store),
   };
   stubRegisters(on, seen, options);
-  stubEngine(on, seen);
+  stubEngine(on, seen, options);
   stubStore(on, seen, options);
   return seen;
 };

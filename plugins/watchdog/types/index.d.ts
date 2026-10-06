@@ -47,6 +47,28 @@ export type WatchdogLogRecord =
     }
   | { readonly kind: 'error'; readonly watchdog: string; readonly time: number; readonly error: string };
 
+// §10.3: a late note of the nudge that waits, as the note hook admitted it: the watchdog slug, the review
+// agent, and the main-loop turn when it came (§10.7).
+export type WatchdogNudgeNote = {
+  readonly watchdog: string;
+  readonly agentId: string;
+  readonly severity: 'nit' | 'concern' | 'blocker';
+  readonly text: string;
+  readonly turn: number;
+};
+
+// §10.3, §10.4: the nudge budget of the current person prompt, the cooldown start and the nudge that waits.
+export type WatchdogNudge = {
+  // Nudges sent since the last person prompt.
+  readonly nudges: number;
+  // The `turns` counter at the last nudge turn, where the cooldown starts; null before the first nudge.
+  readonly nudgeTurn: number | null;
+  // When the 2 s wait of the nudge that waits ends, ms since the epoch; null when no nudge waits.
+  readonly dueAt: number | null;
+  // The late notes of the nudge that waits: a reload loses the held list, and sets the wait again from here.
+  readonly notes: readonly WatchdogNudgeNote[];
+};
+
 declare module 'claude-code' {
   interface PluginState {
     watchdog: {
@@ -65,6 +87,8 @@ declare module 'claude-code' {
       allow: readonly string[];
       // §6.5 item 8: the read-scope denies of each watchdog slug.
       denies: Readonly<Record<string, number>>;
+      // §10.3, §10.4, §14.1: the nudge budget, the cooldown and the nudge that waits.
+      nudge: WatchdogNudge;
     };
   }
 }

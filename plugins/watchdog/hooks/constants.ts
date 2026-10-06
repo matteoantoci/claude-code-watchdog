@@ -29,3 +29,13 @@ export const COMMAND_LOG_DELAY_MS = 300;
 
 // §6.5, §14.1: the read-scope allow set keeps the newest 500 calls.
 export const ALLOW_SET_CAP = 500;
+
+// §10.3: a late note waits this long after a `turn.complete` before the nudge goes out.
+export const NUDGE_WAIT_MS = 2000;
+
+// §10.4: the nudges for each person prompt.
+export const NUDGE_BUDGET = 1;
+
+// §4.1: the nudge cooldown in main turns when `immuneTurns` is absent or bad, and its top.
+export const DEFAULT_IMMUNE_TURNS = 3;
+export const MAX_IMMUNE_TURNS = 5;
