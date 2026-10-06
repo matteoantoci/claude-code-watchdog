@@ -1,6 +1,6 @@
 import { rememberSpawnModel } from '../failure/state';
-import { learnReviewAgent } from '../review/slots';
-import { ownContext, watchdogIds } from './ids';
+import { isIdMissing, learnReviewAgent } from '../review/slots';
+import { crossCheck, needsCrossCheck, ownContext, watchdogIds } from './ids';
 import { isOwnSpawn, isOwnToolCall } from './self-review';
 import { TYPE_PREFIX } from './spec';
 import type { OnEvents } from '../on';
@@ -47,11 +47,44 @@ const onAgentCall: MatchedHook<'tool.call', { tool: 'Agent' }> = async ($, e, ne
   return result;
 };
 
+// §7.3: `$.agent.list()` is a later cross-check only. While a review waits for its agent's id, an agent id that no
+// spawn source gave is the mod's once the list shows that the mod spawned it. A refused list answers nothing (in
+// `-p` it rejects inside the agent's own `turn.complete`), so the agent's next event asks again.
+const crossCheckId = async ($: EngineInterface, agentId: string | undefined): Promise<void> => {
+  if (agentId === undefined || !isIdMissing() || !needsCrossCheck(agentId)) {
+    return;
+  }
+  const agents = await $.agent.list().catch(() => undefined);
+  await learn($, agents === undefined ? undefined : crossCheck(agentId, agents), agentId);
+};
+
+// §7.3: each event of an agent loop that the hooks beneath read by the id set: its steps, its tool calls (the
+// `note` call too) and its end.
+const onLoopStep: Hook<'turn.step'> = async function* ($, e, next) {
+  await crossCheckId($, e.agentId);
+  return yield* next(e);
+};
+
+const onLoopCall: MatchedHook<'tool.call', { agentId: RegExp }> = async ($, e, next) => {
+  await crossCheckId($, e.agentId);
+  return next(e);
+};
+
+const onLoopEnd: MatchedHook<'turn.complete', { agentId: RegExp }> = async ($, e, next) => {
+  await crossCheckId($, e.agentId);
+  return next(e);
+};
+
 // §6.1: hide each watchdog type from the model; the hide does not block the mod's own spawn.
-export const installAgents = (on: OnEvents<'agent.offer' | 'agent.spawn' | 'tool.call'>): void => {
+export const installAgents = (
+  on: OnEvents<'agent.offer' | 'agent.spawn' | 'tool.call' | 'turn.step' | 'turn.complete'>
+): void => {
   on('agent.offer', { agent: /^watchdog:/u }, () => ({ isOffered: false })).catch((_$, e, next) =>
     next.called ? next(e) : { isOffered: false }
   );
   on('agent.spawn', { subagentType: /^watchdog:/u }, onSpawn);
   on('tool.call', { tool: 'Agent' }, onAgentCall);
+  on('tool.call', { agentId: /^/u }, onLoopCall);
+  on('turn.step', { turnId: /^/u }, onLoopStep);
+  on('turn.complete', { agentId: /^/u }, onLoopEnd);
 };

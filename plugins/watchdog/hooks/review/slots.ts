@@ -79,6 +79,10 @@ export const learnReviewAgent = (slug: string, agentId: string): void => {
   addWatchdogId(agentId, slug);
 };
 
+// §7.3, §16.2: a review runs whose agent's id no source gave yet.
+export const isIdMissing = (): boolean =>
+  Array.from(slots.values()).some((slot) => slot.state === 'reviewing' && slot.agentId === null);
+
 // §5.2 steps 1, 2 and 5: `/watchdog on` tries each watchdog again; a running review keeps its slot, unless the
 // roster now disables its watchdog.
 const slotAfterOn = (

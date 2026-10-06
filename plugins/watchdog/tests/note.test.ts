@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { AGENT_TOOL_AGENT, REVIEW_AGENT, START, stubSession, typed } from './fixtures/session';
+import { AGENT_TOOL_AGENT, REVIEW_AGENT, START, USAGE, mainRow, stubSession, turnEnd, typed } from './fixtures/session';
+import type { OnEvents } from '../hooks/on';
 import type { SessionStubs } from './fixtures/session';
-import type { AgentSpawnInput } from 'claude-code';
+import type { AgentInfo, AgentSpawnInput } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
 const NOTE = 'mcp__watchdog__note';
@@ -94,5 +95,63 @@ describe('the watchdog id set', () => {
     });
     const note = await $.tool.call({ tool: NOTE, agentId: AGENT_TOOL_AGENT, note: 'x', severity: 'nit' });
     expect(note).toEqual({ deny: 'Only watchdog agents can call this tool.' });
+  });
+});
+
+type ListStubs = SessionStubs & OnEvents<'agent.list'>;
+
+// A main turn whose end spawns a review; no spawn source gives the review's id.
+const reviewWithNoId = async ($: Engine, n: number): Promise<void> => {
+  await $.session.append(mainRow(`u${n}`, 'user', `Task ${n}.`)).catch(() => undefined);
+  await $.turn.complete(turnEnd(`t${n}`));
+};
+
+// What `$.agent.list()` answers: the review agent of a `watchdog:default` spawn, `spawnedBy` as given.
+const listing = (spawnedBy: string | undefined): AgentInfo[] => [
+  {
+    id: REVIEW_AGENT,
+    description: 'watchdog default review',
+    type: 'watchdog:default',
+    status: 'running',
+    ...(spawnedBy === undefined ? {} : { spawnedBy }),
+  },
+];
+
+const reviewSpawns = (seen: { spawns: readonly { subagentType: string }[] }): number =>
+  seen.spawns.filter((spawn) => spawn.subagentType === 'watchdog:default').length;
+
+describe('the $.agent.list() cross-check (§7.3)', () => {
+  test('an id that no spawn source gave is a review agent once the list says the mod spawned it', async ($, on: ListStubs) => {
+    const seen = stubSession(on);
+    on('agent.list', () => ({ value: listing('watchdog') }));
+    await $.session.start(START);
+    await $.command.run(typed('on'));
+    await reviewWithNoId($, 1);
+
+    const answer = await $.tool.call({
+      tool: NOTE,
+      agentId: REVIEW_AGENT,
+      note: 'missing null check',
+      severity: 'concern',
+    });
+    expect(answer).toEqual({ result: 'Queued. Do not re-raise.' });
+    // Its end frees the watchdog, so the next boundary spawns the next review.
+    await $.turn.complete({ ...turnEnd('r1'), agentId: REVIEW_AGENT, usage: USAGE });
+    await reviewWithNoId($, 2);
+    expect(reviewSpawns(seen)).toBe(2);
+  });
+
+  test('a listed agent that the mod did not spawn stays unknown, though its type is a watchdog type', async ($, on: ListStubs) => {
+    const seen = stubSession(on);
+    on('agent.list', () => ({ value: listing(undefined) }));
+    await $.session.start(START);
+    await $.command.run(typed('on'));
+    await reviewWithNoId($, 1);
+
+    const answer = await $.tool.call({ tool: NOTE, agentId: REVIEW_AGENT, note: 'x', severity: 'nit' });
+    expect(answer).toEqual({ deny: 'Only watchdog agents can call this tool.' });
+    await $.turn.complete({ ...turnEnd('r1'), agentId: REVIEW_AGENT, usage: USAGE });
+    await reviewWithNoId($, 2);
+    expect(reviewSpawns(seen)).toBe(1);
   });
 });
