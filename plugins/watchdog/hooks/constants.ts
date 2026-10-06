@@ -18,5 +18,20 @@ export const MAX_NOTES_PER_REVIEW = 32;
 // §4.2: the most characters of a watchdog slug.
 export const SLUG_MAX_LENGTH = 64;
 
-// §13.2: a `$.ui.log` row from a `command.run` hook waits this long, so it lands below the command echo.
+// §14.2: the guard keys of one watchdog in `notes:<sessionId>`, oldest out first.
+export const NOTE_KEY_CAP = 200;
+
+// §7.7, §14.2: the newest notes of one watchdog that `notes:<sessionId>` keeps in full for the recap.
+export const RECAP_NOTE_CAP = 20;
+
+// §13.4: the review log keeps the newest records.
+export const LOG_RECORD_CAP = 100;
+
+// §13.4: module memory keeps the full prompts of the newest reviews for `/watchdog dump raw`.
+export const RAW_PROMPT_CAP = 5;
+
+// §13.2: a `$.ui.log` row from a `command.run` hook waits, so that it lands below the command echo.
 export const COMMAND_LOG_DELAY_MS = 300;
+
+// §6.5, §14.1: the read-scope allow set keeps the newest 500 calls.
+export const ALLOW_SET_CAP = 500;

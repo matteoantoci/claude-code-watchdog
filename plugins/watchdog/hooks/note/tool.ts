@@ -4,6 +4,9 @@ export type Severity = 'nit' | 'concern' | 'blocker';
 
 const SEVERITIES: readonly Severity[] = ['nit', 'concern', 'blocker'];
 
+// §9.2: `nit` < `concern` < `blocker`.
+export const severityRank = (severity: Severity): number => SEVERITIES.indexOf(severity);
+
 // §8.3: the description is omp `advise-tool.md`, the `note` text omp `advise-tool.ts:18` (build-session choice).
 export const NOTE_TOOL: ToolSpec = {
   name: 'note',
@@ -28,7 +31,7 @@ export const NOTE_TOOL: ToolSpec = {
   },
 };
 
-const isSeverity = (value: unknown): value is Severity => SEVERITIES.some((severity) => severity === value);
+export const isSeverity = (value: unknown): value is Severity => SEVERITIES.some((severity) => severity === value);
 
 // The arguments of one `note` call, or undefined when they do not fit the schema.
 export const parseNote = (input: {

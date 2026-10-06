@@ -1,27 +1,43 @@
 import { preflightProblem, preflightRequest } from '../agents/preflight';
 import { setRegisteredSpec } from '../agents/registered';
-import { setConfigChanged, setRoster, watchedFiles } from '../agents/roster';
+import { setRoster } from '../agents/roster';
 import { agentSpec } from '../agents/spec';
 import { systemPrompt } from '../agents/system-prompt';
 import { COMMAND_LOG_DELAY_MS } from '../constants';
+import { addDumpLines } from '../dump/sections';
 import { errorText } from '../errors';
 import { EMPTY_FEED, currentFeed, setFeed, startFeed } from '../feed/feed';
 import { currentMode, setMode } from '../lifecycle/mode';
+import {
+  DESKTOP_DROP_WARNING,
+  addOnWarning,
+  currentOnSource,
+  hasPrompted,
+  isEnvOnFlag,
+  isOnByDefault,
+  onStoreKey,
+  onWarnings,
+  pickOnFlag,
+  setInteractiveSession,
+  setOnByDefault,
+  setOnSource,
+} from '../lifecycle/on-order';
 import { clearHeldNotes } from '../note/notes';
 import { NOTE_TOOL } from '../note/tool';
 import { resetCadences } from '../review/cadence';
-import { setSlot, slotAfterOn, slotOf } from '../review/slots';
+import { slotsAfterOn } from '../review/slots';
 import { buildRoster } from '../roster/merge';
 import { sessionEffort } from '../roster/model';
 import { searchPaths } from '../roster/paths';
 import { parseSubcommand } from './args';
 import { UNSUPPORTED_REPLY, USAGE_REPLY } from './spec';
-import { statusText } from './status';
+import { addStatusLines, statusText } from './status';
 import type { Roster, WatchedFile, Watchdog } from '../agents/roster';
+import type { OnFlag, OnSource } from '../lifecycle/on-order';
 import type { OnEvents } from '../on';
 import type { LoadedFile } from '../roster/merge';
 import type { SearchPath, Where } from '../roster/paths';
-import type { EngineInterface, Hook } from 'claude-code';
+import type { EngineInterface, Hook, PluginOptions } from 'claude-code';
 
 const headline = (): string =>
   currentMode() === 'unsupported' ? `watchdog unsupported: ${UNSUPPORTED_REPLY}` : `watchdog ${currentMode()}`;
@@ -29,7 +45,8 @@ const headline = (): string =>
 // §5.2 step 4, §14.1: `$.state` keeps the on flag and the feed. The live copies are module memory, so a
 // refused write loses only what a reload would carry over.
 const saveOnState = async ($: EngineInterface): Promise<void> => {
-  const flag = currentMode() === 'on' ? ({ isOn: true, source: '/watchdog on' } as const) : ({ isOn: false } as const);
+  const source = currentOnSource();
+  const flag: OnFlag = currentMode() === 'on' && source !== undefined ? { isOn: true, source } : { isOn: false };
   await $.state.set({ plugin: 'watchdog', key: 'on' }, flag).catch(() => undefined);
   await $.state.set({ plugin: 'watchdog', key: 'feed' }, currentFeed()).catch(() => undefined);
 };
@@ -99,25 +116,8 @@ const loadRoster = async ($: EngineInterface): Promise<{ roster: Roster; files: 
   return { roster: buildRoster(files, where), files: files.map(({ path, mtimeMs }) => ({ path, mtimeMs })) };
 };
 
-// §4.5: "config changed" when a file time differs from the time of the last read. The status shows the
-// roster only while on.
-const checkConfig = async ($: EngineInterface): Promise<void> => {
-  if (currentMode() !== 'on') {
-    return;
-  }
-  const now = await Promise.all(
-    watchedFiles().map(async ({ path }) => ({
-      path,
-      mtimeMs: await $.fs.stat(path).then(
-        (stat) => stat.mtimeMs,
-        () => null
-      ),
-    }))
-  );
-  setConfigChanged(now);
-};
-
-// §4.6, §13.2: one row with the warning count; from a `command.run` hook it waits, so it lands below the echo.
+// §4.6, §13.2: one row with the warning count; it waits, so that from a `command.run` hook it lands below the
+// command echo.
 const logWarnings = ($: EngineInterface, count: number): void => {
   if (count > 0) {
     const text = `${count} WATCHDOG.json ${count === 1 ? 'warning' : 'warnings'}; see /watchdog status`;
@@ -127,8 +127,9 @@ const logWarnings = ($: EngineInterface, count: number): void => {
   }
 };
 
-// §5.2: read the roster, register, preflight, move the feed cursors to the end, then set the on flag.
-const turnOn = async ($: EngineInterface): Promise<void> => {
+// §5.2: read the roster, register, preflight, move the feed cursors to the end, then set the on flag and the
+// on source.
+const turnOn = async ($: EngineInterface, source: OnSource): Promise<void> => {
   const { roster, files } = await loadRoster($);
   const runnable = roster.watchdogs.filter((watchdog) => watchdog.isEnabled && watchdog.noModel === null);
   const blocked = await registerAll($, runnable);
@@ -136,23 +137,12 @@ const turnOn = async ($: EngineInterface): Promise<void> => {
     $,
     runnable.filter((watchdog) => blocked.get(watchdog.slug) === undefined).map((watchdog) => watchdog.model)
   );
-  roster.watchdogs.forEach((watchdog) => {
-    const problems = {
-      isDisabled: !watchdog.isEnabled,
-      blocked: blocked.get(watchdog.slug),
-      noModel: watchdog.noModel ?? noModel.get(watchdog.model),
-    };
-    setSlot(watchdog.slug, slotAfterOn(slotOf(watchdog.slug), problems));
-  });
+  const reviewers = slotsAfterOn(roster.watchdogs, blocked, noModel);
   setRoster(roster, files);
   resetCadences();
-  // A disabled, `no_model` or `blocked` watchdog keeps no cursor, so the feed does not keep its rows.
-  const reviewers = roster.watchdogs.filter((watchdog) => {
-    const { state } = slotOf(watchdog.slug);
-    return state === 'idle' || state === 'reviewing';
-  });
-  setFeed(startFeed(reviewers.map((watchdog) => watchdog.slug)));
+  setFeed(startFeed(reviewers));
   setMode('on');
+  setOnSource(source);
   await saveOnState($);
   logWarnings($, roster.warnings.length);
 };
@@ -160,15 +150,88 @@ const turnOn = async ($: EngineInterface): Promise<void> => {
 // §5.2: stop feed recording, clear the backlog and the held notes.
 const turnOff = async ($: EngineInterface): Promise<void> => {
   setMode('off');
+  setOnSource(undefined);
   setFeed(EMPTY_FEED);
   clearHeldNotes();
   await saveOnState($);
 };
 
+// §5.4: the person's toggle follows the session id into a new process (`claude -r`), with `lastUsed` (§14.2).
+const storeOnFlag = async ($: EngineInterface, flag: OnFlag): Promise<void> => {
+  const sessionId = await $.session.id();
+  await $.store.set(onStoreKey(sessionId), { ...flag, lastUsed: Date.now() });
+};
+
+const toggle = async ($: EngineInterface, isOn: boolean): Promise<void> => {
+  await (isOn ? turnOn($, '/watchdog on') : turnOff($));
+  await storeOnFlag($, isOn ? { isOn: true, source: '/watchdog on' } : { isOn: false }).catch(() => undefined);
+};
+
+// §5.1: switch to the flag that the order picked. An off session that stays off writes nothing, so a later
+// `onByDefault` still applies after a reload.
+const applyOnFlag = async ($: EngineInterface, flag: OnFlag): Promise<void> => {
+  if (flag.isOn && currentMode() === 'on') {
+    setOnSource(flag.source);
+    await saveOnState($);
+    return;
+  }
+  if (flag.isOn || currentMode() === 'on') {
+    await (flag.isOn ? turnOn($, flag.source) : turnOff($));
+  }
+};
+
+const readOnState = async ($: EngineInterface): Promise<unknown> =>
+  $.state.get({ plugin: 'watchdog', key: 'on' }).then(
+    (read) => read.value,
+    () => undefined
+  );
+
+const readStoredFlag = async ($: EngineInterface): Promise<unknown> => {
+  const sessionId = await $.session.id();
+  return $.store.get(onStoreKey(sessionId));
+};
+
+// §5.1: the `$.state` flag (undefined when dropped), then for an interactive session the stored flag and
+// `onByDefault`. A failed turn-on writes one log row.
+const applyOrder = async ($: EngineInterface, state: unknown, isInteractive: boolean): Promise<void> => {
+  const stored = isInteractive ? await readStoredFlag($).catch(() => undefined) : undefined;
+  const flag = pickOnFlag({ state, stored, onByDefault: isOnByDefault(), isInteractive });
+  const problem = flag === undefined ? undefined : await applyOnFlag($, flag).then(() => undefined, errorText);
+  if (problem !== undefined) {
+    $.ui.log(`watchdog on failed: ${problem}`);
+  }
+};
+
+// §5.1: after the version gate (the lifecycle hook beneath this one), set the on state by the order.
+const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
+  const result = await next(e);
+  setInteractiveSession(e.isInteractive);
+  if (currentMode() !== 'unsupported') {
+    await applyOrder($, await readOnState($), e.isInteractive);
+  }
+  return result;
+};
+
+// §5.3: a Desktop attach before the first prompt makes the session interactive. It drops an on state from
+// `CLAUDE_WATCHDOG` with one dump warning, then applies the order.
+const onDesktopAttach: Hook<'session.attach'> = async ($, e, next) => {
+  const result = await next(e);
+  if (hasPrompted() || currentMode() === 'unsupported') {
+    return result;
+  }
+  setInteractiveSession(true);
+  const state = await readOnState($);
+  const isDropped = isEnvOnFlag(state);
+  if (isDropped) {
+    addOnWarning(DESKTOP_DROP_WARNING);
+  }
+  await applyOrder($, isDropped ? undefined : state, true);
+  return result;
+};
+// §5.2, §13.3: on, off and status; `dump` goes to the dump hook beneath.
 const onWatchdogCommand: Hook<'command.run'> = async ($, e, next) => {
   const subcommand = parseSubcommand(e.args);
   if (subcommand === 'status') {
-    await checkConfig($);
     return { text: statusText(headline()) };
   }
   if (subcommand === 'unknown') {
@@ -178,12 +241,23 @@ const onWatchdogCommand: Hook<'command.run'> = async ($, e, next) => {
     return { text: UNSUPPORTED_REPLY };
   }
   if (subcommand === 'on' || subcommand === 'off') {
-    const problem = await (subcommand === 'on' ? turnOn($) : turnOff($)).then(() => undefined, errorText);
+    const problem = await toggle($, subcommand === 'on').then(() => undefined, errorText);
     return { text: problem === undefined ? statusText(headline()) : `watchdog ${subcommand} failed: ${problem}` };
   }
   return next(e);
 };
 
-export const installCommand = (on: OnEvents<'command.run'>): void => {
+// §5.4, §13.3, §13.4: the on source in the status while on, and always in the dump with the warnings.
+const onSourceLine = (): string => `on source: ${currentOnSource() ?? 'none (off)'}`;
+
+export const installCommand = (
+  on: OnEvents<'command.run' | 'session.start' | 'session.attach'>,
+  options: PluginOptions
+): void => {
+  setOnByDefault(options);
   on('command.run', { command: 'watchdog' }, onWatchdogCommand);
+  on('session.start', { cwd: /^/u }, onSessionStart);
+  on('session.attach', { surface: 'desktop' }, onDesktopAttach);
+  addStatusLines(() => (currentMode() === 'on' ? [onSourceLine()] : []));
+  addDumpLines(() => [onSourceLine(), ...onWarnings().map((warning) => `warning: ${warning}`)]);
 };

@@ -1,0 +1,102 @@
+import { LOG_RECORD_CAP, RAW_PROMPT_CAP } from '../constants';
+import type { Watchdog } from '../agents/roster';
+import type { HeldNote } from '../note/notes';
+import type { PluginState, TurnCompleteInput } from 'claude-code';
+
+// §13.4: one record of the review log (its shape is the `log` key of the state contract).
+export type LogRecord = PluginState['watchdog']['log'][number];
+
+export type ReviewRecord = Extract<LogRecord, { kind: 'review' }>;
+
+type LogNote = ReviewRecord['notes'][number];
+
+// What the mod saw of one review agent while it ran: its `turn.step` count (§12.1) and its admitted notes.
+export type ReviewTrace = { readonly steps: number; readonly notes: readonly LogNote[] };
+
+// §13.4: the full prompt of one review, for `/watchdog dump raw`.
+export type ReviewPrompt = { readonly watchdog: string; readonly prompt: string };
+
+// §13.4: the newest records stay.
+export const appendLog = (log: readonly LogRecord[], record: LogRecord): readonly LogRecord[] =>
+  [...log, record].slice(-LOG_RECORD_CAP);
+
+export const errorRecord = (input: { watchdog: string; time: number; error: string }): LogRecord => ({
+  kind: 'error',
+  ...input,
+});
+
+// §13.4: one finished review. §12.2: the model that ran is `usage.model`, else the roster's.
+export const reviewRecord = (input: {
+  watchdog: Watchdog;
+  agentId: string;
+  time: number;
+  end: TurnCompleteInput;
+  trace: ReviewTrace;
+}): ReviewRecord => {
+  const { watchdog, end, trace } = input;
+  const usage = end.usage;
+  return {
+    kind: 'review',
+    watchdog: watchdog.name,
+    agentId: input.agentId,
+    time: input.time,
+    model: usage?.model ?? watchdog.model,
+    effort: watchdog.effort,
+    reason: end.reason,
+    steps: trace.steps,
+    answerLength: end.answer.length,
+    answer: end.answer,
+    usage:
+      usage === undefined
+        ? null
+        : {
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cache_read_input_tokens: usage.cache_read_input_tokens,
+            cache_creation_input_tokens: usage.cache_creation_input_tokens,
+            model: usage.model,
+          },
+    cost: null,
+    notes: trace.notes,
+    error: null,
+  };
+};
+
+const EMPTY_TRACE: ReviewTrace = { steps: 0, notes: [] };
+
+// The live log and the last prompts are module memory; `$.state` key `log` keeps a copy of the log
+// (§14.1). A reload loses the prompts (§13.4).
+const memory: { log: readonly LogRecord[]; prompts: readonly ReviewPrompt[] } = { log: [], prompts: [] };
+const traces = new Map<string, ReviewTrace>();
+
+export const currentLog = (): readonly LogRecord[] => memory.log;
+
+export const addLogRecord = (record: LogRecord): void => {
+  memory.log = appendLog(memory.log, record);
+};
+
+export const recentPrompts = (): readonly ReviewPrompt[] => memory.prompts;
+
+export const rememberPrompt = (prompt: ReviewPrompt): void => {
+  memory.prompts = [...memory.prompts, prompt].slice(-RAW_PROMPT_CAP);
+};
+
+const traceOf = (agentId: string): ReviewTrace => traces.get(agentId) ?? EMPTY_TRACE;
+
+export const countStep = (agentId: string): void => {
+  const trace = traceOf(agentId);
+  traces.set(agentId, { ...trace, steps: trace.steps + 1 });
+};
+
+export const traceNote = (note: HeldNote): void => {
+  const trace = traceOf(note.agentId);
+  const logged = { severity: note.severity, text: note.text, delivery: note.delivery };
+  traces.set(note.agentId, { ...trace, notes: [...trace.notes, logged] });
+};
+
+// A review's end takes its trace; the agent never runs again.
+export const takeTrace = (agentId: string): ReviewTrace => {
+  const trace = traceOf(agentId);
+  traces.delete(agentId);
+  return trace;
+};

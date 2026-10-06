@@ -36,6 +36,9 @@ const startOn = async ($: Engine): Promise<void> => {
   await $.command.run(typed('on'));
 };
 
+// The first two status lines while on; the roster lines follow them.
+const ON_HEAD = 'watchdog on\non source: /watchdog on';
+
 const status = async ($: Engine): Promise<string> => (await $.command.run(typed('status'))).text ?? '';
 
 const append = async ($: Engine, row: SessionAppendInput): Promise<void> => {
@@ -73,7 +76,7 @@ describe('roster from WATCHDOG.json (§4.2, §4.3)', () => {
       { name: 'security', model: 'sonnet', effort: 'high', tools: ['Read', 'mcp__watchdog__note'] },
     ]);
     expect(seen.preflights.map((request) => request.model)).toEqual(['sonnet']);
-    expect(await status($)).toBe('watchdog on\nSecurity idle · ./WATCHDOG.json\nstyle disabled · ./WATCHDOG.json');
+    expect(await status($)).toBe(`${ON_HEAD}\nSecurity idle · ./WATCHDOG.json\nstyle disabled · ./WATCHDOG.json`);
   });
 
   test('the user file loads first; a project entry with the same slug replaces it', async ($, on: Stubs) => {
@@ -88,7 +91,7 @@ describe('roster from WATCHDOG.json (§4.2, §4.3)', () => {
       { name: 'docs', model: 'opus' },
     ]);
     expect(await status($)).toBe(
-      'watchdog on\nSecurity idle · ./.claude/WATCHDOG.json\ndocs idle · ~/.claude/WATCHDOG.json'
+      `${ON_HEAD}\nSecurity idle · ./.claude/WATCHDOG.json\ndocs idle · ~/.claude/WATCHDOG.json`
     );
   });
 
@@ -101,7 +104,7 @@ describe('roster from WATCHDOG.json (§4.2, §4.3)', () => {
     expect(seen.agents).toEqual([]);
     expect(seen.preflights).toEqual([]);
     expect(seen.spawns).toEqual([]);
-    expect(await status($)).toBe('watchdog on');
+    expect(await status($)).toBe(ON_HEAD);
   });
 
   test('another provider gives no_model with the reason and no preflight call', async ($, on: Stubs) => {
@@ -111,7 +114,7 @@ describe('roster from WATCHDOG.json (§4.2, §4.3)', () => {
     expect(seen.agents).toEqual([]);
     expect(seen.preflights).toEqual([]);
     expect(await status($)).toBe(
-      'watchdog on\ngpt no_model: provider "openai" is not supported; only anthropic works now · ./WATCHDOG.json'
+      `${ON_HEAD}\ngpt no_model: provider "openai" is not supported; only anthropic works now · ./WATCHDOG.json`
     );
   });
 });
@@ -127,6 +130,7 @@ describe('warnings (§4.6)', () => {
     expect(seen.logs).toEqual(['2 WATCHDOG.json warnings; see /watchdog status']);
     expect((await status($)).split('\n')).toEqual([
       'watchdog on',
+      'on source: /watchdog on',
       'a idle · ~/.claude/WATCHDOG.json',
       'warning: ~/.claude/WATCHDOG.json: watchdog "a": tool "Bash" is refused; tool dropped',
       expect.stringMatching(/^warning: \.\/WATCHDOG\.json: not valid JSON; file skipped/u),
@@ -145,18 +149,18 @@ describe('frozen at /watchdog on (§4.5)', () => {
     const files = { [PROJECT_FILE]: file({ watchdogs: [{ name: 'a' }] }) };
     const seen = stub(on, files);
     await startOn($);
-    expect(await status($)).toBe('watchdog on\na idle · ./WATCHDOG.json');
+    expect(await status($)).toBe(`${ON_HEAD}\na idle · ./WATCHDOG.json`);
 
     files[PROJECT_FILE] = file({ watchdogs: [{ name: 'b' }] }, 2);
     expect(await status($)).toBe(
-      'watchdog on\na idle · ./WATCHDOG.json\nconfig changed: /watchdog off, then /watchdog on to load it'
+      `${ON_HEAD}\na idle · ./WATCHDOG.json\nconfig changed: /watchdog off, then /watchdog on to load it`
     );
     expect(seen.agents.map((agent) => agent.name)).toEqual(['a']);
 
     await $.command.run(typed('off'));
     await $.command.run(typed('on'));
     expect(seen.agents.map((agent) => agent.name)).toEqual(['a', 'b']);
-    expect(await status($)).toBe('watchdog on\nb idle · ./WATCHDOG.json');
+    expect(await status($)).toBe(`${ON_HEAD}\nb idle · ./WATCHDOG.json`);
   });
 
   test('a file that appears after /watchdog on also shows "config changed"', async ($, on: Stubs) => {

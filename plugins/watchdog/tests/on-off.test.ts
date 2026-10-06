@@ -50,7 +50,7 @@ describe('/watchdog on', () => {
       },
     ]);
     expect(seen.preflights).toEqual([{ model: 'opus', prompt: expect.any(String), maxTokens: 1 }]);
-    expect(reply.text).toBe('watchdog on\ndefault idle');
+    expect(reply.text).toBe('watchdog on\non source: /watchdog on\ndefault idle');
   });
 
   test('agent.offer hides each watchdog type from the model and passes other types', async ($, on: SessionStubs) => {
@@ -67,7 +67,9 @@ describe('/watchdog on', () => {
     await $.session.start(START);
     await $.command.run(typed('on'));
     const status = await $.command.run(typed('status'));
-    expect(status.text).toMatch(/^watchdog on\ndefault no_model: .*model opus is not in availableModels$/u);
+    expect(status.text).toMatch(
+      /^watchdog on\non source: \/watchdog on\ndefault no_model: .*model opus is not in availableModels$/u
+    );
   });
 
   test('a refused note register puts the watchdog in blocked with the reason', async ($, on: SessionStubs) => {
@@ -75,7 +77,9 @@ describe('/watchdog on', () => {
     await $.session.start(START);
     await $.command.run(typed('on'));
     const status = await $.command.run(typed('status'));
-    expect(status.text).toMatch(/^watchdog on\ndefault blocked: .*allowedMcpServers refuses watchdog$/u);
+    expect(status.text).toMatch(
+      /^watchdog on\non source: \/watchdog on\ndefault blocked: .*allowedMcpServers refuses watchdog$/u
+    );
   });
 });
 

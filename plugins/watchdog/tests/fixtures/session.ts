@@ -20,7 +20,11 @@ export type SessionEvents =
   | 'turn.step'
   | 'turn.complete'
   | 'tool.call'
-  | 'ui.log';
+  | 'ui.log'
+  | 'session.id'
+  | 'store.get'
+  | 'store.set'
+  | 'clock.now';
 
 export type SessionStubs = OnEvents<SessionEvents>;
 
@@ -32,6 +36,8 @@ export type Seen = {
   spawns: { prompt: string; subagentType?: string; description?: string }[];
   logs: string[];
   coreToolCalls: string[];
+  // What `$.store` holds (store key → value), as JSON round trips it.
+  store: Map<string, unknown>;
 };
 
 export const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const;
@@ -46,7 +52,13 @@ export type WorkspaceFile = { text: string; mtimeMs: number };
 
 export const SYSTEM_TEMPLATE = 'BASE {{tool_sentence}} max {{max_notes_per_review}}.';
 
+// The shipped `prompts/boundary-guidance.md` (§10.7), as `$.fs.read` returns it.
+export const GUIDANCE = 'Weigh these notes.\n';
+
 export const REVIEW_AGENT = 'afake0001';
+
+// What `$.clock.now()` resolves: 2026-10-06T09:05:03Z.
+export const NOW = Date.UTC(2026, 9, 6, 9, 5, 3);
 
 // The agent that the core `Agent` tool stub starts.
 export const AGENT_TOOL_AGENT = 'afake0002';
@@ -72,11 +84,37 @@ const answer = (text: string) => ({
   usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
 });
 
-type Options = { preflightDeny?: string; noteDeny?: string; files?: Record<string, WorkspaceFile> };
+type Options = {
+  preflightDeny?: string;
+  noteDeny?: string;
+  store?: ReadonlyMap<string, unknown>;
+  storeSetDeny?: string;
+  files?: Record<string, WorkspaceFile>;
+  // What `$.env.get` answers; a name not listed is unset. Default: `HOME` only.
+  env?: Readonly<Record<string, string>>;
+};
 
-// Every path not in `files` is missing; `fs.read` of any other path answers the system prompt template.
-const stubWorkspace = (on: SessionStubs, seen: Seen, files: Record<string, WorkspaceFile>): void => {
-  on('env.get', (_$, e) => ({ value: e.name === 'HOME' ? HOME : undefined }));
+export const SESSION_ID = 'c0ffee00-0000-4000-8000-000000000001';
+
+// `$.session.id` and a `$.store` in memory that round trips each value through JSON.
+const stubStore = (on: SessionStubs, seen: Seen, options: Options): void => {
+  on('session.id', () => ({ value: SESSION_ID }));
+  on('store.get', (_$, e) => ({ value: seen.store.get(e.key) }));
+  on('store.set', (_$, e) => {
+    if (options.storeSetDeny !== undefined) {
+      return { deny: options.storeSetDeny };
+    }
+    seen.store.set(e.key, JSON.parse(JSON.stringify(e.value)) as unknown);
+    return { value: undefined };
+  });
+};
+
+// `$.env`, and the workspace: every path not in `files` is missing. `fs.read` of another path answers the
+// shipped prompt it names.
+const stubWorkspace = (on: SessionStubs, seen: Seen, options: Options): void => {
+  const env = options.env ?? { HOME };
+  const files = options.files ?? {};
+  on('env.get', (_$, e) => ({ value: env[e.name] }));
   on('session.cwd', () => ({ value: START.cwd }));
   on('session.root', () => ({ value: START.cwd }));
   on('session.repo', () => ({ value: { root: START.cwd, remote: null, internal: false, name: null } }));
@@ -88,7 +126,8 @@ const stubWorkspace = (on: SessionStubs, seen: Seen, files: Record<string, Works
   });
   on('fs.read', (_$, e) => {
     seen.reads.push(e.path);
-    return { value: files[e.path]?.text ?? SYSTEM_TEMPLATE };
+    const shipped = e.path.endsWith('/prompts/boundary-guidance.md') ? GUIDANCE : SYSTEM_TEMPLATE;
+    return { value: files[e.path]?.text ?? shipped };
   });
 };
 
@@ -106,7 +145,7 @@ const stubRegisters = (on: SessionStubs, seen: Seen, options: Options): void => 
     seen.agents.push(e);
     return { value: { agent: `watchdog:${e.name}` } };
   });
-  stubWorkspace(on, seen, options.files ?? {});
+  stubWorkspace(on, seen, options);
   on('model.complete', (_$, e) => {
     seen.preflights.push(e);
     return options.preflightDeny === undefined ? { value: answer('O') } : { deny: options.preflightDeny };
@@ -139,13 +178,24 @@ const stubEngine = (on: SessionStubs, seen: Seen): void => {
     seen.logs.push(e.text);
     return { value: undefined };
   });
+  on('clock.now', () => ({ value: NOW }));
 };
 
 // Registers every stub; call it before the test's first `$` call.
 export const stubSession = (on: SessionStubs, options: Options = {}): Seen => {
-  const seen: Seen = { tools: [], agents: [], reads: [], preflights: [], spawns: [], logs: [], coreToolCalls: [] };
+  const seen: Seen = {
+    tools: [],
+    agents: [],
+    reads: [],
+    preflights: [],
+    spawns: [],
+    logs: [],
+    coreToolCalls: [],
+    store: new Map(options.store),
+  };
   stubRegisters(on, seen, options);
   stubEngine(on, seen);
+  stubStore(on, seen, options);
   return seen;
 };
 

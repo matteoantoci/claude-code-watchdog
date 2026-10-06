@@ -29,10 +29,15 @@ export const closeUpdate = (feed: Feed): Feed => {
 const indexAfter = (feed: Feed, uuid: string | null | undefined): number =>
   feed.rows.findIndex((row) => row.uuid === uuid) + 1;
 
+// The rows after a watchdog's cursor up to `end`: the batch a review of it gets while the cursor waits
+// (§7.5, §12.6).
+export const batchRows = (feed: Feed, slug: string, end: string | undefined): readonly FeedRow[] =>
+  feed.rows.slice(indexAfter(feed, feed.cursors[slug]), indexAfter(feed, end));
+
 // §7.5: every update that waits for one watchdog, merged into one batch; undefined when none waits.
 export const pendingBatch = (feed: Feed, slug: string): Batch | undefined => {
   const end = feed.ends.at(-1);
-  const rows = feed.rows.slice(indexAfter(feed, feed.cursors[slug]), indexAfter(feed, end));
+  const rows = batchRows(feed, slug, end);
   return end === undefined || rows.length === 0 ? undefined : { rows, end };
 };
 

@@ -1,3 +1,5 @@
+import { configDir } from '../dump/dump';
+
 // §4.3: where the mod looks for `WATCHDOG.json` (and `WATCHDOG.md`, the same places), from what `$` gives.
 export type Where = {
   // `CLAUDE_CONFIG_DIR` and `HOME`, unset as undefined.
@@ -26,16 +28,6 @@ export const normalizePath = (path: string): string => {
 
 const join = (dir: string, name: string): string => normalizePath(`${dir}/${name}`);
 
-const isSet = (value: string | undefined): value is string => value !== undefined && value !== '';
-
-// §4.3, §13.4: `<config>` is `CLAUDE_CONFIG_DIR`, else `$HOME/.claude`.
-const configDir = (where: Where): string | undefined => {
-  if (isSet(where.configDir)) {
-    return normalizePath(where.configDir);
-  }
-  return isSet(where.home) ? join(where.home, '.claude') : undefined;
-};
-
 // The part of `path` below `dir`, or undefined when `path` is not below it.
 const below = (path: string, dir: string): string | undefined => {
   const prefix = dir.endsWith('/') ? dir : `${dir}/`;
@@ -59,9 +51,9 @@ const projectDirs = (where: Where): string[] => {
 };
 
 // §4.3: the user file first, then for each project directory `.claude/<name>` and `<name>`. The walk skips
-// the user file, so it loads once, as the user file.
+// the user file, so it loads once, as the user file. `<config>` follows the dump's rule (§13.4).
 export const searchPaths = (where: Where, name: string): SearchPath[] => {
-  const config = configDir(where);
+  const config = configDir(where.configDir, where.home);
   const userPath = config === undefined ? undefined : join(config, name);
   const project = projectDirs(where)
     .flatMap((dir) => [join(dir, `.claude/${name}`), join(dir, name)])
@@ -76,6 +68,6 @@ export const displayPath = (path: string, where: Where): string => {
   if (inCwd !== undefined) {
     return `./${inCwd}`;
   }
-  const inHome = isSet(where.home) ? below(path, normalizePath(where.home)) : undefined;
+  const inHome = where.home === undefined || where.home === '' ? undefined : below(path, normalizePath(where.home));
   return inHome === undefined ? path : `~/${inHome}`;
 };
