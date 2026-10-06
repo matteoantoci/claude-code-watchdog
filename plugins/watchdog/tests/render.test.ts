@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { addServerToolUses, closeUpdate, pendingBatch, recordRow, startFeed } from '../hooks/feed/feed';
+import { addServerToolUses, closeUpdate, backlogBatch, recordRow, startFeed } from '../hooks/feed/feed';
 import { renderBatch } from '../hooks/review/batch';
 import type { Feed } from '../hooks/feed/feed';
 import type { ApiContentBlock, SessionAppendInput, SessionAppendOrigin, TurnStepServerToolUse } from 'claude-code';
@@ -41,7 +41,7 @@ const result = (
 
 const textOf = (rows: readonly SessionAppendInput[], feed: Feed = startFeed(['default'])): string => {
   const recorded = rows.reduce(recordRow, feed);
-  const batch = pendingBatch(closeUpdate(recorded, 'turn'), 'default');
+  const batch = backlogBatch(closeUpdate(recorded, 'turn'), 'default');
   return batch === undefined ? '' : renderBatch(batch.updates);
 };
 

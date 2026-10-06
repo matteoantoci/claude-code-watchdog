@@ -95,7 +95,7 @@ const splitUpdates = (feed: Feed, rows: readonly FeedRow[]): Update[] => {
 };
 
 // §7.5: every update that waits for one watchdog, merged into one batch; undefined when none waits.
-export const pendingBatch = (feed: Feed, slug: string): Batch | undefined => {
+export const backlogBatch = (feed: Feed, slug: string): Batch | undefined => {
   const end = feed.ends.at(-1)?.uuid;
   const rows = batchRows(feed, slug, end);
   return end === undefined || rows.length === 0 ? undefined : { rows, end, updates: splitUpdates(feed, rows) };

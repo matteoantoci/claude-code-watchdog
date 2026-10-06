@@ -1,4 +1,4 @@
-import { closeUpdate, currentFeed, pendingBatch, setFeed } from '../feed/feed';
+import { closeUpdate, currentFeed, backlogBatch, setFeed } from '../feed/feed';
 import { changeSubagentFeed, closeSubagentUpdate, watchedSubagent, watchedSubagents } from '../subagents/watch';
 import { cadenceOf } from './cadence';
 import type { Watchdog } from '../agents/roster';
@@ -69,7 +69,7 @@ const isTaken = (slug: string, subagent: string | undefined, start: Start): bool
 export const takeBacklog = (slug: string, start: Start): Backlog | undefined => {
   const sources = watchedFeeds().filter(({ subagent }) => subagent === undefined || subagent.watchdogs.includes(slug));
   const backlogs = sources.flatMap(({ subagent, feed }) => {
-    const batch = isTaken(slug, subagent?.agentId, start) ? pendingBatch(feed, slug) : undefined;
+    const batch = isTaken(slug, subagent?.agentId, start) ? backlogBatch(feed, slug) : undefined;
     return batch === undefined ? [] : [{ subagent, batch }];
   });
   return backlogs.reduce<Backlog | undefined>(

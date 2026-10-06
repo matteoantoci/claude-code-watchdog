@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { closeUpdate, moveCursor, pendingBatch, recordRow, startFeed } from '../hooks/feed/feed';
+import { closeUpdate, moveCursor, backlogBatch, recordRow, startFeed } from '../hooks/feed/feed';
 import { renderBatch } from '../hooks/review/batch';
 import type { Feed, UpdateClose } from '../hooks/feed/feed';
 import type { SessionAppendInput } from 'claude-code';
@@ -32,7 +32,7 @@ const update = (feed: Feed, rows: readonly SessionAppendInput[], close: UpdateCl
   closeUpdate(rows.reduce(recordRow, feed), close);
 
 const batchText = (feed: Feed): string => {
-  const batch = pendingBatch(feed, 'default');
+  const batch = backlogBatch(feed, 'default');
   return batch === undefined ? '' : renderBatch(batch.updates);
 };
 

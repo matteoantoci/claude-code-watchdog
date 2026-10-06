@@ -66,14 +66,14 @@ const NOISE: Readonly<Record<string, true>> = {
 };
 
 // §9.4: one admitted note of a review that is not a blocker, keyed by its normalized text.
-export type Slot = { readonly key: string; readonly severity: Severity };
+export type NoteSlot = { readonly key: string; readonly severity: Severity };
 
 // What the guard of one watchdog knows when a note arrives.
 export type GuardView = {
   // §9.2: the highest severity this watchdog sent the key at, from the note history.
   readonly seen: Severity | undefined;
   // §9.4: the slots of the review that sends the note.
-  readonly slots: readonly Slot[];
+  readonly slots: readonly NoteSlot[];
   // §9.4: `maxNotesPerReview`.
   readonly budget: number;
   // §9.1: the severity of this watchdog's queued entry of a key, while it waits for delivery.
@@ -84,8 +84,8 @@ export type GuardView = {
 // `displaced` key names the queued note of this review that leaves for it.
 export type Verdict =
   | { readonly kind: 'dropped'; readonly reason: DropReason }
-  | { readonly kind: 'raised'; readonly slots: readonly Slot[] }
-  | { readonly kind: 'admitted'; readonly slots: readonly Slot[]; readonly displaced?: string };
+  | { readonly kind: 'raised'; readonly slots: readonly NoteSlot[] }
+  | { readonly kind: 'admitted'; readonly slots: readonly NoteSlot[]; readonly displaced?: string };
 
 const dropped = (reason: DropReason): Verdict => ({ kind: 'dropped', reason });
 
@@ -93,22 +93,22 @@ const isAbove = (severity: Severity, other: Severity | undefined): boolean =>
   other === undefined || severityRank(severity) > severityRank(other);
 
 // §9.4: a blocker takes no slot, so a raise to blocker frees the key's slot; any other raise lifts it.
-const raiseSlot = (slots: readonly Slot[], note: Slot): readonly Slot[] =>
+const raiseSlot = (slots: readonly NoteSlot[], note: NoteSlot): readonly NoteSlot[] =>
   note.severity === 'blocker'
     ? slots.filter((slot) => slot.key !== note.key)
     : slots.map((slot) => (slot.key === note.key ? note : slot));
 
 // §9.4: the lowest slot of the review whose note waits for delivery; the first of equals.
-const lowestPending = (view: GuardView): Slot | undefined =>
+const lowestPending = (view: GuardView): NoteSlot | undefined =>
   view.slots
     .filter((slot) => view.pendingSeverity(slot.key) !== undefined)
-    .reduce<Slot | undefined>(
+    .reduce<NoteSlot | undefined>(
       (low, slot) => (low === undefined || isAbove(low.severity, slot.severity) ? slot : low),
       undefined
     );
 
 // §9.4: a full budget lets a higher note displace the lowest undelivered one, else `rate-limit`.
-const displace = (note: Slot, view: GuardView): Verdict => {
+const displace = (note: NoteSlot, view: GuardView): Verdict => {
   const low = lowestPending(view);
   if (low === undefined || !isAbove(note.severity, low.severity)) {
     return dropped('rate-limit');
@@ -118,7 +118,7 @@ const displace = (note: Slot, view: GuardView): Verdict => {
 
 // §9.4: omp `emission-guard.ts:290-319`. A key that already holds a slot of this review (it was delivered)
 // keeps that one slot.
-const charge = (note: Slot, view: GuardView): Verdict => {
+const charge = (note: NoteSlot, view: GuardView): Verdict => {
   if (note.severity === 'blocker' || view.slots.some((slot) => slot.key === note.key)) {
     return { kind: 'admitted', slots: raiseSlot(view.slots, note) };
   }
@@ -130,7 +130,7 @@ const charge = (note: Slot, view: GuardView): Verdict => {
 
 // §9.2: `empty`, `noise`, `duplicate`, then the budget. §9.1: a higher repeat of a queued key raises that
 // entry and takes no new slot.
-export const judgeNote = (note: Slot, view: GuardView): Verdict => {
+export const judgeNote = (note: NoteSlot, view: GuardView): Verdict => {
   if (note.key === '') {
     return dropped('empty');
   }
@@ -146,13 +146,13 @@ export const judgeNote = (note: Slot, view: GuardView): Verdict => {
 
 // §9.4: the slots of each watchdog's current review (watchdog slug → its review agent and slots). A note of
 // a new review agent starts that review's budget.
-const reviews = new Map<string, { readonly agentId: string; readonly slots: readonly Slot[] }>();
+const reviews = new Map<string, { readonly agentId: string; readonly slots: readonly NoteSlot[] }>();
 
-export const reviewSlots = (watchdog: string, agentId: string): readonly Slot[] => {
+export const reviewSlots = (watchdog: string, agentId: string): readonly NoteSlot[] => {
   const review = reviews.get(watchdog);
   return review?.agentId === agentId ? review.slots : [];
 };
 
-export const setReviewSlots = (watchdog: string, agentId: string, slots: readonly Slot[]): void => {
+export const setReviewSlots = (watchdog: string, agentId: string, slots: readonly NoteSlot[]): void => {
   reviews.set(watchdog, { agentId, slots });
 };

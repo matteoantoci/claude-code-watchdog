@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { MESSAGES_READ_CAP } from '../hooks/constants';
-import { closeUpdate, pendingBatch, recordRow, startFeed } from '../hooks/feed/feed';
+import { closeUpdate, backlogBatch, recordRow, startFeed } from '../hooks/feed/feed';
 import { clearGuardKeys } from '../hooks/note/history';
 import { renderBatch } from '../hooks/review/batch';
 import { isRewound, markOf, rewindFeed } from '../hooks/rewind/mark';
@@ -52,7 +52,7 @@ describe('§14.3 session change', () => {
   });
 
   test('the replay runs from the last person prompt to the end, after the marker, without own notes', () => {
-    const batch = pendingBatch(replayFeed(startFeed(['default']), CONVERSATION, 'replay:s2'), 'default');
+    const batch = backlogBatch(replayFeed(startFeed(['default']), CONVERSATION, 'replay:s2'), 'default');
     const text = renderBatch(batch?.updates ?? []);
 
     expect(batch?.updates).toHaveLength(1);
@@ -95,7 +95,7 @@ describe('§14.4 rewind', () => {
     const rows = [mainRow('u1', 'user', 'Task 1.'), mainRow('a1', 'assistant', 'Done 1.')];
     const closed = closeUpdate(rows.reduce(recordRow, startFeed(['default'])), 'turn');
     const feed = rewindFeed([mainRow('u2', 'user', 'Task 2.')].reduce(recordRow, closed), 'rewind:1');
-    const batch = pendingBatch(closeUpdate(feed, 'turn'), 'default');
+    const batch = backlogBatch(closeUpdate(feed, 'turn'), 'default');
     expect(renderBatch(batch?.updates ?? [])).toBe('[user rewound the conversation]\n\n**user**:\nTask 2.');
   });
 

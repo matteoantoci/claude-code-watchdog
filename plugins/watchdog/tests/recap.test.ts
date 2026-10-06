@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { closeUpdate, pendingBatch, recordRow, startFeed } from '../hooks/feed/feed';
+import { closeUpdate, backlogBatch, recordRow, startFeed } from '../hooks/feed/feed';
 import { reviewPrompt } from '../hooks/review/prompt';
 import type { Update, UpdateClose } from '../hooks/feed/feed';
 import type { RecapNote } from '../hooks/note/history';
@@ -22,7 +22,7 @@ const results = (...ids: string[]): ApiMessage => ({
 });
 
 const updatesOf = (rows: readonly SessionAppendInput[], close: UpdateClose = 'turn'): readonly Update[] =>
-  pendingBatch(closeUpdate(rows.reduce(recordRow, startFeed(['default'])), close), 'default')?.updates ?? [];
+  backlogBatch(closeUpdate(rows.reduce(recordRow, startFeed(['default'])), close), 'default')?.updates ?? [];
 
 const ASK: SessionAppendInput = {
   uuid: 'u9',

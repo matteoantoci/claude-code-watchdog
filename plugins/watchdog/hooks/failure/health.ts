@@ -1,7 +1,7 @@
 import { HALT_WAITS_MS, MAX_FAILED_REVIEWS } from '../constants';
 import { IDLE } from '../review/slots';
 import type { Problem, Slot } from '../review/slots';
-import type { Backlog } from './backlog';
+import type { BacklogFate } from './backlog';
 import type { Outcome } from './classify';
 
 // §12.3: the failed reviews in a row of one watchdog, and its refusals in the session (§12.3 item 10).
@@ -10,7 +10,7 @@ export type Counters = { readonly failures: number; readonly refused: number };
 export const NO_FAILURES: Counters = { failures: 0, refused: 0 };
 
 // What an outcome does to a watchdog: its next slot, its counts and its backlog.
-export type Step = { readonly slot: Slot; readonly counters: Counters; readonly backlog: Backlog };
+export type Step = { readonly slot: Slot; readonly counters: Counters; readonly backlog: BacklogFate };
 
 // One outcome of a review of a watchdog: the problem a try started from (§12.3 items 2, 3), the counts before,
 // the notes the review delivered (§12.3 item 1) and the time.
@@ -26,11 +26,11 @@ export type StepInput = {
 const haltWait = (tries: number): number => HALT_WAITS_MS[Math.min(tries, HALT_WAITS_MS.length - 1)] ?? 0;
 
 // §12.3 item 1: a failed review that delivered a note keeps it and moves the cursor; else its batch waits.
-const requeue = (input: StepInput): Backlog => (input.notes > 0 ? 'move' : 'keep');
+const requeue = (input: StepInput): BacklogFate => (input.notes > 0 ? 'move' : 'keep');
 
 // §12.3 items 1, 2: `count` failures (all of them for billing). A failed try of a halt waits longer; the
 // failure that reaches the limit halts the watchdog and drops its backlog.
-const failure = (input: StepInput, count: number, backlog: Backlog): Step => {
+const failure = (input: StepInput, count: number, backlog: BacklogFate): Step => {
   const failures = Math.min(input.counters.failures + count, MAX_FAILED_REVIEWS);
   const counters = { ...input.counters, failures };
   const reason = input.outcome.error ?? '';
