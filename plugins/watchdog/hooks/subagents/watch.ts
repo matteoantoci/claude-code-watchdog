@@ -5,7 +5,6 @@ import { contentText, elide } from '../feed/text';
 import { currentPeriod } from '../lifecycle/mode';
 import type { Roster } from '../agents/roster';
 import type { Feed, FeedRow, UpdateClose } from '../feed/feed';
-import type { LogRecord } from '../log/log';
 import type { DeliveryState, HeldNote, Note } from '../note/notes';
 import type { AgentSpawnInput, PluginState, SessionAppendInput } from 'claude-code';
 
@@ -39,18 +38,19 @@ export const optInSlugs = (
   return choice === true ? [...reviewers] : reviewers.filter((slug) => choice.includes(slug));
 };
 
-// §11.1, §11.4, §13.3: one line for each opted-in type with its review count, then a warning for each
-// `watchdog:*` key and, once the mod saw an `agent.offer`, for each key that no offer gave.
+// §11.1, §11.4, §13.3: one line for each opted-in type with its review count (from the cost ledger, which the
+// 100-record log does not cap), then a warning for each `watchdog:*` key and, once the mod saw an `agent.offer`,
+// for each key that no offer gave.
 export const subagentStatusLines = (
   keys: readonly string[],
   offered: ReadonlySet<string>,
-  log: readonly LogRecord[]
+  reviews: Readonly<Record<string, number>>
 ): string[] => {
   const types = keys.filter((key) => !isWatchdogType(key));
   const unknown = offered.size === 0 ? [] : types.filter((type) => !offered.has(type));
   return [
     ...types.map((type) => {
-      const count = log.filter((record) => record.kind === 'review' && record.subagent?.type === type).length;
+      const count = Object.hasOwn(reviews, type) ? (reviews[type] ?? 0) : 0;
       return `subagents: ${type} ${count} ${count === 1 ? 'review' : 'reviews'}`;
     }),
     ...keys.filter(isWatchdogType).map((key) => `warning: subagents "${key}": a watchdog type, ignored`),

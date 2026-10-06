@@ -198,4 +198,23 @@ describe('ledger', () => {
     );
     expect(tally.model).toBe('claude-sonnet-5-5');
   });
+
+  test('only admitted notes count: a displaced, discarded or dropped note of the trace adds none', () => {
+    const notes = [
+      { severity: 'concern', text: 'a', delivery: 'held' },
+      { severity: 'concern', text: 'a', delivery: 'displaced' },
+      { severity: 'blocker', text: 'b', delivery: 'dropped:unsafe' },
+      { severity: 'nit', text: 'c', delivery: 'discarded' },
+      { severity: 'blocker', text: 'd', delivery: 'nudged' },
+    ];
+    const end = { turnId: 'r1', reason: 'error', answer: '', durationMs: 5, isAborted: false } as const;
+    const record = reviewRecord({
+      watchdog: STYLE,
+      agentId: 'afake0001',
+      time: 0,
+      end,
+      trace: { steps: 1, notes, error: null },
+    });
+    expect(addReview(EMPTY_TALLY, record).notes).toEqual({ blocker: 1, concern: 1, nit: 0 });
+  });
 });

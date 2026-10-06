@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { REVIEW_SPAWN, sendNote, stubDelivery } from './fixtures/delivery';
 import { stateIn, stubState } from './fixtures/on-state';
-import { REVIEW_AGENT, SESSION_ID, START, mainRow, turnEnd, typed } from './fixtures/session';
+import { REVIEW_AGENT, SESSION_ID, START, USAGE, mainRow, turnEnd, typed } from './fixtures/session';
 import { stubSwitch } from './fixtures/switch';
 import type { DeliveryStubs } from './fixtures/delivery';
 import type { StateStubs } from './fixtures/on-state';
@@ -119,6 +119,38 @@ describe('§14.3 /clear, /resume, /branch', () => {
     expect(reviews(seen)).toHaveLength(2);
     expect(reviews(seen)[1]).not.toMatch(/Task [12]\./u);
     expect(reviews(seen)[1]).toMatch(/Task 3\./u);
+  });
+
+  test('/clear carries a failure count and its last error over', async ($, on: Stubs) => {
+    const ids = stubSwitch($, on);
+    stubDelivery(on, { sessionId: () => ids.current });
+    const state = stubState(on, { sessionId: () => ids.current });
+    await startReview($);
+    await $.turn.complete({ ...turnEnd('r1'), agentId: REVIEW_AGENT, reason: 'error', answer: '' });
+    const health = stateIn(state, SESSION_ID, 'health');
+    expect(health).toEqual({
+      watchdogs: { default: { problem: null, failures: 1, refused: 0 } },
+      lastError: 'default: the review failed with no error text',
+    });
+    await ids.switchTo('clear', NEW_ID);
+    expect(stateIn(state, NEW_ID, 'health')).toEqual(health);
+  });
+
+  test('the review log, the cost ledger and the nudge clock of module memory go into the new $.state', async ($, on: Stubs) => {
+    const ids = stubSwitch($, on);
+    const seen = stubDelivery(on, { sessionId: () => ids.current });
+    const state = stubState(on, { sessionId: () => ids.current });
+    await startReview($);
+    await sendNote($, 'concern', 'parseDate drops the timezone');
+    await $.turn.complete({ ...turnEnd('r1'), agentId: REVIEW_AGENT, usage: USAGE });
+    await seen.clock.advance(2000);
+    await ids.switchTo('clear', NEW_ID);
+
+    expect(stateIn(state, NEW_ID, 'log')).toEqual(stateIn(state, SESSION_ID, 'log'));
+    expect(stateIn(state, NEW_ID, 'log')).toEqual([expect.objectContaining({ kind: 'review', agentId: REVIEW_AGENT })]);
+    expect(stateIn(state, NEW_ID, 'ledger')).toEqual(stateIn(state, SESSION_ID, 'ledger'));
+    expect(stateIn(state, NEW_ID, 'ledger')).toMatchObject({ session: { reviews: 1, tokens: 1280 } });
+    expect(stateIn(state, NEW_ID, 'nudge')).toEqual({ nudges: 1, nudgeTurn: null, dueAt: null, notes: [] });
   });
 
   test('/branch copies the note history to the new id, guard keys too, and replays the last prompt to the end', async ($, on: Stubs) => {

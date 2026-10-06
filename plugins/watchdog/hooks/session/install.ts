@@ -1,13 +1,15 @@
 import { addWatchdogId } from '../agents/ids';
 import { EMPTY_BAND, bandState, restoreBand } from '../band/cards';
+import { nudgeValue } from '../delivery/nudge';
 import { currentTurn } from '../delivery/turns';
 import { currentFeed, startFeed } from '../feed/feed';
 import { currentMode } from '../lifecycle/mode';
 import { setSurfacesAtStart } from '../lifecycle/on-order';
-import { restoreLog } from '../log/log';
+import { currentLog, restoreLog } from '../log/log';
 import { liveHistory, notesKey, readHistory, setLiveHistory } from '../note/history';
 import { changeBacklog } from '../review/backlogs';
 import { forgetMark } from '../rewind/mark';
+import { currentLedger, restoreLedger } from '../status/ledger';
 import { currentReviews } from '../stop/reviews';
 import { forgetSubagents, restoreSubagent, setReviewTarget } from '../subagents/watch';
 import { resetScope } from '../tools/scope';
@@ -18,7 +20,7 @@ import type { OnEvents } from '../on';
 import type { Carried, SessionChange } from './change';
 import type { EngineInterface, Hook, PluginState } from 'claude-code';
 
-type Loaded = { readonly [K in 'ids' | 'log' | 'feed']: PluginState['watchdog'][K] | undefined };
+type Loaded = { readonly [K in 'ids' | 'log' | 'feed' | 'ledger']: PluginState['watchdog'][K] | undefined };
 
 // §14.1, §14.3: the values that carry over, as the old session's `$.state` holds them at its end; a refused read
 // carries nothing over.
@@ -78,7 +80,8 @@ const replay = async ($: EngineInterface, to: string): Promise<void> => {
 
 // §14.3: the backlogs, the cards and the notes that wait reset, and the read-scope allow set and deny counts
 // empty (§14.1); the on flag, the id set, the failure states, the turn counter, the reviews and the stop map
-// carry over.
+// carry over. The live review log, cost ledger and nudge clock stay in module memory (§15: the reviews a session
+// change stops count too), so they carry over as well: else a reload would drop what no reload keeps.
 const applyChange = async ($: EngineInterface, change: SessionChange, to: string): Promise<void> => {
   discardNotes();
   forgetSubagents();
@@ -95,6 +98,9 @@ const applyChange = async ($: EngineInterface, change: SessionChange, to: string
   await writeCarried($, change.carried);
   await $.state.set({ plugin: 'watchdog', key: 'feed' }, currentFeed()).catch(() => undefined);
   await $.state.set({ plugin: 'watchdog', key: 'band' }, bandState(currentTurn())).catch(() => undefined);
+  await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog()).catch(() => undefined);
+  await $.state.set({ plugin: 'watchdog', key: 'ledger' }, currentLedger()).catch(() => undefined);
+  await $.state.set({ plugin: 'watchdog', key: 'nudge' }, nudgeValue([])).catch(() => undefined);
 };
 
 // §14.3: the command is kept before `next(e)`, inside which `session.end` fires; right after it the session id
@@ -117,9 +123,10 @@ const onSessionEnd: Hook<'session.end'> = async ($, e, next) => {
   return result;
 };
 
-// §14.6: what a reload finds in `$.state` before the hooks beneath run: the id set, the review log, the feed.
+// §14.6: what a reload finds in `$.state` before the hooks beneath run: the id set, the review log, the feed and
+// the cost ledger.
 const readLoad = async ($: EngineInterface): Promise<Loaded> => {
-  const [ids, log, feed] = await Promise.all([
+  const [ids, log, feed, ledger] = await Promise.all([
     $.state.get({ plugin: 'watchdog', key: 'ids' }).then(
       (read) => read.value,
       () => undefined
@@ -132,8 +139,12 @@ const readLoad = async ($: EngineInterface): Promise<Loaded> => {
       (read) => read.value,
       () => undefined
     ),
+    $.state.get({ plugin: 'watchdog', key: 'ledger' }).then(
+      (read) => read.value,
+      () => undefined
+    ),
   ]);
-  return { ids, log, feed };
+  return { ids, log, feed, ledger };
 };
 
 // §11.2, §14.6: the watched subagents that may have work left come back from the `$.state` family
@@ -168,14 +179,17 @@ const restoreFeed = async ($: EngineInterface, feed: Loaded['feed']): Promise<vo
   await $.state.set({ plugin: 'watchdog', key: 'feed' }, currentFeed()).catch(() => undefined);
 };
 
-// §14.6: at load (the first hook of a module instance) the id set and the review log come back before the
-// hooks beneath run, and a desktop reload notes its surfaces (§5.3). The feed and the watched subagents come
-// back once the on order beneath turned the session on again, which started the feed anew.
+// §14.6: at load (the first hook of a module instance) the id set, the review log and the cost ledger come back
+// before the hooks beneath run, and a desktop reload notes its surfaces (§5.3). The feed and the watched
+// subagents come back once the on order beneath turned the session on again, which started the feed anew.
 const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
   setSurfacesAtStart(e.isInteractive ? [] : await $.session.surfaces().catch(() => []));
-  const { ids, log, feed } = await readLoad($);
+  const { ids, log, feed, ledger } = await readLoad($);
   ids?.forEach((id) => addWatchdogId(id.agentId, id.watchdog));
   restoreLog(log ?? []);
+  if (ledger !== undefined) {
+    restoreLedger(ledger);
+  }
   const result = await next(e);
   if (currentMode() === 'on') {
     await restoreFeed($, feed);

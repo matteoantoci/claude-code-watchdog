@@ -4,6 +4,7 @@ import { wrapNotes, wrappedNote } from '../hooks/delivery/wrapper';
 import { recordText } from '../hooks/dump/dump';
 import { reviewRecord } from '../hooks/log/log';
 import { logRow } from '../hooks/note/notes';
+import { EMPTY_LEDGER, addToLedger } from '../hooks/status/ledger';
 import {
   endSubagent,
   isSubagentSteer,
@@ -12,7 +13,7 @@ import {
   subagentStatusLines,
   watchSubagent,
 } from '../hooks/subagents/watch';
-import type { LogRecord } from '../hooks/log/log';
+import type { ReviewRecord } from '../hooks/log/log';
 import type { HeldNote, Note } from '../hooks/note/notes';
 
 // The watchdogs that review in this session, in roster order.
@@ -100,7 +101,7 @@ describe('the subagent label (§10.7, §11.3)', () => {
 });
 
 // One finished review; of a subagent of this type when a type is given.
-const review = (type?: string): LogRecord =>
+const review = (type?: string): ReviewRecord =>
   reviewRecord({
     watchdog: DEFAULT_WATCHDOG,
     agentId: 'afake0001',
@@ -111,10 +112,12 @@ const review = (type?: string): LogRecord =>
   });
 
 describe('the subagent status lines (§11.1, §11.4)', () => {
-  const log = [review('Explore'), review(), review('Explore'), review('Plan')];
+  const reviews = [review('Explore'), review(), review('Explore'), review('Plan')];
+  const ledger = reviews.reduce((counted, record) => addToLedger(counted, 'default', record), EMPTY_LEDGER);
 
-  test('one line for each opted-in type with its review count', () => {
-    expect(subagentStatusLines(['Explore', 'Plan', 'my-plugin:coder'], new Set(), log)).toEqual([
+  test('one line for each opted-in type with its review count from the ledger', () => {
+    expect(ledger.subagents).toEqual({ Explore: 2, Plan: 1 });
+    expect(subagentStatusLines(['Explore', 'Plan', 'my-plugin:coder'], new Set(), ledger.subagents)).toEqual([
       'subagents: Explore 2 reviews',
       'subagents: Plan 1 review',
       'subagents: my-plugin:coder 0 reviews',
@@ -123,13 +126,13 @@ describe('the subagent status lines (§11.1, §11.4)', () => {
 
   test('a watchdog:* key and a key that no agent.offer gave are warnings; no offer yet means no unknown key', () => {
     const keys = ['Explore', 'Explroe', 'watchdog:default'];
-    expect(subagentStatusLines(keys, new Set(['Explore', 'Plan']), [])).toEqual([
+    expect(subagentStatusLines(keys, new Set(['Explore', 'Plan']), {})).toEqual([
       'subagents: Explore 0 reviews',
       'subagents: Explroe 0 reviews',
       'warning: subagents "watchdog:default": a watchdog type, ignored',
       'warning: subagents "Explroe": no agent.offer gave this type',
     ]);
-    expect(subagentStatusLines(keys, new Set(), [])).not.toContain(
+    expect(subagentStatusLines(keys, new Set(), {})).not.toContain(
       'warning: subagents "Explroe": no agent.offer gave this type'
     );
   });

@@ -7,7 +7,6 @@ import { currentTurn } from '../delivery/turns';
 import { wrapNotes, wrappedNote } from '../delivery/wrapper';
 import { currentFeed } from '../feed/feed';
 import { currentMode } from '../lifecycle/mode';
-import { currentLog } from '../log/log';
 import { normalizeNote } from '../note/guard';
 import {
   EMPTY_HISTORY,
@@ -27,6 +26,7 @@ import {
   replaceHeldNote,
   takeBoundNotes,
 } from '../note/notes';
+import { currentLedger } from '../status/ledger';
 import {
   endSubagent,
   isSubagentRunning,
@@ -183,7 +183,7 @@ export const installSubagents = (
   // §11.4, §13.3: the subagent lines and warnings.
   addStatusLines(() =>
     currentMode() === 'on'
-      ? subagentStatusLines(Object.keys(currentRosterConfig().subagents), offered, currentLog())
+      ? subagentStatusLines(Object.keys(currentRosterConfig().subagents), offered, currentLedger().subagents)
       : []
   );
 };

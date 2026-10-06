@@ -2,7 +2,18 @@ import { describe, expect, test } from 'claude-code/testing';
 import { REVIEW_TIMEOUT_MS } from '../hooks/constants';
 import { REVIEW_SPAWN, sendNote, stubDelivery } from './fixtures/delivery';
 import { stubState } from './fixtures/on-state';
-import { NOW, REVIEW_AGENT, START, USAGE, mainRow, stubSession, subagentId, turnEnd, typed } from './fixtures/session';
+import {
+  NOW,
+  REVIEW_AGENT,
+  SESSION_ID,
+  START,
+  USAGE,
+  mainRow,
+  stubSession,
+  subagentId,
+  turnEnd,
+  typed,
+} from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { DeliveryStubs } from './fixtures/delivery';
 import type { StateStubs } from './fixtures/on-state';
@@ -154,7 +165,7 @@ describe('§7.8 the 10 min timeout', () => {
     expect(reviews(seen)[1]).toMatch(/Task 1\.[\s\S]*Task 2\./u);
   });
 
-  test('a later note of the timed-out agent is dropped, and its aborted end only logs its usage', async ($, on: ClockStubs) => {
+  test('a later note of the timed-out agent is dropped, and its aborted end only adds its usage to the cost', async ($, on: ClockStubs) => {
     const seen = stubDelivery(on);
     const state = stubState(on);
     await startReview($);
@@ -166,9 +177,11 @@ describe('§7.8 the 10 min timeout', () => {
 
     expect(seen.logs.slice(logs)).toEqual([]);
     expect(await status($)).toContain('default idle · fail 1/3');
-    expect(records(state.logWrites)).toContainEqual(
-      expect.objectContaining({ kind: 'review', agentId: REVIEW_AGENT, reason: 'aborted', notes: [] })
-    );
+    // The timeout record is the review's one record; the ledger counts the review once, with the usage.
+    expect(records(state.logWrites)).toEqual([expect.objectContaining({ kind: 'timeout', agentId: REVIEW_AGENT })]);
+    expect(state.sessions.get(SESSION_ID)?.get('ledger')?.at(-1)).toMatchObject({
+      session: { reviews: 1, notes: { blocker: 0, concern: 0, nit: 0 }, tokens: 1280, model: 'claude-opus-4-5' },
+    });
   });
 
   test('a review that delivered a note keeps it and moves the cursor', async ($, on: ClockStubs) => {
@@ -240,6 +253,11 @@ describe('§5.2 `/watchdog off` stops each review', () => {
     expect(stopsAtTaskStop).toEqual([{ running: [], stops: [{ agentId: REVIEW_AGENT, reason: 'off' }] }]);
     expect(await note($, 'the migration deletes the users table')).toEqual({ result: DROPPED });
     await abortedEnd($);
+    // Its result is dropped, so it writes no review record; its tokens still count in the cost (§15).
+    expect(state.logWrites.flat()).not.toContainEqual(expect.objectContaining({ kind: 'review' }));
+    expect(state.sessions.get(SESSION_ID)?.get('ledger')?.at(-1)).toMatchObject({
+      session: { reviews: 1, tokens: 1280 },
+    });
     await seen.clock.advance(REVIEW_TIMEOUT_MS);
     expect(seen.taskStops).toEqual([REVIEW_AGENT]);
 

@@ -166,6 +166,17 @@ export type WatchdogBand = {
   readonly seq: number;
 };
 
+// §13.3, §15: what the finished reviews of one watchdog, or of the session, add up to: reviews, admitted notes by
+// severity, tokens of all four classes, cost (the USD of the priced reviews, and whether any review had a price or
+// ran a model that is not in the price table), and the model that ran last (null before any usage).
+export type WatchdogTally = {
+  readonly reviews: number;
+  readonly notes: { readonly blocker: number; readonly concern: number; readonly nit: number };
+  readonly tokens: number;
+  readonly cost: { readonly usd: number; readonly hasPrice: boolean; readonly hasUnpriced: boolean };
+  readonly model: string | null;
+};
+
 declare module 'claude-code' {
   interface PluginState {
     watchdog: {
@@ -197,6 +208,13 @@ declare module 'claude-code' {
       };
       // §13.1: the band cards; the band hook reads it, so each write draws the band again.
       band: WatchdogBand;
+      // §13.3, §15: the cost ledger: the tally of each watchdog slug and of the session, and the reviews of each
+      // subagent type (§11.4). A reload must not zero the status totals, and the 100-record `log` cannot rebuild it.
+      ledger: {
+        readonly watchdogs: Readonly<Record<string, WatchdogTally>>;
+        readonly session: WatchdogTally;
+        readonly subagents: Readonly<Record<string, number>>;
+      };
     };
   }
 }
