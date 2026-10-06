@@ -4,11 +4,12 @@ import type { CommandRunInput } from 'claude-code';
 
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const;
 
-type Stubs = OnEvents<'session.version' | 'command.register' | 'session.start' | 'ui.log'>;
+type Stubs = OnEvents<'session.version' | 'command.register' | 'tool.register' | 'session.start' | 'ui.log'>;
 
 const startOn = (on: Stubs, base: string): void => {
   on('session.version', () => ({ value: { version: base, base } }));
   on('command.register', () => ({ value: { command: 'watchdog' } }));
+  on('tool.register', (_$, e) => ({ value: { tool: `mcp__watchdog__${e.name}` } }));
   on('session.start', (_$, e) => ({ cwd: e.cwd }));
 };
 
@@ -52,11 +53,15 @@ describe('/watchdog command', () => {
 });
 
 describe('/watchdog registration', () => {
-  test('session.start registers the command after the version gate', async ($, on: Stubs) => {
+  test('session.start registers the note tool after the version gate, the command last', async ($, on: Stubs) => {
     const calls: string[] = [];
     on('session.version', () => {
       calls.push('session.version');
       return { value: { version: '2.1.290', base: '2.1.290' } };
+    });
+    on('tool.register', (_$, e) => {
+      calls.push(`tool.register ${e.name}`);
+      return { value: { tool: `mcp__watchdog__${e.name}` } };
     });
     on('command.register', (_$, e) => {
       calls.push(`command.register ${e.name}`);
@@ -64,12 +69,26 @@ describe('/watchdog registration', () => {
     });
     on('session.start', (_$, e) => ({ cwd: e.cwd }));
     await $.session.start(START);
-    expect(calls).toEqual(['session.version', 'command.register watchdog']);
+    expect(calls).toEqual(['session.version', 'tool.register note', 'command.register watchdog']);
+  });
+
+  test('below 2.1.290, session.start registers no note tool', async ($, on: Stubs) => {
+    const tools: string[] = [];
+    on('session.version', () => ({ value: { version: '2.1.289', base: '2.1.289' } }));
+    on('tool.register', (_$, e) => {
+      tools.push(e.name);
+      return { value: { tool: `mcp__watchdog__${e.name}` } };
+    });
+    on('command.register', (_$, e) => ({ value: { command: e.name } }));
+    on('session.start', (_$, e) => ({ cwd: e.cwd }));
+    await $.session.start(START);
+    expect(tools).toEqual([]);
   });
 
   test('a register error writes one log row and the hook still ends', async ($, on: Stubs) => {
     const rows: string[] = [];
     on('session.version', () => ({ value: { version: '2.1.290', base: '2.1.290' } }));
+    on('tool.register', (_$, e) => ({ value: { tool: `mcp__watchdog__${e.name}` } }));
     on('command.register', () => ({ deny: 'the name watchdog belongs to another plugin' }));
     on('ui.log', (_$, e) => {
       rows.push(e.text);

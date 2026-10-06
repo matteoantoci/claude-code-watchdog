@@ -1,0 +1,2 @@
+# oxfmt reads this file. The prompts are word-for-word omp ports (spec §8): never reformat them.
+plugins/watchdog/prompts/
