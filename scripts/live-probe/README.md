@@ -35,7 +35,8 @@ starts it itself; `ANTHROPIC_BASE_URL` points at it only in the sessions that ne
 include. The probe cannot follow the plugin's lint rules: it is Node code that imports `node:*`, and the repo has no
 Node types (spec §2 allows no `node:*` in the plugin, so none are installed), so the type-aware rules flag each
 `node:*` value as `any` (thousands of `no-unsafe-*` errors). `proxy.mjs` is a near-verbatim copy that the spec
-requires. oxfmt still formats the folder. `npm run check` does not run the probe.
+requires. oxfmt still formats the folder. `npm run check` does not run the probe. The decision and its options are in
+[ADR 0002](../../docs/adr/0002-live-probe-lint-exemption.md).
 
 ## Desktop checklist
 
