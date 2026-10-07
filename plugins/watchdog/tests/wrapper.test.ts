@@ -45,7 +45,7 @@ describe('the <watchdog-notes> wrapper', () => {
   });
 
   test('a held note loses its name for the default watchdog and takes its age from the counter', () => {
-    const base = { agentId: 'afake0001', severity: 'concern', text: 'x', batchEnd: null, turn: 3 } as const;
+    const base = { agentId: 'afake0001', severity: 'concern', text: 'x', batchEdits: null, turn: 3 } as const;
 
     expect(wrappedNote({ ...base, watchdog: 'default' }, { name: 'default', turn: 3, edits: 0 })).toEqual({
       severity: 'concern',

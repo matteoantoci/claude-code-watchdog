@@ -15,7 +15,7 @@ export type Update = { readonly rows: readonly FeedRow[]; readonly close: Update
 
 export type Batch = { readonly rows: readonly FeedRow[]; readonly end: string; readonly updates: readonly Update[] };
 
-export const EMPTY_FEED: Feed = { rows: [], ends: [], cursors: {}, prompts: 0 };
+export const EMPTY_FEED: Feed = { rows: [], ends: [], cursors: {}, prompts: 0, edits: 0 };
 
 // §5.2 step 3: `/watchdog on` moves each cursor to the end, so no earlier row is replayed.
 export const startFeed = (slugs: readonly string[]): Feed => ({
@@ -35,7 +35,7 @@ const settleInto = (settled: Settled, settlement: Settlement): Settled => {
 };
 
 // §7.1, §7.6: one `session.append` row enters the feed rendered. A row with several pieces keeps its uuid on
-// the first; §7.7: a person prompt counts.
+// the first; §7.7: a person prompt counts; §10.8: so does each edit call.
 export const recordRow = (feed: Feed, row: SessionAppendInput): Feed => {
   const rendered = renderRow(row);
   const settled = rendered.settlements.reduce(settleInto, { rows: feed.rows, orphans: [] });
@@ -47,6 +47,7 @@ export const recordRow = (feed: Feed, row: SessionAppendInput): Feed => {
       ...pieces.map((piece, index) => Object.assign({ uuid: index === 0 ? row.uuid : `${row.uuid}#${index}` }, piece)),
     ],
     prompts: feed.prompts + (rendered.isPersonPrompt ? 1 : 0),
+    edits: feed.edits + (rendered.edits ?? 0),
   };
 };
 
@@ -61,7 +62,7 @@ export const addServerToolUses = (feed: Feed, uses: readonly TurnStepServerToolU
 
 // §7.2: a boundary closes the update that the rows since the last boundary make. A turn end right after a
 // step boundary, with no row between them, closes that update again as the turn end (§7.5 markers). §10.8: the
-// end keeps the main-loop turn counter of the boundary.
+// end keeps the main-loop turn counter of the boundary and the feed's edit count.
 export const closeUpdate = (feed: Feed, close: UpdateClose, turn: number): Feed => {
   const last = feed.rows.at(-1)?.uuid;
   const isSameEnd = feed.ends.at(-1)?.uuid === last;
@@ -71,14 +72,14 @@ export const closeUpdate = (feed: Feed, close: UpdateClose, turn: number): Feed 
   return {
     ...feed,
     ends: isSameEnd
-      ? feed.ends.with(feed.ends.length - 1, { uuid: last, close, turn })
-      : [...feed.ends, { uuid: last, close, turn }],
+      ? feed.ends.with(feed.ends.length - 1, { uuid: last, close, turn, edits: feed.edits })
+      : [...feed.ends, { uuid: last, close, turn, edits: feed.edits }],
   };
 };
 
-// §10.8: the main-loop turn counter of the boundary that closed the update ending at `end`.
-export const batchTurn = (feed: Feed, end: string): number | undefined =>
-  feed.ends.find((close) => close.uuid === end)?.turn;
+// §10.8: the boundary that closed the update ending at `end`: its main-loop turn counter and the feed's edit count.
+export const batchClose = (feed: Feed, end: string): Feed['ends'][number] | undefined =>
+  feed.ends.find((close) => close.uuid === end);
 
 // The index of the row just after `uuid`; 0 for no uuid or an unknown one.
 const indexAfter = (feed: Feed, uuid: string | null | undefined): number =>

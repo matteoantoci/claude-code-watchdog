@@ -31,6 +31,8 @@ export type RenderedRow = {
   readonly settlements: readonly Settlement[];
   // §7.7 part 2: the row is a person prompt.
   readonly isPersonPrompt: boolean;
+  // §10.8: the `Edit`, `Write`, `MultiEdit` and `NotebookEdit` calls of a response row; none for another row.
+  readonly edits?: number;
 };
 
 // omp `ask` is Claude Code's `AskUserQuestion`: its input shows under `Ask input`, and its result holds the
@@ -48,17 +50,13 @@ const inputText = (input: unknown): string => {
   return elide(isBare ? only : JSON.stringify(input ?? {}), TOOL_INPUT_CAP);
 };
 
-// §10.8: the calls that write a file; the outdated mark of a note counts their rows.
-const EDIT_TOOLS: Readonly<Record<string, true>> = { Edit: true, Write: true, MultiEdit: true, NotebookEdit: true };
-
 // omp `toolCallLine` before its result: `→ name(args) ⇒ pending`; the brief keeps omp's one-line argument.
 const callPiece = (block: ApiContentBlock): Piece => {
   const name = textOf(block.name);
   const brief = `→ ${name}(${primaryArg(name, block.input)})${PENDING}`;
   const call = textOf(block.id);
   if (name !== ASK_TOOL) {
-    const text = `→ ${name}(${inputText(block.input)})${PENDING}`;
-    return { text, role: 'agent', brief, call, ...(Object.hasOwn(EDIT_TOOLS, name) ? { edit: true as const } : {}) };
+    return { text: `→ ${name}(${inputText(block.input)})${PENDING}`, role: 'agent', brief, call };
   }
   const ask = fenced(elide(JSON.stringify(block.input ?? {}, null, 2), TOOL_INPUT_CAP), 'json');
   return { text: `${brief}\n${ASK_INPUT}:\n${ask}`, role: 'agent', brief, call };
@@ -160,11 +158,16 @@ const compactionPiece = (row: SessionAppendInput): Piece[] => {
 
 const only = (pieces: readonly Piece[]): RenderedRow => ({ pieces, settlements: [], isPersonPrompt: false });
 
+// §10.8: the calls that write a file; the outdated mark of a note counts them.
+const EDIT_TOOLS: Readonly<Record<string, true>> = { Edit: true, Write: true, MultiEdit: true, NotebookEdit: true };
+
 // §7.6: one `session.append` row of the primary agent in the omp markdown form, with the caps applied. A
-// tool result settles its call (`settleCall`).
+// tool result settles its call (`settleCall`). §10.8: a response row counts its edit calls.
 export const renderRow = (row: SessionAppendInput): RenderedRow => {
   if (row.door === 'response') {
-    return only(responsePieces(row.message.content));
+    const { content } = row.message;
+    const edits = content.filter((block) => block.type === 'tool_use' && Object.hasOwn(EDIT_TOOLS, textOf(block.name)));
+    return { ...only(responsePieces(content)), edits: edits.length };
   }
   if (row.door === 'tool-result') {
     return toolResultRow(row);

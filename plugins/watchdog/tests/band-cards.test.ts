@@ -19,7 +19,7 @@ const held = (subagent?: typeof EXPLORE): HeldNote => ({
   agentId: 'afake0001',
   severity: 'concern',
   text: 'The regex accepts expired tokens.',
-  batchEnd: null,
+  batchEdits: null,
   turn: 1,
   delivery: 'steered',
   ...(subagent === undefined ? {} : { subagent }),

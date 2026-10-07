@@ -39,7 +39,7 @@ export type OpenNote = {
   readonly agentId: string;
   readonly severity: Severity;
   readonly text: string;
-  readonly batchEnd: string | null;
+  readonly batchEdits: number | null;
   readonly subagent?: SubagentRef;
   readonly held?: HeldNote;
 };
@@ -57,7 +57,7 @@ const openCard = (card: Card): OpenNote => ({
   agentId: card.agentId,
   severity: card.severity,
   text: card.text,
-  batchEnd: card.batchEnd,
+  batchEdits: card.batchEdits,
   ...(card.subagentId === undefined ? {} : { subagent: { agentId: card.subagentId, type: card.subagent ?? '' } }),
 });
 
@@ -70,7 +70,7 @@ const openNotes = (): OpenNote[] => {
     agentId: note.agentId,
     severity: note.severity,
     text: note.text,
-    batchEnd: note.batchEnd,
+    batchEdits: note.batchEdits,
     subagent: note.subagent,
     held: note,
   }));

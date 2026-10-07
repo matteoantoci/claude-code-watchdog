@@ -112,7 +112,13 @@ describe('§14.3 /clear, /resume, /branch', () => {
       2,
       { running: [], stops: [{ agentId: REVIEW_AGENT, reason: 'session' }] },
     ]);
-    expect(stateIn(state, NEW_ID, 'feed')).toEqual({ rows: [], ends: [], cursors: { default: null }, prompts: 0 });
+    expect(stateIn(state, NEW_ID, 'feed')).toEqual({
+      rows: [],
+      ends: [],
+      cursors: { default: null },
+      prompts: 0,
+      edits: 0,
+    });
 
     // The stopped review's batch and the update that waited went with the backlog.
     await mainTurn($, 3);

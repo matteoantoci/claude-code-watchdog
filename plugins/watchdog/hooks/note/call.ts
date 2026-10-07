@@ -2,7 +2,7 @@
 // hook reads it.
 import { watchdogOf } from '../agents/ids';
 import { currentTurn } from '../delivery/turns';
-import { batchRows, batchTurn, currentFeed } from '../feed/feed';
+import { batchClose, batchRows, currentFeed } from '../feed/feed';
 import { IDLE, reviewOf, slotOf } from '../review/slots';
 import { subagentOfReview, watchedSubagent } from '../subagents/watch';
 import { parseNote } from './tool';
@@ -28,8 +28,8 @@ const batchOf = (agentId: string): { feed: Feed; slug: string; end: string } | u
   return feed === undefined ? undefined : { feed, slug, end: slot.batchEnd };
 };
 
-// §8.3: the note of a known watchdog, or the deny. §10.8: it keeps the last row of its review's batch and the
-// main-loop turn of that batch, else of now (§10.7). §11.3: a note of a review of a subagent is on that subagent.
+// §8.3: the note of a known watchdog, or the deny. §10.8: it keeps the edit count and the main-loop turn of its
+// review's batch, else none and the turn of now (§10.7). §11.3: a note of a review of a subagent is on that subagent.
 export const noteOf = (e: NoteCall): Note | { readonly deny: string } => {
   const watchdog = watchdogOf(e.agentId);
   if (watchdog === undefined || e.agentId === undefined) {
@@ -38,13 +38,14 @@ export const noteOf = (e: NoteCall): Note | { readonly deny: string } => {
   const input = parseNote(e);
   const subagent = subagentOfReview(e.agentId);
   const batch = batchOf(e.agentId);
+  const close = batch === undefined ? undefined : batchClose(batch.feed, batch.end);
   return input === undefined
     ? { deny: BAD_ARGUMENTS }
     : {
         watchdog,
         agentId: e.agentId,
-        batchEnd: batch?.end ?? null,
-        turn: (batch === undefined ? undefined : batchTurn(batch.feed, batch.end)) ?? currentTurn(),
+        batchEdits: close?.edits ?? null,
+        turn: close?.turn ?? currentTurn(),
         ...input,
         ...(subagent === undefined ? {} : { subagent: { agentId: subagent.agentId, type: subagent.type } }),
       };

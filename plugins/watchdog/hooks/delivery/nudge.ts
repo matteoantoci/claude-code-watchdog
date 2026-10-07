@@ -68,7 +68,7 @@ export const nudgeNotes = (notes: readonly HeldNote[]): NudgeNote[] =>
     agentId: note.agentId,
     severity: note.severity,
     text: note.text,
-    batchEnd: note.batchEnd,
+    batchEdits: note.batchEdits,
     turn: note.turn,
     subagent: note.subagent,
   }));

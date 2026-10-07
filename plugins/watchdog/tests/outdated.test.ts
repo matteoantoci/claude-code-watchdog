@@ -7,6 +7,7 @@ import { PERSON_PROMPT, REVIEW_SPAWN, nudgeTurnText, stubDelivery } from './fixt
 import { stateIn, stubState } from './fixtures/on-state';
 import { SESSION_ID, START, USAGE, mainRow, reviewAgentId, turnEnd, typed } from './fixtures/session';
 import type { Band } from '../hooks/band/cards';
+import type { Feed } from '../hooks/feed/feed';
 import type { LogRecord } from '../hooks/log/log';
 import type { NoteHistory } from '../hooks/note/history';
 import type { OnEvents } from '../hooks/on';
@@ -150,7 +151,7 @@ describe('§10.8 the outdated mark', () => {
     );
   });
 
-  test('a later review of the same watchdog that stays silent drops nothing', async ($, on: Stubs) => {
+  test('later reviews that stay silent drop nothing; the mark stays once the edit row left the feed', async ($, on: Stubs) => {
     const { seen, state } = setUp(on);
     const first = await theRace($);
     await reviewEnd($, first);
@@ -166,6 +167,19 @@ describe('§10.8 the outdated mark', () => {
     expect(nudges(seen)).toHaveLength(1);
     expect(nudges(seen)[0]).toContain(BLOCKER);
     expect(nudges(seen)[0]).toContain(OTHER);
+
+    // The nudge turn's review moves the cursor past `e1`, so the edit row leaves the feed (§7.1); its count stays.
+    await $.turn.start({ text: nudgeTurnText(nudges(seen)[0] ?? ''), turnId: 't3' });
+    await append($, mainRow('a3', 'assistant', 'Checked apply_discount.'));
+    await $.turn.complete(turnEnd('t3'));
+    const third = await learnReview($, 3);
+    await reviewEnd($, third);
+    expect(seen.logs.slice(rows).filter((row) => row.includes('superseded'))).toEqual([]);
+    expect((stateIn(state, SESSION_ID, 'feed') as Feed).rows.map((row) => row.uuid)).not.toContain('e1');
+    expect(cards(state).map(({ text, delivery, edits }) => ({ text, delivery, edits }))).toEqual([
+      { text: BLOCKER, delivery: 'nudged', edits: 1 },
+      { text: OTHER, delivery: 'nudged', edits: 1 },
+    ]);
   });
 });
 

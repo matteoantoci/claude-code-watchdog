@@ -101,10 +101,10 @@ describe('the CLAUDE_WATCHDOG switch', () => {
 describe('the -p backlog', () => {
   const rows = ['r1', 'r2', 'r3'].map((uuid) => ({ uuid, text: uuid }));
   const ends = [
-    { uuid: 'r1', close: 'step', turn: 1 },
-    { uuid: 'r3', close: 'turn', turn: 1 },
+    { uuid: 'r1', close: 'step', turn: 1, edits: 0 },
+    { uuid: 'r3', close: 'turn', turn: 1, edits: 0 },
   ] as const;
-  const feed = { rows, ends, cursors: { default: null }, prompts: 0 };
+  const feed = { rows, ends, cursors: { default: null }, prompts: 0, edits: 0 };
 
   test('the updates after a cursor or a batch end', () => {
     expect(waitingUpdates(feed, null)).toBe(2);

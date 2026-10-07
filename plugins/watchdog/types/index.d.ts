@@ -15,9 +15,6 @@ export type WatchdogFeedRow = {
   readonly brief?: string;
   // The id of a tool call, which its result row names.
   readonly call?: string;
-  // §10.8: the row is an `Edit`, `Write`, `MultiEdit` or `NotebookEdit` call, which the outdated mark of a note
-  // counts.
-  readonly edit?: true;
 };
 
 // §7.5: how a boundary closed an update: mid-turn (`step`), at the end of a turn, or at an Esc.
@@ -28,12 +25,20 @@ export type WatchdogFeed = {
   // Rendered rows, oldest first; rows behind the oldest cursor are dropped.
   readonly rows: readonly WatchdogFeedRow[];
   // §7.2: the last row of each update that a boundary closed, oldest first, with the main-loop turn counter
-  // (§10.7) when it closed: the turn of a review's batch (§10.8).
-  readonly ends: readonly { readonly uuid: string; readonly close: WatchdogUpdateClose; readonly turn: number }[];
+  // (§10.7) and the feed's edit count when it closed: the turn and the edit count of a review's batch (§10.8).
+  readonly ends: readonly {
+    readonly uuid: string;
+    readonly close: WatchdogUpdateClose;
+    readonly turn: number;
+    readonly edits: number;
+  }[];
   // Watchdog slug → the uuid of its last reviewed row; null before the first row.
   readonly cursors: Readonly<Record<string, string | null>>;
   // §7.7 part 2: the person prompts since `/watchdog on`.
   readonly prompts: number;
+  // §10.8: the `Edit`, `Write`, `MultiEdit` and `NotebookEdit` calls the feed recorded since it started, the
+  // dropped rows' too.
+  readonly edits: number;
 };
 
 // §11.1: the watched subagent a note or a review is about: its `agentId` and its `agent.spawn` `subagentType`.
@@ -99,14 +104,14 @@ export type WatchdogLogRecord =
   | { readonly kind: 'timeout'; readonly watchdog: string; readonly agentId: string | null; readonly time: number };
 
 // §10.3: a late note of the nudge that waits, as the note hook admitted it: the watchdog slug, the review
-// agent, the last row of its review's batch (null when none was known) and the main-loop turn of that batch,
+// agent, the edit count of its review's batch (null when none was known) and the main-loop turn of that batch,
 // else of its arrival (§10.7, §10.8).
 export type WatchdogNudgeNote = {
   readonly watchdog: string;
   readonly agentId: string;
   readonly severity: 'nit' | 'concern' | 'blocker';
   readonly text: string;
-  readonly batchEnd: string | null;
+  readonly batchEdits: number | null;
   readonly turn: number;
   // §10.7: the subagent of a late note on a subagent.
   readonly subagent?: WatchdogSubagentRef;
@@ -157,7 +162,7 @@ export type WatchdogRunningReview = {
 // §13.1: one band card: an admitted note since the last person prompt. `key` is the watchdog slug and the
 // normalized text (§9.1), `seq` the order of admission (newest highest), `name` the watchdog's display name,
 // `turn` the main-loop turn of the note's batch (§10.7), `subagent` the type of a watched subagent (§11.3).
-// §10.8: `watchdog` is the slug, `agentId` the review agent that sent the note, `batchEnd` the last row of the
+// §10.8: `watchdog` is the slug, `agentId` the review agent that sent the note, `batchEdits` the edit count of the
 // note's batch (null when none was known), `subagentId` the `agentId` of a watched subagent, `edits` the edits of
 // the watched agent since that batch.
 export type WatchdogCard = {
@@ -171,7 +176,7 @@ export type WatchdogCard = {
   readonly subagent?: string;
   readonly watchdog: string;
   readonly agentId: string;
-  readonly batchEnd: string | null;
+  readonly batchEdits: number | null;
   readonly subagentId?: string;
   readonly edits: number;
 };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { cardKey } from '../hooks/band/cards';
-import { recordRow, setFeed, startFeed } from '../hooks/feed/feed';
+import { batchClose, closeUpdate, moveCursor, recordRow, setFeed, startFeed } from '../hooks/feed/feed';
 import { editsSince, outdatedMark } from '../hooks/note/outdated';
 import { noteId } from '../hooks/note/retract';
 import { mainRow } from './fixtures/session';
@@ -15,7 +15,7 @@ const call = (id: string, name: string, input: unknown): SessionAppendInput => (
 });
 
 describe('§10.8 the outdated mark', () => {
-  test('a feed row of an Edit, Write, MultiEdit or NotebookEdit call is an edit row; another call is not', () => {
+  test('the feed counts each Edit, Write, MultiEdit and NotebookEdit call; a closed update and a cursor move keep it', () => {
     const rows = [
       call('t1', 'Edit', { file_path: CART, old_string: 'a', new_string: 'b' }),
       call('t2', 'Write', { file_path: '/repo/new.py', content: '' }),
@@ -23,26 +23,23 @@ describe('§10.8 the outdated mark', () => {
       call('t4', 'NotebookEdit', { notebook_path: '/repo/n.ipynb', new_source: '' }),
       call('t5', 'Read', { file_path: CART }),
     ];
-    const feed = rows.reduce(recordRow, startFeed(['default']));
-    expect(feed.rows.map((row) => row.edit)).toEqual([true, true, true, true, undefined]);
+    const feed = closeUpdate(rows.reduce(recordRow, startFeed(['default'])), 'turn', 1);
+    expect(feed.edits).toBe(4);
+    expect(batchClose(feed, 'row-t5')).toEqual({ uuid: 'row-t5', close: 'turn', turn: 1, edits: 4 });
+    const moved = moveCursor(feed, 'default', 'row-t5');
+    expect(moved.rows.map((row) => row.uuid)).toEqual(['row-t5']);
+    expect(moved.edits).toBe(4);
   });
 
-  test('each edit row after the batch counts, whatever file it edits; a batch end that left the feed lies before it', () => {
-    setFeed({
-      ...startFeed(['default']),
-      rows: [
-        { uuid: 'e0', text: '', edit: true },
-        { uuid: 'a1', text: 'Done.' },
-        { uuid: 'e1', text: '', edit: true },
-        { uuid: 'r1', text: '→ Read(/repo/cart.py)' },
-        { uuid: 'e2', text: '', edit: true },
-      ],
-    });
-    expect(editsSince({ batchEnd: 'a1' })).toBe(2);
-    expect(editsSince({ batchEnd: 'e2' })).toBe(0);
-    expect(editsSince({ batchEnd: 'gone' })).toBe(3);
-    expect(editsSince({ batchEnd: null })).toBe(0);
-    expect(editsSince({ batchEnd: 'a1', subagentId: 'asub0001' })).toBe(0);
+  test('the edits since a note batch are the feed count less the batch count, whatever file they edit', () => {
+    setFeed({ ...startFeed(['default']), edits: 5 });
+    expect(editsSince({ batchEdits: 3 })).toBe(2);
+    expect(editsSince({ batchEdits: 5 })).toBe(0);
+    expect(editsSince({ batchEdits: null })).toBe(0);
+    expect(editsSince({ batchEdits: 3, subagentId: 'asub0001' })).toBe(0);
+    // A feed that started again (`/watchdog on`, a session change) counts no edit of before.
+    setFeed(startFeed(['default']));
+    expect(editsSince({ batchEdits: 3 })).toBe(0);
   });
 
   test('the card and the recap show the mark from 1 edit on', () => {

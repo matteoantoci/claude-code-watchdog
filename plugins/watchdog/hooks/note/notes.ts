@@ -22,15 +22,15 @@ export const isDeliveryState = (value: unknown): value is DeliveryState =>
 // §11.3: the watched subagent that a note is about (`WatchdogSubagentRef` of the state contract).
 export type SubagentRef = NonNullable<PluginState['watchdog']['nudge']['notes'][number]['subagent']>;
 
-// One note a watchdog sent; `watchdog` is its slug. §10.8: `batchEnd` is the last row of its review's batch (null
-// when no batch of a running review was known), `turn` the main-loop turn counter of that batch, else of the
+// One note a watchdog sent; `watchdog` is its slug. §10.8: `batchEdits` is the edit count of its review's batch
+// (null when no batch of a running review was known), `turn` the main-loop turn counter of that batch, else of the
 // note's arrival (§10.7). §11.3: `subagent` is the watched subagent of a review of a subagent.
 export type Note = {
   readonly watchdog: string;
   readonly agentId: string;
   readonly severity: Severity;
   readonly text: string;
-  readonly batchEnd: string | null;
+  readonly batchEdits: number | null;
   readonly turn: number;
   readonly subagent?: SubagentRef;
 };

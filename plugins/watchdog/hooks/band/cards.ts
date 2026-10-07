@@ -46,7 +46,7 @@ export const currentCards = (): readonly Card[] => memory.band.cards;
 // subagent shows its type. §10.8: the card keeps the note's review agent and batch, and counts the edits since it.
 export const addCard = (note: HeldNote): void => {
   const { band } = memory;
-  const { batchEnd, subagentId } = batchedOf(note);
+  const { batchEdits, subagentId } = batchedOf(note);
   const card: Card = {
     key: cardKey(note),
     seq: band.seq + 1,
@@ -58,9 +58,9 @@ export const addCard = (note: HeldNote): void => {
     ...(note.subagent === undefined ? {} : { subagent: note.subagent.type }),
     watchdog: note.watchdog,
     agentId: note.agentId,
-    batchEnd,
+    batchEdits,
     ...(subagentId === undefined ? {} : { subagentId }),
-    edits: editsSince({ batchEnd, subagentId }),
+    edits: editsSince({ batchEdits, subagentId }),
   };
   memory.band = {
     ...band,

@@ -51,7 +51,7 @@ const note = (subagent?: typeof EXPLORE): Note => ({
   agentId: 'afake0001',
   severity: 'concern',
   text: 'The parser drops the <tz> offset.',
-  batchEnd: null,
+  batchEdits: null,
   turn: 2,
   ...(subagent === undefined ? {} : { subagent }),
 });
