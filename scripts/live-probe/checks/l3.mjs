@@ -688,10 +688,12 @@ export const limitState = {
 const nudgeStarts = (events) =>
   ofEvent(events, 'turn.start', (event) => !event.agentId && String(event.text).startsWith(NUDGE_FRAME));
 
-// §13.1: the band's count line is a rule that names each severity of the open cards with its count
-// (`── watchdog · 2 concerns · 1 nit ──…`). A full card row reads `a: ▸  <SEVERITY>  <watchdog> · …`, cut with
-// `…` at the edge; its tail holds the outdated mark (§10.8), the sentence, the age and the delivery state.
+// §13.1: the band's first row is a dotted divider, which holds the engine's `[-]` at its end; the count line under it
+// names each severity of the open cards with its count (`watchdog · 2 concerns · 1 nit`). A full card row reads
+// `a: ▸  <SEVERITY>  <watchdog> · …`, cut with `…` at the edge; its tail holds the outdated mark (§10.8), the
+// sentence, the age and the delivery state.
 const SEVERITY_WORD = '(?:blockers?|concerns?|nits?)';
+const BAND_DIVIDER = '^┄+[^\\n]*\\n';
 const BAND_CARD = new RegExp(`^\\s*(?:[a-c]: [▸▾]\\s+)?(BLOCKER|CONCERN|NIT)\\s+(\\S+) · ([^\\n]*)$`, 'gmu');
 
 // §5.4: a session change keeps the on flag; the `/watchdog status` reply after it starts with `watchdog on`.
@@ -1163,7 +1165,8 @@ export const checks = [
   },
   {
     id: 'l3-band-cards',
-    title: 'With notes, the band paints the count line and up to 3 cards with name, age and delivery state',
+    title:
+      'With notes, the band paints the divider, the count line and up to 3 cards with name, age and delivery state',
     source: BAND,
     kind: 'deterministic',
     scenario: 'tui-review',
@@ -1174,20 +1177,21 @@ export const checks = [
         return inconclusive(['the watchdog sent no note, so the band has no card to paint']);
       }
       const screen = String(obs.screens?.idle ?? '');
-      const count = new RegExp(`^── watchdog · (\\d+ ${SEVERITY_WORD}(?: · \\d+ ${SEVERITY_WORD})*)`, 'mu').exec(
-        screen
-      );
+      const count = new RegExp(
+        `${BAND_DIVIDER}watchdog · (\\d+ ${SEVERITY_WORD}(?: · \\d+ ${SEVERITY_WORD})*)`,
+        'mu'
+      ).exec(screen);
       const cards = [...screen.matchAll(BAND_CARD)];
       return expectAll(
         {
-          'the count line names the severities with their counts': count !== null,
+          'the divider, then the count line that names the severities with their counts': count !== null,
           'at least one card is painted': cards.length > 0,
           'at most 3 cards, then a "+N more" line':
             cards.length <= 3 && (rows.length <= 3 || /\+\d+ more/u.test(screen)),
           'each card names the watchdog probe': cards.every((card) => card[2] === 'probe'),
         },
         [
-          `count line: ${count?.[0] ?? 'none'}; note rows ${rows.length}`,
+          `count line: ${count === null ? 'none' : `watchdog · ${count[1]}`}; note rows ${rows.length}`,
           ...cards.slice(0, 3).map((card) => flat(card[0], 160)),
           `run: ${obs.run.dir}`,
         ]
@@ -1196,7 +1200,7 @@ export const checks = [
   },
   {
     id: 'l3-band-cards-empty',
-    title: 'With no open note, the band paints only the count line "watchdog · no open notes"',
+    title: 'With no open note, the band paints only the divider and the count line "watchdog · no open notes"',
     source: BAND,
     kind: 'deterministic',
     scenario: 'l3-session',
@@ -1206,10 +1210,13 @@ export const checks = [
       const card = /^\s*(?:[a-c]: [▸▾]\s+)?(BLOCKER|CONCERN|NIT)\s+\S+ · /mu.test(screen);
       return expectAll(
         {
-          'the count line reads "watchdog · no open notes"': /^── watchdog · no open notes/mu.test(screen),
+          'the divider, then the count line "watchdog · no open notes"': new RegExp(
+            `${BAND_DIVIDER}watchdog · no open notes`,
+            'mu'
+          ).test(screen),
           'no card is painted': !card,
         },
-        [flat(screen.split('\n').find((line) => line.startsWith('── watchdog · ')) ?? 'no count line', 160)]
+        [flat(screen.split('\n').find((line) => line.startsWith('watchdog · ')) ?? 'no count line', 160)]
       );
     },
   },

@@ -129,9 +129,8 @@ export const BAND_TINY_TEXT_MAX = 40;
 // §13.1: the body of an expanded card indents this many columns under its header.
 export const BAND_CARD_INDENT = 2;
 
-// §13.1: the rule cells of the count line and the off line before the title, and the fewest after it; with no
-// room for them, the title shows alone.
-export const BAND_RULE_EDGE = 2;
+// §13.1: the fewest blank cells between the count line's title and the focus hint; with less room, the hint goes.
+export const BAND_HINT_GAP = 2;
 
 // §12.5: the halt's next try shows in whole minutes.
 export const MINUTE_MS = 60_000;

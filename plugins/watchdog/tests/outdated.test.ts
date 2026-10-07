@@ -205,12 +205,12 @@ describe('§10.8 a retraction', () => {
     );
     const second = await learnReview($, 2);
     const rows = seen.logs.length;
-    expect(await countLine($)).toMatch(/^── watchdog · 1 blocker · 1 concern ─/u);
+    expect(await countLine($)).toMatch(/^watchdog · 1 blocker · 1 concern +ctrl\+x tab · a\/b$/u);
 
     expect(await resolve($, second, { id: blockerId, reason: REASON })).toEqual({ result: 'Retracted.' });
     expect(seen.logs.slice(rows)).toEqual([`[blocker] default: ${BLOCKER} (dropped:superseded)`]);
     expect(cards(state).map((card) => card.text)).toEqual([OTHER]);
-    expect(await countLine($)).toMatch(/^── watchdog · 1 concern ─/u);
+    expect(await countLine($)).toMatch(/^watchdog · 1 concern +ctrl\+x tab · a$/u);
     const records = state.logWrites.at(-1) as readonly LogRecord[];
     const sent = records.find((record) => record.kind === 'review' && record.agentId === first);
     expect(sent?.kind === 'review' ? sent.notes : []).toEqual([

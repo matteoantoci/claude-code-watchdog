@@ -1,8 +1,8 @@
 # The README demo. Run it from the repo root: vhs docs/assets/demo.tape
 # It needs vhs, a logged-in `claude` (2.1.290 or later) and costs a few cents of tokens: the session runs on
 # `haiku`, the default watchdog reviews on `opus`. The note the watchdog sends differs from run to run.
-# FontSize 14 keeps the band (its rule, one row for each card, and the expanded note below its card) readable
-# beside the transcript.
+# FontSize 14 keeps the band (its divider and count line, one row for each card, and the expanded note below its card)
+# readable beside the transcript.
 # The committed GIF is re-encoded at 8 frames a second and 40 colors to stay under 2 MB (about 29 s, 2.0 MB):
 #   ffmpeg -i demo.gif -vf "fps=8,split[a][b];[a]palettegen=max_colors=40:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" out.gif
 
@@ -55,7 +55,7 @@ Sleep 500ms
 Show
 Sleep 3s
 
-# Skip the wait for the review. The band's rule ends with the focus hint once a card shows.
+# Skip the wait for the review. The band's count line ends with the focus hint once a card shows.
 Hide
 Wait+Screen@240s /ctrl\+x tab/
 Sleep 1s

@@ -2,8 +2,8 @@ import {
   BAND_CARD_HOTKEYS,
   BAND_CARD_INDENT,
   BAND_CARD_LIMIT,
+  BAND_HINT_GAP,
   BAND_LINE_COLUMNS,
-  BAND_RULE_EDGE,
   BAND_TINY_COLUMNS,
   BAND_TINY_TEXT_MAX,
 } from '../constants';
@@ -32,7 +32,7 @@ type Mode = 'full' | 'line' | 'tiny';
 // The number of cards of each severity.
 type Counts = Readonly<Record<Severity, number>>;
 
-// §13.1: a rule title as text, for its width, and as the elements that draw it.
+// §13.1: a count line title as text, for its width, and as the elements that draw it.
 type Title = { readonly text: string; readonly parts: readonly RenderChildren[] };
 
 // §13.1: the count line and the `+N more` line name the severities in this order.
@@ -92,31 +92,28 @@ const countsOf = (cards: readonly Card[]): Counts => ({
 // hotkeys of the shown cards.
 const focusHint = (cards: number): string => `ctrl+x tab · ${BAND_CARD_HOTKEYS.slice(0, cards).join('/')}`;
 
-// §13.1: the dim rest of the rule after the title, `tail` cells with its first space: the focus hint when it fits
-// with a space and at least `BAND_RULE_EDGE` rule cells on each side, else the rule alone.
-const ruleTail = (tail: number, hint: string | undefined): string => {
-  const end = hint === undefined ? '' : ` ${hint} ${'─'.repeat(BAND_RULE_EDGE)}`;
-  const shown = tail - 1 - end.length < BAND_RULE_EDGE ? '' : end;
-  return ` ${'─'.repeat(tail - 1 - shown.length)}${shown}`;
+// §13.1: the blank cells between the title and a focus hint that ends at `bodyColumns`; none when fewer than
+// `BAND_HINT_GAP` fit, so the hint goes before the title is cut.
+export const hintGap = (columns: number, title: string, hint: string): number | undefined => {
+  const gap = columns - title.length - hint.length;
+  return gap < BAND_HINT_GAP ? undefined : gap;
 };
 
-// §13.1: a dim rule across `bodyColumns`: `BAND_RULE_EDGE` rule cells and a space, the title, a space and the rest
-// of the rule, which holds the focus hint when it fits. A title with no room for `BAND_RULE_EDGE` rule cells on
-// each side shows alone, cut at the end.
-const ruled = (el: BandElements, title: Title, at: { columns: number; hint?: string | undefined }): RenderElement => {
-  const tail = at.columns - (BAND_RULE_EDGE + 1) - title.text.length;
+// §13.1: the count line: the title, then the dim focus hint flush right when it fits; one row cut at the end.
+const countLine = (
+  el: BandElements,
+  title: Title,
+  { columns, hint }: { columns: number; hint?: string | undefined }
+): RenderElement => {
+  const gap = hint === undefined ? undefined : hintGap(columns, title.text, hint);
   const parts =
-    tail - 1 < BAND_RULE_EDGE
+    gap === undefined || hint === undefined
       ? title.parts
-      : [
-          el.Text({ dimColor: true, children: `${'─'.repeat(BAND_RULE_EDGE)} ` }),
-          ...title.parts,
-          el.Text({ dimColor: true, children: ruleTail(tail, at.hint) }),
-        ];
+      : [...title.parts, ' '.repeat(gap), el.Text({ dimColor: true, children: hint })];
   return el.Text({ wrap: 'truncate-end', children: parts });
 };
 
-// §13.1: the first row counts the open cards, those under `+N more` too, so a card that leaves lowers it; the cut
+// §13.1: the count line counts the open cards, those under `+N more` too, so a card that leaves lowers it; the cut
 // form only their number.
 const countTitle = (el: BandElements, cards: readonly Card[], mode: Mode): Title => {
   if (cards.length === 0) {
@@ -250,13 +247,12 @@ const bandBody = (el: BandElements, view: BandView, mode: Mode): RenderElement[]
   return rows.length === 0 ? [] : [el.Box({ marginTop: 1, flexDirection: 'column', children: rows })];
 };
 
-// §13.1, §12.5, §5.2: the count line, the failure line, then the cards; one dim line after `/watchdog off`;
-// nothing before the session was ever on. The count line is the first row: the engine draws its `[-]` there.
-export const bandTree = (el: BandElements, view: BandView): RenderElement | undefined => {
+// §13.1, §12.5, §5.2: the count line, then the failure line and the cards; one dim line after `/watchdog off`;
+// nothing before the session was ever on.
+const bandRows = (el: BandElements, view: BandView): RenderElement[] | undefined => {
   if (view.isOn === false) {
-    const off = 'watchdog · off · /watchdog on';
-    const title = { text: off, parts: [el.Text({ dimColor: true, children: off })] };
-    return row(el, 'watchdog-off', ruled(el, title, { columns: view.columns }));
+    const off = el.Text({ dimColor: true, wrap: 'truncate-end', children: 'watchdog · off · /watchdog on' });
+    return [row(el, 'watchdog-off', off)];
   }
   if (view.isOn !== true) {
     return undefined;
@@ -264,9 +260,20 @@ export const bandTree = (el: BandElements, view: BandView): RenderElement | unde
   const mode = modeOf(view.columns);
   // §13.1: the focus hint only over full cards, which have a Button each.
   const buttons = mode === 'full' ? Math.min(view.band.cards.length, BAND_CARD_LIMIT) : 0;
-  const count = ruled(el, countTitle(el, view.band.cards, mode), {
+  const count = countLine(el, countTitle(el, view.band.cards, mode), {
     columns: view.columns,
     hint: buttons === 0 ? undefined : focusHint(buttons),
   });
-  return el.Box({ flexDirection: 'column', children: [row(el, 'watchdog-count', count), ...bandBody(el, view, mode)] });
+  return [row(el, 'watchdog-count', count), ...bandBody(el, view, mode)];
+};
+
+// §13.1: the divider, a dotted line in `subtle` across `bodyColumns`, then the rows. It is the first row in each state,
+// so it never moves the band's height; the engine draws its `[-]` on it, past a blank cell after its end.
+export const bandTree = (el: BandElements, view: BandView): RenderElement | undefined => {
+  const rows = bandRows(el, view);
+  if (rows === undefined) {
+    return undefined;
+  }
+  const divider = el.Text({ color: 'subtle', children: '┄'.repeat(view.columns) });
+  return el.Box({ flexDirection: 'column', children: [row(el, 'watchdog-divider', divider), ...rows] });
 };

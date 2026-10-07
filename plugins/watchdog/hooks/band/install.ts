@@ -131,8 +131,8 @@ const onBand: BandHook = async ($, e, next) => {
   if (tree === undefined) {
     return base;
   }
-  // §13.1: no row above the count line. The engine draws its `[-]` on the band's first row, so a blank row there
-  // would hold the `[-]` alone, above the rule.
+  // §13.1: no row above the divider. The engine draws its `[-]` on the band's first row, so the divider holds it in
+  // each state.
   return el.Box({ key: 'watchdog-band', flexDirection: 'column', children: [base, tree] });
 };
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing';
+import { hintGap } from '../hooks/band/tree';
 import { BAND_SURFACES, ENGINE_BAND, bandTarget, stubEngineBand } from './fixtures/band';
 import {
   PERSON_PROMPT,
@@ -33,18 +34,25 @@ const LISTED_OLD = 'parseDate drops the timezone\n- `date.spec.ts:40` passes onl
 const LIST_KEYS = ['watchdog-card-0', 'watchdog-card-1', 'watchdog-card-2', 'watchdog-more'];
 
 // The keyed rows of the watchdog's band, top to bottom.
-const ROW_KEYS = ['watchdog-band', 'watchdog-off', 'watchdog-count', 'watchdog-trouble', ...LIST_KEYS];
+const ROW_KEYS = [
+  'watchdog-band',
+  'watchdog-divider',
+  'watchdog-off',
+  'watchdog-count',
+  'watchdog-trouble',
+  ...LIST_KEYS,
+];
 
 // `bodyColumns` of the fixture band (§13.1 width facts: a terminal of 120 columns).
 const WIDE = 115;
 
-// §13.1: the count line and the off line: a rule of `bodyColumns` cells, the title after the first 2.
-const ruled = (title: string, columns = WIDE): string => `── ${title} ${'─'.repeat(columns - title.length - 4)}`;
+// §13.1: the band's first row: a dotted line of `bodyColumns` cells.
+const divider = (columns = WIDE): string => '┄'.repeat(columns);
 
-// §13.1: the count line over full cards: the rule ends with the focus hint, a space and 2 rule cells.
+// §13.1: the count line over full cards: the title, then the focus hint flush right at `bodyColumns`.
 const hinted = (title: string, hotkeys: string, columns = WIDE): string => {
   const hint = `ctrl+x tab · ${hotkeys}`;
-  return `── ${title} ${'─'.repeat(columns - title.length - hint.length - 8)} ${hint} ──`;
+  return `${title}${' '.repeat(columns - title.length - hint.length)}${hint}`;
 };
 
 const stubBand = (on: Stubs, options: Parameters<typeof stubDelivery>[1] = {}, seed: StateSeed = {}): OnStateSeen => {
@@ -113,7 +121,7 @@ type Placed = {
 const isPlaced = (node: unknown): node is Placed => typeof node === 'object' && node !== null && 'type' in node;
 
 // A row of the watchdog's band, keyed as `ROW_KEYS` keys it (an expanded card with its body).
-const ROW_KEY = /^watchdog-(?:off|count|trouble|card-\d|more)$/u;
+const ROW_KEY = /^watchdog-(?:divider|off|count|trouble|card-\d|more)$/u;
 
 // The blank rows that a Box's margin and padding add on one side.
 const blanks = (side: 'Top' | 'Bottom', props: NonNullable<Placed['props']> = {}): string[] => {
@@ -157,6 +165,7 @@ describe('band cards (§13.1)', () => {
     expect(await textProps($, [new RegExp(`^${ENGINE_BAND}$`, 'u')])).toEqual(onBoth([{}]));
     expect(await rows($)).toEqual(
       onBoth({
+        'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
         'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudge pending`,
         'watchdog-card-1': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudge pending`,
@@ -174,6 +183,7 @@ describe('band cards (§13.1)', () => {
     await listedNotes($);
     expect(await rows($)).toEqual(
       onBoth({
+        'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
         'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudge pending',
         'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudge pending',
@@ -226,6 +236,7 @@ describe('band cards (§13.1)', () => {
     await sendNote($, 'blocker', BLOCKER);
     expect(await rows($)).toEqual(
       onBoth({
+        'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 blocker', 'a'),
         'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudge pending`,
       })
@@ -241,6 +252,7 @@ describe('band cards (§13.1)', () => {
     await sendNote($, 'concern', NEW_CONCERN);
     expect(await rows($)).toEqual(
       onBoth({
+        'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 concern', 'a'),
         'watchdog-card-0': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudge pending`,
       })
@@ -248,18 +260,17 @@ describe('band cards (§13.1)', () => {
   });
 });
 
-// Live check on 2.1.292 (fullscreen): the engine draws its `[-]` on the band's first row, whatever puts a blank row
-// there (a margin, a padding, a blank Text), and keeps one blank row of its own between the band and the prompt,
-// with no band too.
+// Live check on 2.1.292 (fullscreen): the engine draws its `[-]` on the band's first row, whatever that row holds,
+// and keeps one blank row of its own between the band and the prompt, with no band too.
 describe('band rows (§13.1)', () => {
-  test('the count line is the first row; one blank row parts it from the cards and +N more; none after them', async ($, on: Stubs) => {
+  test('the divider, then the count line; one blank row parts them from the cards and +N more in each mode; none after them', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
-    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-count', 'blank', ...LIST_KEYS]));
-    expect(await layout($, { bodyColumns: 75 })).toEqual(
-      onBoth([ENGINE_BAND, 'watchdog-count', 'blank', ...LIST_KEYS])
-    );
+    const order = [ENGINE_BAND, 'watchdog-divider', 'watchdog-count', 'blank', ...LIST_KEYS];
+    expect(await layout($)).toEqual(onBoth(order));
+    expect(await layout($, { bodyColumns: 75 })).toEqual(onBoth(order));
+    expect(await layout($, { bodyColumns: 45 })).toEqual(onBoth(order));
   });
 
   test('an expanded card keeps the rows: its body is inside its own row', async ($, on: Stubs) => {
@@ -267,45 +278,48 @@ describe('band rows (§13.1)', () => {
     await startReview($);
     await listedNotes($);
     await press($, 'watchdog-expand-0');
-    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-count', 'blank', ...LIST_KEYS]));
+    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-divider', 'watchdog-count', 'blank', ...LIST_KEYS]));
   });
 
-  test('with no card and no failure line, the count line alone: no blank row under it', async ($, on: Stubs) => {
+  test('with no card and no failure line, the divider and the count line: no blank row under them', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
     await $.prompt.submit(PERSON_PROMPT);
-    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-count']));
+    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-divider', 'watchdog-count']));
   });
 
-  test('after /watchdog off, the off rule alone', async ($, on: Stubs) => {
+  test('after /watchdog off, the divider and the off line', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
     await $.command.run(typed('off'));
-    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-off']));
+    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-divider', 'watchdog-off']));
   });
 });
 
-describe('band rule (§13.1)', () => {
-  test('the count line is a dim rule that fills bodyColumns in each mode; the counts keep their colors', async ($, on: Stubs) => {
+describe('band divider and count line (§13.1)', () => {
+  test('the divider is a subtle dotted line across bodyColumns in each mode; the count line is its title, the counts in their colors', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
-    const counts = async (bodyColumns: number) =>
-      (await rows($, { bodyColumns })).map((shown) => shown['watchdog-count']);
-    expect(await counts(80)).toEqual(onBoth(hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c', 80)));
-    expect(await counts(75)).toEqual(onBoth(ruled('watchdog · 1 blocker · 2 concerns · 1 nit', 75)));
-    expect(await counts(50)).toEqual(onBoth(ruled('watchdog · 1 blocker · 2 concerns · 1 nit', 50)));
-    expect(await counts(45)).toEqual(onBoth(ruled('watchdog · 4 notes', 45)));
-    expect((await counts(45)).map((count) => count?.length)).toEqual(onBoth(45));
-    expect(await textProps($, [/^── $/u, /^ ─+ ctrl\+x tab · a\/b\/c ──$/u, /^watchdog · $/u])).toEqual(
-      onBoth([{ dimColor: true }, { dimColor: true }, { dimColor: true }])
+    const shown = async (bodyColumns: number) =>
+      (await rows($, { bodyColumns })).map((row) => [row['watchdog-divider'], row['watchdog-count']]);
+    expect(await shown(80)).toEqual(
+      onBoth([divider(80), hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c', 80)])
     );
-    expect(await textProps($, [/^ ─+$/u], { bodyColumns: 75 })).toEqual(onBoth([{ dimColor: true }]));
+    expect(await shown(75)).toEqual(onBoth([divider(75), 'watchdog · 1 blocker · 2 concerns · 1 nit']));
+    expect(await shown(50)).toEqual(onBoth([divider(50), 'watchdog · 1 blocker · 2 concerns · 1 nit']));
+    expect(await shown(45)).toEqual(onBoth([divider(45), 'watchdog · 4 notes']));
+    expect(await textProps($, [/^┄+$/u, /^watchdog · $/u, /^ctrl\+x tab · a\/b\/c$/u])).toEqual(
+      onBoth([{ color: 'subtle' }, { dimColor: true }, { dimColor: true }])
+    );
+    expect(await textProps($, [/^watchdog · 1 blocker · 2 concerns · 1 nit +ctrl/u])).toEqual(
+      onBoth([{ wrap: 'truncate-end' }])
+    );
   });
 
-  test('over full cards the rule ends with the focus hint; the hint goes before the title is cut', async ($, on: Stubs) => {
+  test('over full cards the focus hint ends at bodyColumns, with the largest counts too', async ($, on: Stubs) => {
     // 12,000 open cards: 1000 blockers, 1000 concerns, 10,000 nits.
     const severities = [
       ...Array.from({ length: 1000 }, () => 'blocker'),
@@ -325,31 +339,23 @@ describe('band rule (§13.1)', () => {
     stubBand(on, {}, { state: { isOn: true, source: '/watchdog on' }, band });
     await $.session.start(START);
     const title = 'watchdog · 1000 blockers · 1000 concerns · 10000 nits';
-    const counts = async (bodyColumns: number) =>
-      (await rows($, { bodyColumns })).map((shown) => shown['watchdog-count']);
-    // The title is 53 cells and the hint `ctrl+x tab · a/b/c` 18: with 2 rule cells and a space on each side of
-    // both, the hint needs 81 columns.
-    expect(await counts(81)).toEqual(onBoth(hinted(title, 'a/b/c', 81)));
-    expect(await counts(80)).toEqual(onBoth(ruled(title, 80)));
+    expect((await rows($, { bodyColumns: 80 })).map((shown) => shown['watchdog-count'])).toEqual(
+      onBoth(hinted(title, 'a/b/c', 80))
+    );
   });
 
-  test('with no room for 2 rule cells after the title, the title shows alone', async ($, on: Stubs) => {
-    stubBand(on);
-    await startReview($);
-    await fourNotes($);
-    // `watchdog · 4 notes` is 18 cells: 24 columns hold it with 2 rule cells and a space on each side.
-    expect((await rows($, { bodyColumns: 24 })).map((shown) => shown['watchdog-count'])).toEqual(
-      onBoth('── watchdog · 4 notes ──')
-    );
-    expect((await rows($, { bodyColumns: 23 })).map((shown) => shown['watchdog-count'])).toEqual(
-      onBoth('watchdog · 4 notes')
-    );
+  test('the hint needs 2 blank cells after the title; with less room it goes, before the title is cut', () => {
+    // The title is 53 cells and the hint `ctrl+x tab · a/b/c` 18.
+    const title = 'watchdog · 1000 blockers · 1000 concerns · 10000 nits';
+    expect(hintGap(73, title, 'ctrl+x tab · a/b/c')).toBe(2);
+    expect(hintGap(72, title, 'ctrl+x tab · a/b/c')).toBeUndefined();
   });
 });
 
 describe('expand a card (§13.1)', () => {
   // The rows of `listedNotes` with each card collapsed.
   const COLLAPSED = {
+    'watchdog-divider': divider(),
     'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
     'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudge pending',
     'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudge pending',
@@ -434,7 +440,8 @@ describe('narrow band (§13.1)', () => {
     await fourNotes($);
     expect(await rows($, { bodyColumns: 75 })).toEqual(
       onBoth({
-        'watchdog-count': ruled('watchdog · 1 blocker · 2 concerns · 1 nit', 75),
+        'watchdog-divider': divider(75),
+        'watchdog-count': 'watchdog · 1 blocker · 2 concerns · 1 nit',
         'watchdog-card-0': `[blocker] ${BLOCKER}`,
         'watchdog-card-1': `[concern] ${NEW_CONCERN}`,
         'watchdog-card-2': `[concern] ${OLD_CONCERN}`,
@@ -450,7 +457,8 @@ describe('narrow band (§13.1)', () => {
     // bodyColumns 45: `[blocker]` is 9 cells, so 35 characters, the last one `…`.
     expect(await rows($, { bodyColumns: 45 })).toEqual(
       onBoth({
-        'watchdog-count': ruled('watchdog · 4 notes', 45),
+        'watchdog-divider': divider(45),
+        'watchdog-count': 'watchdog · 4 notes',
         'watchdog-card-0': '[blocker] The migration deletes the users ta…',
         'watchdog-card-1': '[concern] The new /export route skips requir…',
         'watchdog-card-2': '[concern] parseDate drops the timezone; the …',
@@ -474,13 +482,16 @@ describe('band clear and off (§13.1, §5.2)', () => {
     await startReview($);
     await fourNotes($);
     await $.prompt.submit(PERSON_PROMPT);
-    expect(await rows($)).toEqual(onBoth({ 'watchdog-count': ruled('watchdog · no open notes') }));
-    expect((await rows($, { bodyColumns: 45 })).map((shown) => shown['watchdog-count'])).toEqual(
-      onBoth(ruled('watchdog · no open notes', 45))
+    expect(await rows($)).toEqual(
+      onBoth({ 'watchdog-divider': divider(), 'watchdog-count': 'watchdog · no open notes' })
+    );
+    expect(await rows($, { bodyColumns: 45 })).toEqual(
+      onBoth({ 'watchdog-divider': divider(45), 'watchdog-count': 'watchdog · no open notes' })
     );
     await sendNote($, 'nit', 'The README still names the old CLI flag --legacy.');
     expect(await rows($)).toEqual(
       onBoth({
+        'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 nit', 'a'),
         'watchdog-card-0':
           '▸ NIT  default · The README still names the old CLI flag --legacy. · just now · aside on next prompt',
@@ -498,16 +509,20 @@ describe('band clear and off (§13.1, §5.2)', () => {
     );
   });
 
-  test('/watchdog off makes the band one dim rule', async ($, on: Stubs) => {
+  test('/watchdog off makes the band the divider and one dim line', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
     await $.command.run(typed('off'));
-    expect(await rows($)).toEqual(onBoth({ 'watchdog-off': ruled('watchdog · off · /watchdog on') }));
-    expect(await rows($, { bodyColumns: 45 })).toEqual(
-      onBoth({ 'watchdog-off': ruled('watchdog · off · /watchdog on', 45) })
+    expect(await rows($)).toEqual(
+      onBoth({ 'watchdog-divider': divider(), 'watchdog-off': 'watchdog · off · /watchdog on' })
     );
-    expect(await textProps($, [/^watchdog · off · \/watchdog on$/u])).toEqual(onBoth([{ dimColor: true }]));
+    expect(await rows($, { bodyColumns: 45 })).toEqual(
+      onBoth({ 'watchdog-divider': divider(45), 'watchdog-off': 'watchdog · off · /watchdog on' })
+    );
+    expect(await textProps($, [/^watchdog · off · \/watchdog on$/u])).toEqual(
+      onBoth([{ dimColor: true, wrap: 'truncate-end' }])
+    );
   });
 
   test('a session that was never on draws nothing', async ($, on: Stubs) => {
@@ -553,6 +568,7 @@ describe('band after a reload (§14.6, §11.3)', () => {
     await $.session.start(START);
     expect(await rows($)).toEqual(
       onBoth({
+        'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 blocker', 'a'),
         'watchdog-card-0': `▸ BLOCKER  default · Explore · ${BLOCKER} · 1 turn ago · steered`,
       })
@@ -593,12 +609,15 @@ describe('failure line (§12.5)', () => {
     await $.session.start(START);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': ruled('watchdog · no open notes'),
+        'watchdog-divider': divider(),
+        'watchdog-count': 'watchdog · no open notes',
         'watchdog-trouble': 'watchdog halted · retry in 12 min · /watchdog on to retry now',
       })
     );
     // §13.1: the blank row parts the count line from the failure line too.
-    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-count', 'blank', 'watchdog-trouble']));
+    expect(await layout($)).toEqual(
+      onBoth([ENGINE_BAND, 'watchdog-divider', 'watchdog-count', 'blank', 'watchdog-trouble'])
+    );
     expect(await textProps($, [/^watchdog halted/u])).toEqual(onBoth([{ color: 'error', wrap: 'truncate-end' }]));
     expect((await rows($, { bodyColumns: 75 })).map((shown) => shown['watchdog-trouble'])).toEqual(
       onBoth('watchdog: 1 problem · /watchdog status')
