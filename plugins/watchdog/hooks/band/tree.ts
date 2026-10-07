@@ -128,9 +128,9 @@ const countTitle = (el: BandElements, totals: Totals, mode: Mode): Title => {
     : { text: `watchdog · ${counts.join(' · ')}`, parts: [lead, ...severityParts(el, totals)] };
 };
 
-// §13.1, §11.3: the severity badge (a colored background with `inverseText`), the watchdog, a subagent's type,
-// the first sentence of a collapsed card, the age (from the band's `turn`) and the delivery state, on one line cut
-// at the end.
+// §13.1, §11.3: the severity badge (a colored background with `inverseText`), the watchdog, a subagent's type, the
+// outdated mark (§10.8), the first sentence of a collapsed card, the age (from the band's `turn`) and the delivery
+// state, on one line cut at the end.
 const header = (el: BandElements, card: Card, at: { turn: number; sentence: string | undefined }): RenderElement => {
   const badge = el.Text({
     backgroundColor: COLORS[card.severity],
@@ -146,6 +146,7 @@ const header = (el: BandElements, card: Card, at: { turn: number; sentence: stri
       ' ',
       el.Text({ bold: true, children: card.name }),
       ...(card.subagent === undefined ? [] : [dim(` · ${card.subagent}`)]),
+      ...(card.edits > 0 ? [dim(` · may be outdated: ${plural(card.edits, 'edit')} since`)] : []),
       ...(at.sentence === undefined ? [] : [dim(' · '), at.sentence]),
       dim(` · ${ago(card.turn, at.turn)} · ${card.delivery}`),
     ],

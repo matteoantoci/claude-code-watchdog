@@ -1,7 +1,7 @@
 import { LOG_RECORD_CAP, RAW_PROMPT_CAP } from '../constants';
 import { usageCost } from '../prices';
 import type { Watchdog } from '../agents/roster';
-import type { HeldNote } from '../note/notes';
+import type { DeliveryState, HeldNote } from '../note/notes';
 import type { PluginState, TurnCompleteInput } from 'claude-code';
 
 // §13.4: one record of the review log (its shape is the `log` key of the state contract).
@@ -96,6 +96,16 @@ export const addLogRecord = (record: LogRecord): void => {
 // §14.6: at load the records of before the reload come back from `$.state`, before any of this instance.
 export const restoreLog = (records: readonly LogRecord[]): void => {
   memory.log = [...records, ...memory.log].slice(-LOG_RECORD_CAP);
+};
+
+// §10.8, §13.4: a held note that a later review superseded shows its new state in the record of the review that
+// sent it, while the log keeps that record.
+export const markLoggedNote = (agentId: string, text: string, delivery: DeliveryState): void => {
+  memory.log = memory.log.map((record) =>
+    record.kind === 'review' && record.agentId === agentId
+      ? { ...record, notes: record.notes.map((note) => (note.text === text ? { ...note, delivery } : note)) }
+      : record
+  );
 };
 
 export const recentPrompts = (): readonly ReviewPrompt[] => memory.prompts;

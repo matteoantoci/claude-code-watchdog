@@ -2,7 +2,7 @@ import { ownContext } from '../agents/ids';
 import { currentRosterConfig, watchdogBySlug } from '../agents/roster';
 import { isOwnLoop, isOwnRow } from '../agents/self-review';
 import { addStatusLines } from '../command/status';
-import { currentRouting, routeNote } from '../delivery/nudge';
+import { routeNow } from '../delivery/nudge';
 import { currentTurn } from '../delivery/turns';
 import { wrapNotes, wrappedNote } from '../delivery/wrapper';
 import { currentFeed } from '../feed/feed';
@@ -27,6 +27,7 @@ import {
   replaceHeldNote,
   takeBoundNotes,
 } from '../note/notes';
+import { batchedOf, editsSince } from '../note/outdated';
 import { currentLedger } from '../status/ledger';
 import {
   endSubagent,
@@ -87,13 +88,20 @@ const onRow: MatchedHook<'session.append', { agentId: RegExp }> = async ($, e, n
 };
 
 // §11.3, §10.7: the notes of a steer into a subagent in one wrapper, with no subagent label: the subagent reads
-// them as notes on its own work.
+// them as notes on its own work. §10.8: the take counts the edits since each note's batch again.
 const steerText = async ($: EngineInterface, notes: readonly HeldNote[]): Promise<string> => {
   memory.guidance ??= await $.fs.read(`${$.plugin.root}/prompts/boundary-guidance.md`);
   return wrapNotes(
     memory.guidance,
     notes.map((note) =>
-      wrappedNote({ ...note, subagent: undefined }, watchdogBySlug(note.watchdog)?.name ?? note.watchdog, currentTurn())
+      wrappedNote(
+        { ...note, subagent: undefined },
+        {
+          name: watchdogBySlug(note.watchdog)?.name ?? note.watchdog,
+          turn: currentTurn(),
+          edits: editsSince(batchedOf(note)),
+        }
+      )
     )
   );
 };
@@ -140,7 +148,7 @@ const settleLate = (sessionId: string, note: HeldNote): string[] => {
     return [logRow({ ...note, delivery: 'dropped:duplicate' }, name)];
   }
   setLiveHistory(sessionId, recordGuardKey(history, note.watchdog, entry));
-  replaceHeldNote(note, { ...note, delivery: routeNote(note.severity, currentRouting()) });
+  replaceHeldNote(note, { ...note, delivery: routeNow(note) });
   return [];
 };
 

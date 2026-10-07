@@ -33,15 +33,15 @@ How the `watchdog` mod in `plugins/watchdog/` is built and tested. The rules com
 
 An area plugs into another area's work through the registries, called once in its `installX(on)`. They run in install order:
 
-| Registry                        | File                | What it adds                                                                                                 |
-| ------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `addStatusHead(parts)`          | `command/status.ts` | parts of the first `/watchdog status` line (`watchdog on · nudge 1/1`)                                       |
-| `addStatusLines(lines, place?)` | `command/status.ts` | status lines; `place` is `line` (default), `watchdogs` or `error`                                            |
-| `addDumpLines(lines)`           | `dump/sections.ts`  | lines of `/watchdog dump`                                                                                    |
-| `addNoteGuard(guard)`           | `note/notes.ts`     | a note check after the destructive check, before the emission guard; the first ack it returns drops the note |
-| `addDeliveryRoute(route)`       | `note/notes.ts`     | a delivery state for an admitted note; the first route that claims it wins, else `held`                      |
-| `addNoteBinding(binding)`       | `note/notes.ts`     | marks a held note that waits for a subagent's own tool result                                                |
-| `watchHeldNotes(watcher)`       | `note/notes.ts`     | sees each note that the held list gets or changes                                                            |
+| Registry                        | File                | What it adds                                                                                                   |
+| ------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `addStatusHead(parts)`          | `command/status.ts` | parts of the first `/watchdog status` line (`watchdog on · nudge 1/1`)                                         |
+| `addStatusLines(lines, place?)` | `command/status.ts` | status lines; `place` is `line` (default), `watchdogs` or `error`                                              |
+| `addDumpLines(lines)`           | `dump/sections.ts`  | lines of `/watchdog dump`                                                                                      |
+| `addNoteGuard(guard)`           | `note/notes.ts`     | a note check after the destructive check, before the emission guard; the first ack it returns drops the note   |
+| `addDeliveryRoute(route)`       | `note/notes.ts`     | a delivery state for an admitted note; the first route that claims it wins, else `held`                        |
+| `addNoteBinding(binding)`       | `note/notes.ts`     | marks a held note that waits for a subagent's own tool result                                                  |
+| `watchHeldNotes(watcher)`       | `note/notes.ts`     | sees each note that the held list gets or changes, and each note a delivery takes, in the state it goes out in |
 
 ## Add a status line
 

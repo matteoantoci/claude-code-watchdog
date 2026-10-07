@@ -120,9 +120,9 @@ describe('band cards (§13.1)', () => {
     expect(await rows($)).toEqual(
       onBoth({
         'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
-        'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudged`,
-        'watchdog-card-1': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudged`,
-        'watchdog-card-2': `▸ CONCERN  default · ${OLD_CONCERN} · just now · nudged`,
+        'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudge pending`,
+        'watchdog-card-1': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudge pending`,
+        'watchdog-card-2': `▸ CONCERN  default · ${OLD_CONCERN} · just now · nudge pending`,
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
@@ -139,9 +139,9 @@ describe('band cards (§13.1)', () => {
     expect(await rows($)).toEqual(
       onBoth({
         'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
-        'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudged',
-        'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudged',
-        'watchdog-card-2': '▸ CONCERN  default · parseDate drops the timezone · just now · nudged',
+        'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudge pending',
+        'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudge pending',
+        'watchdog-card-2': '▸ CONCERN  default · parseDate drops the timezone · just now · nudge pending',
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
@@ -191,7 +191,7 @@ describe('band cards (§13.1)', () => {
     expect(await rows($)).toEqual(
       onBoth({
         'watchdog-count': hinted('watchdog · 1 blocker', 'a'),
-        'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudged`,
+        'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudge pending`,
       })
     );
   });
@@ -205,7 +205,7 @@ describe('band cards (§13.1)', () => {
     expect(await rows($)).toEqual(
       onBoth({
         'watchdog-count': hinted('watchdog · 1 concern · 1 nit', 'a'),
-        'watchdog-card-0': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudged`,
+        'watchdog-card-0': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudge pending`,
       })
     );
   });
@@ -262,9 +262,9 @@ describe('expand a card (§13.1)', () => {
   // The rows of `listedNotes` with each card collapsed.
   const COLLAPSED = {
     'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
-    'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudged',
-    'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudged',
-    'watchdog-card-2': '▸ CONCERN  default · parseDate drops the timezone · just now · nudged',
+    'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudge pending',
+    'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudge pending',
+    'watchdog-card-2': '▸ CONCERN  default · parseDate drops the timezone · just now · nudge pending',
     'watchdog-more': '  +1 more: 1 nit',
   };
 
@@ -294,7 +294,7 @@ describe('expand a card (§13.1)', () => {
     await listedNotes($);
     await press($, 'watchdog-expand-1');
     expect(await rows($)).toEqual(
-      onBoth({ ...COLLAPSED, 'watchdog-card-1': `▾ CONCERN  default · just now · nudged${LISTED_NEW}` })
+      onBoth({ ...COLLAPSED, 'watchdog-card-1': `▾ CONCERN  default · just now · nudge pending${LISTED_NEW}` })
     );
     expect(await propsOf($, 'Markdown')).toEqual(onBoth([{ text: LISTED_NEW }]));
     expect(
@@ -311,7 +311,7 @@ describe('expand a card (§13.1)', () => {
     await press($, 'watchdog-expand-1');
     await press($, 'watchdog-expand-0');
     expect(await rows($)).toEqual(
-      onBoth({ ...COLLAPSED, 'watchdog-card-0': `▾ BLOCKER  default · just now · nudged${LISTED_BLOCKER}` })
+      onBoth({ ...COLLAPSED, 'watchdog-card-0': `▾ BLOCKER  default · just now · nudge pending${LISTED_BLOCKER}` })
     );
     await press($, 'watchdog-expand-0');
     expect(await rows($)).toEqual(onBoth(COLLAPSED));
@@ -401,7 +401,7 @@ describe('band clear and off (§13.1, §5.2)', () => {
     await sendNote($, 'blocker', BLOCKER);
     await $.prompt.submit(TASK_NOTIFICATION);
     expect((await rows($)).map((shown) => shown['watchdog-card-0'])).toEqual(
-      onBoth(`▸ BLOCKER  default · ${BLOCKER} · just now · nudged`)
+      onBoth(`▸ BLOCKER  default · ${BLOCKER} · just now · nudge pending`)
     );
   });
 

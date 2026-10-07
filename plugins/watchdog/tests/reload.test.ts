@@ -70,7 +70,7 @@ const SEED: StateSeed = {
       'feed',
       {
         rows: [row('u1', '**user**:\nTask 1.')],
-        ends: [{ uuid: 'u1', close: 'turn' }],
+        ends: [{ uuid: 'u1', close: 'turn', turn: 1 }],
         cursors: { default: null },
         prompts: 1,
       },

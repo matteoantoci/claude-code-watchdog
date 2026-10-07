@@ -12,7 +12,8 @@ const update = (feed: Feed, uuid: string): Feed =>
       origin: { kind: 'model', model: 'claude-opus-4-5' },
       message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text: `row ${uuid}` }] },
     }),
-    'turn'
+    'turn',
+    1
   );
 
 const texts = (feed: Feed, slug: string): string[] =>

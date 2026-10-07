@@ -170,7 +170,7 @@ const dumpPrompts = (text) => {
 };
 
 // §13.2, §11.3: the `$.ui.log` row of a note, `[<severity>( · <subagent type>)] <watchdog>: <text> (<state>)`.
-const NOTE_STATES = 'steered|aside on next prompt|nudged|held|displaced|discarded|dropped:[\\w-]+';
+const NOTE_STATES = 'steered|aside on next prompt|nudge pending|nudged|held|displaced|discarded|dropped:[\\w-]+';
 const NOTE_ROW = new RegExp(
   `^\\[(nit|concern|blocker)(?: · ([^\\]]+))?\\] ([^:\\n]+): ([\\s\\S]*) \\((${NOTE_STATES})\\)$`,
   'u'
@@ -689,10 +689,10 @@ const nudgeStarts = (events) =>
   ofEvent(events, 'turn.start', (event) => !event.agentId && String(event.text).startsWith(NUDGE_FRAME));
 
 // §13.1: the band's count line names each severity with its count (`watchdog · 2 concerns · 1 nit`), and a card
-// reads `<SEVERITY>  <watchdog> · <age> · <delivery state>`.
+// reads `<SEVERITY>  <watchdog> · [<outdated mark> · ][<sentence> · ]<age> · <delivery state>` (§10.8).
 const SEVERITY_WORD = '(?:blockers?|concerns?|nits?)';
-const CARD_STATES = 'steered|nudged|held|displaced|discarded|aside on next prompt';
-const BAND_CARD = new RegExp(`^\\s*(BLOCKER|CONCERN|NIT)\\s+(\\S+) · ([^·\\n]+) · (${CARD_STATES})\\s*$`, 'gmu');
+const CARD_STATES = 'steered|nudge pending|nudged|held|displaced|discarded|aside on next prompt';
+const BAND_CARD = new RegExp(`^\\s*(BLOCKER|CONCERN|NIT)\\s+(\\S+) · ([^\\n]+?) · (${CARD_STATES})\\s*$`, 'gmu');
 
 // §5.4: a session change keeps the on flag; the `/watchdog status` reply after it starts with `watchdog on`.
 const ON_KEPT = 'the on flag carried over: the status reads "watchdog on"';
@@ -891,7 +891,8 @@ export const checks = [
     scenario: 'tui-review',
     needs: [],
     verify: (obs) => {
-      const nudged = noteLog(obs.events).filter((row) => row.state === 'nudged');
+      // §10.3: a note of the nudge route is admitted as `nudge pending`; its nudge then sends it.
+      const nudged = noteLog(obs.events).filter((row) => row.state === 'nudge pending');
       if (nudged.length === 0) {
         return inconclusive([
           `no note took the nudge route; note states: ${

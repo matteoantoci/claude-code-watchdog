@@ -1,7 +1,7 @@
 import { DEFAULT_IMMUNE_TURNS, MAX_IMMUNE_TURNS, NUDGE_BUDGET } from '../constants';
 import { isInteractiveSession } from '../lifecycle/on-order';
 import { currentTurn } from './turns';
-import type { DeliveryState } from '../note/notes';
+import type { DeliveryState, HeldNote, Note } from '../note/notes';
 import type { Severity } from '../note/tool';
 import type { PluginState } from 'claude-code';
 
@@ -37,16 +37,16 @@ const isInCooldown = (at: Cooldown): boolean => at.nudgeTurn !== null && at.turn
 export const cooldownLeft = (at: Cooldown): number =>
   at.nudgeTurn === null ? 0 : Math.max(0, at.nudgeTurn + at.immuneTurns - at.turn);
 
-// §10.3, §10.4: a late concern or blocker gets the one nudge of its person prompt. Over budget, after Esc,
-// after the nudge turn, or a concern in the cooldown: `held`, a card and an aside on the next person prompt.
-// §10.6: a headless session has no nudge and no cards: the note waits as an aside.
-export const lateRoute = (severity: Severity, at: Routing): 'nudged' | 'held' | 'aside on next prompt' => {
+// §10.3, §10.4: a late concern or blocker gets the one nudge of its person prompt, and waits for it as
+// `nudge pending`. Over budget, after Esc, after the nudge turn, or a concern in the cooldown: `held`, a card and an
+// aside on the next person prompt. §10.6: a headless session has no nudge and no cards: the note waits as an aside.
+export const lateRoute = (severity: Severity, at: Routing): 'nudge pending' | 'held' | 'aside on next prompt' => {
   if (at.isHeadless) {
     return 'aside on next prompt';
   }
   const isSpent = at.nudges >= NUDGE_BUDGET || at.isNudgeTurn || at.isAfterEsc;
   const isCooling = severity !== 'blocker' && isInCooldown(at);
-  return isSpent || isCooling ? 'held' : 'nudged';
+  return isSpent || isCooling ? 'held' : 'nudge pending';
 };
 
 // §10.1 to §10.4: a nit waits for the next person prompt; a concern or blocker steers while a main turn
@@ -57,6 +57,21 @@ export const routeNote = (severity: Severity, at: Routing): DeliveryState => {
   }
   return at.isTurnRunning ? 'steered' : lateRoute(severity, at);
 };
+
+// §10.3: a late note that waits for the nudge.
+export const isNudgePending = (note: HeldNote): boolean => note.delivery === 'nudge pending';
+
+// §14.1: the late notes of the nudge that waits, as the `nudge` key keeps them.
+export const nudgeNotes = (notes: readonly HeldNote[]): NudgeNote[] =>
+  notes.filter(isNudgePending).map((note) => ({
+    watchdog: note.watchdog,
+    agentId: note.agentId,
+    severity: note.severity,
+    text: note.text,
+    batchEnd: note.batchEnd,
+    turn: note.turn,
+    subagent: note.subagent,
+  }));
 
 // §13.3: the nudge budget and the cooldown on the status first line.
 export const nudgeStatus = (at: Routing): readonly string[] => [
@@ -99,6 +114,12 @@ export const currentRouting = (): Routing => ({
   immuneTurns: memory.immuneTurns,
   isHeadless: !isInteractiveSession(),
 });
+
+// §10.1 to §10.4, §11.4: the route of an admitted note now.
+export const routeNow = (note: Note): DeliveryState => routeNote(note.severity, currentRouting());
+
+// §10.3: the route of a late note now (a steer that got no tool result, or a refused append).
+export const lateRouteNow = (note: Note): DeliveryState => lateRoute(note.severity, currentRouting());
 
 // §4.1: the value of `register(on, options)`; §4.6: the status warning of a bad one.
 export const setImmuneTurns = (value: unknown): void => {

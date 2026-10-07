@@ -25,6 +25,7 @@ export const EMPTY_LEDGER: Ledger = { watchdogs: {}, session: EMPTY_TALLY, subag
 const ADMITTED: Readonly<Record<string, true>> = {
   steered: true,
   'aside on next prompt': true,
+  'nudge pending': true,
   nudged: true,
   held: true,
 };

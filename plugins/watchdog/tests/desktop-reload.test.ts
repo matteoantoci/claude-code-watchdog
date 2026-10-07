@@ -39,8 +39,10 @@ describe('a reload on the Desktop (§5.3, §14.6)', () => {
   test('the desktop among the surfaces keeps the session interactive: a late concern is nudged and drawn as a card', async ($, on: Stubs) => {
     const seen = await reload($, on, ['desktop']);
     await sendNote($, 'concern', CONCERN);
-    expect(seen.logs.at(-1)).toBe(`[concern] default: ${CONCERN} (nudged)`);
-    expect(await firstCards($)).toEqual(BAND_SURFACES.map(() => `▸ CONCERN  default · ${CONCERN} · just now · nudged`));
+    expect(seen.logs.at(-1)).toBe(`[concern] default: ${CONCERN} (nudge pending)`);
+    expect(await firstCards($)).toEqual(
+      BAND_SURFACES.map(() => `▸ CONCERN  default · ${CONCERN} · just now · nudge pending`)
+    );
   });
 
   test('no surface is a -p run: a late concern waits as an aside on the next prompt and no card is drawn', async ($, on: Stubs) => {

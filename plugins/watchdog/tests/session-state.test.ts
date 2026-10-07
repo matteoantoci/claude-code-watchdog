@@ -93,9 +93,9 @@ describe('§14.4 rewind', () => {
 
   test('the backlog goes; the update that runs stays for the next review, after the marker', () => {
     const rows = [mainRow('u1', 'user', 'Task 1.'), mainRow('a1', 'assistant', 'Done 1.')];
-    const closed = closeUpdate(rows.reduce(recordRow, startFeed(['default'])), 'turn');
+    const closed = closeUpdate(rows.reduce(recordRow, startFeed(['default'])), 'turn', 1);
     const feed = rewindFeed([mainRow('u2', 'user', 'Task 2.')].reduce(recordRow, closed), 'rewind:1');
-    const batch = backlogBatch(closeUpdate(feed, 'turn'), 'default');
+    const batch = backlogBatch(closeUpdate(feed, 'turn', 1), 'default');
     expect(renderBatch(batch?.updates ?? [])).toBe('[user rewound the conversation]\n\n**user**:\nTask 2.');
   });
 

@@ -3,8 +3,16 @@ import type { Severity } from './tool';
 import type { PluginState } from 'claude-code';
 
 // Build-session choice "Delivery state labels": one list for the card header, the log row, the recap
-// and the dump.
-const DELIVERY_STATES = ['steered', 'aside on next prompt', 'nudged', 'held', 'displaced', 'discarded'] as const;
+// and the dump. §10.3: a late note waits as `nudge pending` until its nudge goes out as `nudged`.
+const DELIVERY_STATES = [
+  'steered',
+  'aside on next prompt',
+  'nudge pending',
+  'nudged',
+  'held',
+  'displaced',
+  'discarded',
+] as const;
 
 export type DeliveryState = (typeof DELIVERY_STATES)[number] | `dropped:${string}`;
 
@@ -14,13 +22,15 @@ export const isDeliveryState = (value: unknown): value is DeliveryState =>
 // §11.3: the watched subagent that a note is about (`WatchdogSubagentRef` of the state contract).
 export type SubagentRef = NonNullable<PluginState['watchdog']['nudge']['notes'][number]['subagent']>;
 
-// One note a watchdog sent; `watchdog` is its slug, `turn` the main-loop turn counter when it came (§10.7).
-// §11.3: `subagent` is the watched subagent of a review of a subagent.
+// One note a watchdog sent; `watchdog` is its slug. §10.8: `batchEnd` is the last row of its review's batch (null
+// when no batch of a running review was known), `turn` the main-loop turn counter of that batch, else of the
+// note's arrival (§10.7). §11.3: `subagent` is the watched subagent of a review of a subagent.
 export type Note = {
   readonly watchdog: string;
   readonly agentId: string;
   readonly severity: Severity;
   readonly text: string;
+  readonly batchEnd: string | null;
   readonly turn: number;
   readonly subagent?: SubagentRef;
 };
@@ -43,8 +53,9 @@ const routes: DeliveryRoute[] = [];
 const bindings: NoteBinding[] = [];
 const held: HeldNote[] = [];
 
-// §13.1: a watcher sees each note that the held list gets (`before` undefined) or changes in place (a raise,
-// a new route); a note that leaves the list (taken for delivery, displaced) reaches no watcher.
+// §13.1, §7.7: a watcher sees each note that the held list gets (`before` undefined) or changes in place (a raise,
+// a new route, a new batch, §10.8), and each note a delivery takes, in the state it goes out in; a note that leaves
+// the list undelivered (displaced, superseded) reaches no watcher.
 export type HeldNoteWatcher = (before: HeldNote | undefined, after: HeldNote) => void;
 
 const watchers: HeldNoteWatcher[] = [];
@@ -109,19 +120,24 @@ export const replaceHeldNote = (note: HeldNote, replacement?: HeldNote): void =>
   }
 };
 
-const take = (isTaken: (note: HeldNote) => boolean): HeldNote[] => {
+// §13.1: a delivery takes the notes and tells the watchers the state each goes out in, so a card shows it.
+const take = (isTaken: (note: HeldNote) => boolean, sent: DeliveryState): HeldNote[] => {
   const taken = held.filter(isTaken);
   held.splice(0, held.length, ...held.filter((note) => !isTaken(note)));
+  taken.forEach((note) => {
+    tell(note, { ...note, delivery: sent });
+  });
   return taken;
 };
 
-// A delivery to the primary agent takes the held notes in the given states out of the list, oldest first.
-export const takeNotes = (...deliveries: readonly DeliveryState[]): HeldNote[] =>
-  take((note) => deliveries.includes(note.delivery) && !isBound(note));
+// A delivery to the primary agent takes the held notes in the given states out of the list, oldest first; they go
+// out as `sent`.
+export const takeNotes = (deliveries: readonly DeliveryState[], sent: DeliveryState): HeldNote[] =>
+  take((note) => deliveries.includes(note.delivery) && !isBound(note), sent);
 
 // §11.3: a steer into a subagent takes the bound notes on it, oldest first.
 export const takeBoundNotes = (agentId: string): HeldNote[] =>
-  take((note) => note.subagent?.agentId === agentId && isBound(note));
+  take((note) => note.subagent?.agentId === agentId && isBound(note), 'steered');
 
 // The held notes, oldest first, as they wait now.
 export const heldNotes = (): readonly HeldNote[] => held;

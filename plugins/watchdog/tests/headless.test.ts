@@ -101,8 +101,8 @@ describe('the CLAUDE_WATCHDOG switch', () => {
 describe('the -p backlog', () => {
   const rows = ['r1', 'r2', 'r3'].map((uuid) => ({ uuid, text: uuid }));
   const ends = [
-    { uuid: 'r1', close: 'step' },
-    { uuid: 'r3', close: 'turn' },
+    { uuid: 'r1', close: 'step', turn: 1 },
+    { uuid: 'r3', close: 'turn', turn: 1 },
   ] as const;
   const feed = { rows, ends, cursors: { default: null }, prompts: 0 };
 

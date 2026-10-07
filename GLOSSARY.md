@@ -74,6 +74,10 @@ A note that is not delivered before the watched agent's turn ends. It becomes a 
 **Nudge**:
 A delivery that starts a new turn after the primary agent stopped, so that it checks a late note.
 
+**Outdated note**:
+A note on a file that the watched agent edited after the review read its batch. The note is marked, not dropped. A later review of the same watchdog that reads those edits and does not send the note again supersedes it: the note leaves the band undelivered, or, when it was delivered, only its card goes.
+_Avoid_: stale note
+
 **Task notification**:
 The engine's prompt that reports a finished background subagent to the primary agent. It starts a main turn, or it goes into a turn that runs. It is not a prompt from the person.
 

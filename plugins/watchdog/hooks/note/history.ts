@@ -53,6 +53,12 @@ export const clearGuardKeys = (history: NoteHistory): NoteHistory => ({
   ),
 });
 
+// §10.8: a superseded note's key leaves the guard keys of its watchdog, so a later review may raise it again.
+export const forgetGuardKey = (history: NoteHistory, slug: string, key: string): NoteHistory => {
+  const { keys, notes } = watchdogNotes(history, slug);
+  return withNotes(history, slug, { keys: keys.filter((known) => known.key !== key), notes });
+};
+
 // §9.2, §11.4: the set already holds the key at the same or a higher severity, so the note repeats.
 export const isRepeat = (history: NoteHistory, slug: string, entry: GuardKey): boolean => {
   const seen = watchdogNotes(history, slug).keys.find((known) => known.key === entry.key)?.severity;
@@ -158,4 +164,13 @@ export const setLiveHistory = (sessionId: string, history: NoteHistory, agentId?
   }
   live.sessionId = sessionId;
   live.histories.set(agentId ?? PRIMARY, history);
+};
+
+// §7.7, §10.8: a change to the live copy of one watched agent's history in the loaded session; none before its load.
+// The next write of the history keeps it.
+export const changeLiveHistory = (agentId: string | undefined, change: (history: NoteHistory) => NoteHistory): void => {
+  const history = live.histories.get(agentId ?? PRIMARY);
+  if (history !== undefined) {
+    live.histories.set(agentId ?? PRIMARY, change(history));
+  }
 };

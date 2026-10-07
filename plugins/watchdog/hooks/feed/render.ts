@@ -48,13 +48,24 @@ const inputText = (input: unknown): string => {
   return elide(isBare ? only : JSON.stringify(input ?? {}), TOOL_INPUT_CAP);
 };
 
+// §10.8: the calls that write a file, whose path the outdated mark of a note counts.
+const EDIT_TOOLS: Readonly<Record<string, true>> = { Edit: true, Write: true, MultiEdit: true, NotebookEdit: true };
+
+// §10.8: the file an edit call writes; none for another call.
+const editOf = (name: string, input: unknown): { readonly edit?: string } => {
+  const isEdit = Object.hasOwn(EDIT_TOOLS, name) && isToolInput(input);
+  const path = isEdit ? textOf(input.file_path) || textOf(input.notebook_path) : '';
+  return path === '' ? {} : { edit: path };
+};
+
 // omp `toolCallLine` before its result: `→ name(args) ⇒ pending`; the brief keeps omp's one-line argument.
 const callPiece = (block: ApiContentBlock): Piece => {
   const name = textOf(block.name);
   const brief = `→ ${name}(${primaryArg(name, block.input)})${PENDING}`;
   const call = textOf(block.id);
   if (name !== ASK_TOOL) {
-    return { text: `→ ${name}(${inputText(block.input)})${PENDING}`, role: 'agent', brief, call };
+    const text = `→ ${name}(${inputText(block.input)})${PENDING}`;
+    return { text, role: 'agent', brief, call, ...editOf(name, block.input) };
   }
   const ask = fenced(elide(JSON.stringify(block.input ?? {}, null, 2), TOOL_INPUT_CAP), 'json');
   return { text: `${brief}\n${ASK_INPUT}:\n${ask}`, role: 'agent', brief, call };

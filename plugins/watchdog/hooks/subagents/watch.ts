@@ -144,9 +144,10 @@ export const recordSubagentRow = (row: SessionAppendInput): boolean => {
   return true;
 };
 
-// §11.2: the subagent's `turn.step` with index ≥ 1 and its `turn.complete` close an update of its feed.
-export const closeSubagentUpdate = (agentId: string, close: UpdateClose): Feed | undefined =>
-  changeWatch(agentId, (watch) => ({ feed: closeUpdate(watch.feed, close) }))?.feed;
+// §11.2: the subagent's `turn.step` with index ≥ 1 and its `turn.complete` close an update of its feed, at the
+// main-loop turn counter of now (§10.8).
+export const closeSubagentUpdate = (agentId: string, close: UpdateClose, turn: number): Feed | undefined =>
+  changeWatch(agentId, (watch) => ({ feed: closeUpdate(watch.feed, close, turn) }))?.feed;
 
 // §7.5, §12.3: the outcome of a review of a subagent changes that watchdog's backlog in the subagent's feed.
 export const changeSubagentFeed = (agentId: string, change: (feed: Feed) => Feed): void => {

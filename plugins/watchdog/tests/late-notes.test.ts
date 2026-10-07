@@ -44,8 +44,8 @@ describe('the route of an admitted note', () => {
   });
 
   test('a late concern or blocker gets the one nudge of the person prompt', () => {
-    expect(routeNote('concern', IDLE)).toBe('nudged');
-    expect(routeNote('blocker', IDLE)).toBe('nudged');
+    expect(routeNote('concern', IDLE)).toBe('nudge pending');
+    expect(routeNote('blocker', IDLE)).toBe('nudge pending');
   });
 
   test('in a headless session a late concern or blocker waits as an aside, and a steer still steers', () => {
@@ -70,10 +70,10 @@ describe('the route of an admitted note', () => {
     // Nudge turn 2: turns 2 to 5 cool down with immuneTurns 3, turn 6 does not.
     const cooled = { ...IDLE, nudgeTurn: 2 };
     expect(routeNote('concern', { ...cooled, turn: 5 })).toBe('held');
-    expect(routeNote('blocker', { ...cooled, turn: 5 })).toBe('nudged');
-    expect(routeNote('concern', { ...cooled, turn: 6 })).toBe('nudged');
+    expect(routeNote('blocker', { ...cooled, turn: 5 })).toBe('nudge pending');
+    expect(routeNote('concern', { ...cooled, turn: 6 })).toBe('nudge pending');
     expect(routeNote('concern', { ...cooled, turn: 2, immuneTurns: 0 })).toBe('held');
-    expect(routeNote('concern', { ...cooled, turn: 3, immuneTurns: 0 })).toBe('nudged');
+    expect(routeNote('concern', { ...cooled, turn: 3, immuneTurns: 0 })).toBe('nudge pending');
   });
 });
 

@@ -3,6 +3,7 @@ import {
   EMPTY_BAND,
   addCard,
   bandState,
+  cardKey,
   changeCard,
   clearCards,
   removeCard,
@@ -18,6 +19,7 @@ const held = (subagent?: typeof EXPLORE): HeldNote => ({
   agentId: 'afake0001',
   severity: 'concern',
   text: 'The regex accepts expired tokens.',
+  batchEnd: null,
   turn: 1,
   delivery: 'steered',
   ...(subagent === undefined ? {} : { subagent }),
@@ -61,10 +63,10 @@ describe('expanded card (§13.1)', () => {
   test('the expanded card collapses as it leaves, and when the cards clear; a press on a gone card changes nothing', () => {
     const [first = '', second = ''] = twoCards();
     toggleCard(first);
-    removeCard(held());
+    removeCard(cardKey(held()));
     expect(bandState(1)).toMatchObject({ cards: [{ key: second }], expanded: null });
     toggleCard(second);
-    removeCard(held());
+    removeCard(cardKey(held()));
     expect(bandState(1).expanded).toBe(second);
     toggleCard(first);
     expect(bandState(1).expanded).toBe(second);

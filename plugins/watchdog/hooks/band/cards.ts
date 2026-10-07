@@ -1,5 +1,6 @@
 import { watchdogBySlug } from '../agents/roster';
 import { normalizeNote } from '../note/guard';
+import { editsSince } from '../note/outdated';
 import type { HeldNote } from '../note/notes';
 import type { Severity } from '../note/tool';
 import type { PluginState } from 'claude-code';
@@ -21,7 +22,7 @@ export const EMPTY_BAND: Band = {
 const memory: { band: Band } = { band: EMPTY_BAND };
 
 // §9.1, §11.4: the guard tells notes of one watchdog on one watched agent apart by their normalized text.
-const cardKey = (note: Pick<HeldNote, 'watchdog' | 'text' | 'subagent'>): string =>
+export const cardKey = (note: Pick<HeldNote, 'watchdog' | 'text' | 'subagent'>): string =>
   `${note.watchdog}\n${note.subagent?.agentId ?? ''}\n${normalizeNote(note.text)}`;
 
 const count = (totals: Band['totals'], severity: Severity, by: number): Band['totals'] => ({
@@ -30,25 +31,37 @@ const count = (totals: Band['totals'], severity: Severity, by: number): Band['to
 });
 
 // §13.1: the band as `$.state` keeps it, with the main-loop turn counter that the card ages count from. With
-// no card the turn stays 0, so a new turn alone writes nothing.
+// no card the turn stays 0, so a new turn alone writes nothing. §10.8: each card counts the edits since its batch
+// now, so a new edit on a file a card names draws the band again.
 export const bandState = (turn: number): Band => ({
   ...memory.band,
+  cards: memory.band.cards.map((card) => ({ ...card, edits: editsSince(card) })),
   turn: memory.band.cards.length === 0 ? 0 : turn,
 });
 
+// §13.1: the cards as they show now.
+export const currentCards = (): readonly Card[] => memory.band.cards;
+
 // §13.1, §11.3: an admitted note becomes the newest card and counts in the session totals; a note on a
-// subagent shows its type.
+// subagent shows its type. §10.8: the card keeps the note's batch and counts the edits since it.
 export const addCard = (note: HeldNote): void => {
   const { band } = memory;
+  const batched = {
+    text: note.text,
+    batchEnd: note.batchEnd,
+    ...(note.subagent === undefined ? {} : { subagentId: note.subagent.agentId }),
+  };
   const card: Card = {
     key: cardKey(note),
     seq: band.seq + 1,
     name: watchdogBySlug(note.watchdog)?.name ?? note.watchdog,
     severity: note.severity,
-    text: note.text,
     turn: note.turn,
     delivery: note.delivery,
     ...(note.subagent === undefined ? {} : { subagent: note.subagent.type }),
+    watchdog: note.watchdog,
+    ...batched,
+    edits: editsSince(batched),
   };
   memory.band = {
     ...band,
@@ -59,24 +72,30 @@ export const addCard = (note: HeldNote): void => {
 };
 
 // §13.1: a card shows the delivery state its note has now; a raise (§9.1) moves the note to its new severity,
-// in the totals too.
+// in the totals too. §10.8: a note that takes a later review's batch takes its turn too.
 export const changeCard = (before: HeldNote | undefined, after: HeldNote): void => {
   const { band } = memory;
   const raised = before !== undefined && before.severity !== after.severity ? before.severity : undefined;
   const key = cardKey(before ?? after);
+  const change = { severity: after.severity, delivery: after.delivery, batchEnd: after.batchEnd, turn: after.turn };
   memory.band = {
     ...band,
-    cards: band.cards.map((card) =>
-      card.key === key ? { ...card, severity: after.severity, delivery: after.delivery } : card
-    ),
+    cards: band.cards.map((card) => (card.key === key ? { ...card, ...change } : card)),
     totals: raised === undefined ? band.totals : count(count(band.totals, raised, -1), after.severity, 1),
   };
 };
 
-// §9.4, §11.4: a note that goes undelivered (displaced, or a late repeat on a subagent) leaves the band; the
-// totals keep it, as the session totals count each admitted note. An expanded card collapses as it leaves.
-export const removeCard = (note: HeldNote): void => {
-  const key = cardKey(note);
+// §10.8: the card of a delivered note takes the batch of a later review that sent its text again.
+export const renewCard = (key: string, batch: Pick<Card, 'batchEnd' | 'turn'>): void => {
+  const { band } = memory;
+  const renewed = (card: Card): Card => ({ ...card, batchEnd: batch.batchEnd, turn: batch.turn });
+  memory.band = { ...band, cards: band.cards.map((card) => (card.key === key ? renewed(card) : card)) };
+};
+
+// §9.4, §11.4, §10.8: a card leaves the band when its note goes undelivered (displaced, a late repeat on a
+// subagent, superseded) or a later review supersedes its delivered note; the totals keep it, as the session totals
+// count each admitted note. An expanded card collapses as it leaves.
+export const removeCard = (key: string): void => {
   const { band } = memory;
   memory.band = {
     ...band,

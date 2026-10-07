@@ -1,18 +1,16 @@
-import { watchdogOf } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
 import { addCard } from '../band/cards';
 import { DEFAULT_MAX_NOTES_PER_REVIEW } from '../constants';
-import { currentTurn } from '../delivery/turns';
 import { errorText } from '../errors';
-import { batchRows, currentFeed } from '../feed/feed';
-import { traceNote } from '../log/log';
-import { IDLE, reviewOf, slotOf } from '../review/slots';
-import { isLateNote, subagentOfReview, watchedSubagent } from '../subagents/watch';
+import { currentLog, traceNote } from '../log/log';
+import { isLateNote } from '../subagents/watch';
+import { batchTextOf, noteOf } from './call';
 import { UNSAFE_ROW, isUnsafeNote } from './destructive';
 import { dropHeldNote } from './drop';
 import { DROP_ACKS, judgeNote, normalizeNote, reviewSlots, setReviewSlots } from './guard';
 import {
   EMPTY_HISTORY,
+  changeLiveHistory,
   isRepeat,
   liveHistory,
   notesKey,
@@ -23,9 +21,11 @@ import {
   updateNote,
   watchdogNotes,
 } from './history';
-import { deliveryFor, guardNote, heldNoteOf, holdNote, logRow, replaceHeldNote } from './notes';
-import { parseNote } from './tool';
+import { deliveryFor, guardNote, heldNoteOf, holdNote, logRow, replaceHeldNote, watchHeldNotes } from './notes';
+import { recordNoteCall } from './outdated';
+import { SUPERSEDED, settleReview } from './supersede';
 import type { OnEvents } from '../on';
+import type { NoteCall } from './call';
 import type { Verdict } from './guard';
 import type { NoteHistory } from './history';
 import type { HeldNote, Note } from './notes';
@@ -33,48 +33,11 @@ import type { Severity } from './tool';
 import type { EngineInterface, MatchedHook, ToolCallResult } from 'claude-code';
 
 type NoteHook = MatchedHook<'tool.call', { tool: 'mcp__watchdog__note' }>;
-type NoteCall = Parameters<NoteHook>[1];
 
-// §8.3: the deny for the main loop and for an unknown agent; §9.5: the ack of an admitted note.
-const NOT_A_WATCHDOG = 'Only watchdog agents can call this tool.';
+type ReviewEndHook = MatchedHook<'turn.complete', { agentId: RegExp; reason: 'answer' }>;
+
+// §9.5: the ack of an admitted note.
 const ADMITTED = 'Queued. Do not re-raise.';
-const BAD_ARGUMENTS = 'A note needs `note` text and a `severity` of nit, concern or blocker.';
-
-// §8.3: the note of a known watchdog, with the main-loop turn when it came (§10.7), or the deny. §11.3: a note
-// of a review of a subagent is on that subagent.
-const noteOf = (e: NoteCall): Note | { readonly deny: string } => {
-  const watchdog = watchdogOf(e.agentId);
-  if (watchdog === undefined || e.agentId === undefined) {
-    return { deny: NOT_A_WATCHDOG };
-  }
-  const input = parseNote(e);
-  const subagent = subagentOfReview(e.agentId);
-  return input === undefined
-    ? { deny: BAD_ARGUMENTS }
-    : {
-        watchdog,
-        agentId: e.agentId,
-        turn: currentTurn(),
-        ...input,
-        ...(subagent === undefined ? {} : { subagent: { agentId: subagent.agentId, type: subagent.type } }),
-      };
-};
-
-// §12.6: the rendered rows that the mod gave the running review of this agent (from the primary agent's feed or
-// from the reviewed subagent's, §11.2); none when no review of it runs.
-const batchTextOf = (agentId: string): string => {
-  const slug = reviewOf(agentId);
-  const slot = slug === undefined ? IDLE : slotOf(slug);
-  if (slug === undefined || slot.state !== 'reviewing') {
-    return '';
-  }
-  const feed = slot.subagent === undefined ? currentFeed() : watchedSubagent(slot.subagent)?.feed;
-  return feed === undefined
-    ? ''
-    : batchRows(feed, slug, slot.batchEnd)
-        .map((row) => row.text)
-        .join('\n');
-};
 
 // §9.6, §11.4: the live copy of `notes:<sessionId>` (or of a watched subagent's `notes:<sessionId>:<agentId>`)
 // loads at the first note hook of a session id, so a new process, a hot reload and a session change each load it
@@ -179,23 +142,30 @@ const keepLateKey = async ($: EngineInterface, sessionId: string, note: Note): P
   await saveHistory($, sessionId);
 };
 
-// §8.3, §12.6, §9: a note of a known watchdog passes the destructive check first, then the guards of other
-// areas, then the emission guard of its watched agent (§11.4); the history is written back after each
-// admitted note.
-const admitNote = async ($: EngineInterface, e: NoteCall): Promise<ToolCallResult> => {
-  const note = noteOf(e);
-  if ('deny' in note) {
-    return note;
-  }
+// §12.6: a note with a destructive command that its review's batch does not hold is dropped, with one row; then a
+// guard of another area may drop it. The drop's ack, or undefined for a note that goes on to the emission guard.
+const refusal = ($: EngineInterface, note: Note): ToolCallResult | undefined => {
   if (isUnsafeNote(note.text, batchTextOf(note.agentId))) {
     traceNote({ ...note, delivery: 'dropped:unsafe' });
     $.ui.log(UNSAFE_ROW);
     return { result: DROP_ACKS.unsafe };
   }
-
   const dropped = guardNote(note);
-  if (dropped !== undefined) {
-    return { result: dropped };
+  return dropped === undefined ? undefined : { result: dropped };
+};
+
+// §8.3, §12.6, §9: a note of a known watchdog passes the destructive check first, then the guards of other
+// areas, then the emission guard of its watched agent (§11.4); the history is written back after each
+// admitted note. §10.8: each call of a review counts for the repeat check at its end.
+const admitNote = async ($: EngineInterface, e: NoteCall): Promise<ToolCallResult> => {
+  const note = noteOf(e);
+  if ('deny' in note) {
+    return note;
+  }
+  recordNoteCall(note);
+  const refused = refusal($, note);
+  if (refused !== undefined) {
+    return refused;
   }
   const isLate = isLateNote(note);
   if (await isLateRepeat($, note)) {
@@ -222,12 +192,34 @@ const onNote: NoteHook = async ($, e) => {
   }
 };
 
+// §10.8: a review that ends with an answer settles the notes of its watchdog before `next(e)`, so the review area
+// beneath has not moved its cursor and the feed still holds the rows of its batch. Each superseded held note writes
+// one row; a refused write of the review log loses only what a reload would carry over.
+const onReviewEnd: ReviewEndHook = async ($, e, next) => {
+  const superseded = settleReview(e.agentId);
+  superseded.forEach((note) => {
+    $.ui.log(logRow({ ...note, delivery: SUPERSEDED }, watchdogBySlug(note.watchdog)?.name ?? note.watchdog));
+  });
+  if (superseded.length > 0) {
+    await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog()).catch(() => undefined);
+  }
+  return next(e);
+};
+
 // §8.3: the `.catch` form of 2.1.290; it denies only a call from a watchdog agent or a fork. The tool
-// name is a literal so that `claude plugin validate` lists the matcher.
-export const installNote = (on: OnEvents<'tool.call'>): void => {
+// name is a literal so that `claude plugin validate` lists the matcher. §7.7, §9.6: the recap shows the state each
+// held note has now (a new route, a delivery); the next write of the history keeps it. Install before the review
+// area, whose `turn.complete` hook moves the cursor of the review that ends (§10.8); the matcher only tells this
+// `on()` from the other areas'.
+export const installNote = (on: OnEvents<'tool.call' | 'turn.complete'>): void => {
   on('tool.call', { tool: 'mcp__watchdog__note' }, onNote).catch((_$, e, next) =>
     next.called || next.origin.plugin !== 'watchdog' || e.agentId === undefined
       ? next(e)
       : { deny: 'The note was not recorded.' }
   );
+  on('turn.complete', { agentId: /^/u, reason: 'answer' }, onReviewEnd);
+  watchHeldNotes((_before, after) => {
+    const change = { key: normalizeNote(after.text), delivery: after.delivery };
+    changeLiveHistory(after.subagent?.agentId, (history) => updateNote(history, after.watchdog, change));
+  });
 };

@@ -51,6 +51,7 @@ const note = (subagent?: typeof EXPLORE): Note => ({
   agentId: 'afake0001',
   severity: 'concern',
   text: 'The parser drops the <tz> offset.',
+  batchEnd: null,
   turn: 2,
   ...(subagent === undefined ? {} : { subagent }),
 });
@@ -78,8 +79,12 @@ describe('the route of a note on a subagent (§11.3)', () => {
 
 describe('the subagent label (§10.7, §11.3)', () => {
   test('a late note on a subagent has the subagent attribute, XML-escaped; a primary note has none', () => {
-    const late = wrappedNote(note({ agentId: 'asub0001', type: 'my-plugin:"coder"' }), 'Security', 3);
-    expect(wrapNotes('Weigh these notes.', [late, wrappedNote(note(), 'Security', 2)])).toBe(
+    const late = wrappedNote(note({ agentId: 'asub0001', type: 'my-plugin:"coder"' }), {
+      name: 'Security',
+      turn: 3,
+      edits: 0,
+    });
+    expect(wrapNotes('Weigh these notes.', [late, wrappedNote(note(), { name: 'Security', turn: 2, edits: 0 })])).toBe(
       [
         '<watchdog-notes>',
         'Weigh these notes.',

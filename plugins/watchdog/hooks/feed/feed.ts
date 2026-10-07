@@ -60,8 +60,9 @@ export const addServerToolUses = (feed: Feed, uses: readonly TurnStepServerToolU
 };
 
 // §7.2: a boundary closes the update that the rows since the last boundary make. A turn end right after a
-// step boundary, with no row between them, closes that update again as the turn end (§7.5 markers).
-export const closeUpdate = (feed: Feed, close: UpdateClose): Feed => {
+// step boundary, with no row between them, closes that update again as the turn end (§7.5 markers). §10.8: the
+// end keeps the main-loop turn counter of the boundary.
+export const closeUpdate = (feed: Feed, close: UpdateClose, turn: number): Feed => {
   const last = feed.rows.at(-1)?.uuid;
   const isSameEnd = feed.ends.at(-1)?.uuid === last;
   if (last === undefined || (isSameEnd && close === 'step')) {
@@ -70,10 +71,14 @@ export const closeUpdate = (feed: Feed, close: UpdateClose): Feed => {
   return {
     ...feed,
     ends: isSameEnd
-      ? feed.ends.with(feed.ends.length - 1, { uuid: last, close })
-      : [...feed.ends, { uuid: last, close }],
+      ? feed.ends.with(feed.ends.length - 1, { uuid: last, close, turn })
+      : [...feed.ends, { uuid: last, close, turn }],
   };
 };
+
+// §10.8: the main-loop turn counter of the boundary that closed the update ending at `end`.
+export const batchTurn = (feed: Feed, end: string): number | undefined =>
+  feed.ends.find((close) => close.uuid === end)?.turn;
 
 // The index of the row just after `uuid`; 0 for no uuid or an unknown one.
 const indexAfter = (feed: Feed, uuid: string | null | undefined): number =>

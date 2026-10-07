@@ -23,6 +23,12 @@ Then run `/watchdog on` (reviews are off until you do) and ask Claude for a smal
 Click the card's `▸`, or press ctrl+x tab and then its letter (`a`, `b`, `c`), to read the whole note. Run
 `/watchdog status` to see each watchdog's reviews, notes, tokens and cost.
 
+A card ends with the note's age and state: `steered` (Claude reads it after its next tool result), `nudge pending`
+and then `nudged` (the plugin starts a turn so that Claude reads it), `held` or `aside on next prompt` (Claude reads it
+with your next prompt). When Claude edited a file that the note names after the review read it, the card says
+`may be outdated: N edits since`, and Claude reads the same mark with the note. A later review of the same watchdog
+that reads those edits and does not send the note again removes its card.
+
 ## What runs on your machine
 
 - The mod runs inside Claude Code with your permissions. Its code is in `plugins/watchdog/hooks/`.
@@ -66,7 +72,8 @@ are in [docs/configuration.md](docs/configuration.md). This file adds a second r
 
 ## Limitations
 
-- Notes are advice: the agent may reject one. A review runs in the background, so a note can come after the step.
+- Notes are advice: the agent may reject one. A review runs in the background, so a note can come after the step; the
+  outdated mark above counts only edits to a file the note names.
 - Reviews run only on Anthropic models. `claude -p` needs `CLAUDE_WATCHDOG=on` and has no nudge and no cards: see
   [docs/headless.md](docs/headless.md).
 - The cost comes from the plugin's own price table (`plugins/watchdog/hooks/prices.ts`); a model not in it shows `$?`.

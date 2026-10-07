@@ -22,7 +22,7 @@ const results = (...ids: string[]): ApiMessage => ({
 });
 
 const updatesOf = (rows: readonly SessionAppendInput[], close: UpdateClose = 'turn'): readonly Update[] =>
-  backlogBatch(closeUpdate(rows.reduce(recordRow, startFeed(['default'])), close), 'default')?.updates ?? [];
+  backlogBatch(closeUpdate(rows.reduce(recordRow, startFeed(['default'])), close, 1), 'default')?.updates ?? [];
 
 const ASK: SessionAppendInput = {
   uuid: 'u9',

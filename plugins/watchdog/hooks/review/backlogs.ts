@@ -1,3 +1,4 @@
+import { currentTurn } from '../delivery/turns';
 import { closeUpdate, currentFeed, backlogBatch, setFeed } from '../feed/feed';
 import { changeSubagentFeed, closeSubagentUpdate, watchedSubagent, watchedSubagents } from '../subagents/watch';
 import { cadenceOf } from './cadence';
@@ -45,12 +46,12 @@ export const watchersOf = (
   return roster.filter((watchdog) => watch.watchdogs.includes(watchdog.slug));
 };
 
-// §7.2, §11.2: a boundary closes the update of its watched agent.
+// §7.2, §11.2: a boundary closes the update of its watched agent; §10.8: at the main-loop turn counter of now.
 export const closeBacklog = (agentId: string | undefined, close: UpdateClose): void => {
   if (agentId === undefined) {
-    setFeed(closeUpdate(currentFeed(), close));
+    setFeed(closeUpdate(currentFeed(), close, currentTurn()));
   }
-  rankLast(agentId === undefined ? currentFeed() : closeSubagentUpdate(agentId, close));
+  rankLast(agentId === undefined ? currentFeed() : closeSubagentUpdate(agentId, close, currentTurn()));
 };
 
 const rankOf = (backlog: Backlog): number => order.ranks.get(backlog.batch.updates[0]?.rows.at(-1)?.uuid ?? '') ?? 0;

@@ -29,7 +29,7 @@ const read = (id: string): SessionAppendInput => ({
 
 // Records the rows of one update and closes it as the boundary does.
 const update = (feed: Feed, rows: readonly SessionAppendInput[], close: UpdateClose): Feed =>
-  closeUpdate(rows.reduce(recordRow, feed), close);
+  closeUpdate(rows.reduce(recordRow, feed), close, 1);
 
 const batchText = (feed: Feed): string => {
   const batch = backlogBatch(feed, 'default');
@@ -67,7 +67,7 @@ describe('markers', () => {
 
   test('a turn end right after a step boundary, with no row between, is the end of the turn', () => {
     const midTurn = update(START, [person('u1', 'Task.')], 'step');
-    expect(batchText(closeUpdate(midTurn, 'turn'))).toBe('**user**:\nTask.');
+    expect(batchText(closeUpdate(midTurn, 'turn', 1))).toBe('**user**:\nTask.');
   });
 
   test('an update that Esc closed gets `[turn interrupted by user]`', () => {

@@ -1,4 +1,5 @@
 // §14.3: the feed replay of `/resume` and `/branch`. Pure: the session area's hook reads the conversation.
+import { currentTurn } from '../delivery/turns';
 import { closeUpdate, recordRow } from '../feed/feed';
 import { textOf } from '../feed/text';
 import { personPrompts } from '../review/recap';
@@ -70,5 +71,5 @@ export const replayFeed = (feed: Feed, messages: readonly ApiMessage[], prefix: 
       .flatMap((message, n) => rowsOf(message, `${prefix}:${prompt.index + 1 + n}`, tools)),
   ];
   const marked: Feed = { ...feed, rows: [...feed.rows, { uuid: `${prefix}:marker`, text: REPLAY_MARKER }] };
-  return closeUpdate(rows.reduce(recordRow, marked), 'turn');
+  return closeUpdate(rows.reduce(recordRow, marked), 'turn', currentTurn());
 };

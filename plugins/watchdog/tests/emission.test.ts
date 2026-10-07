@@ -52,13 +52,13 @@ describe('the note hook: destructive check, emission guard and note history', ()
     expect(seen.logs.slice(logsBefore)).toEqual([
       UNSAFE_ROW,
       '[nit] default: Missing null check in parse(). (aside on next prompt)',
-      '[concern] default: Missing null check in parse(). (nudged)',
+      '[concern] default: Missing null check in parse(). (nudge pending)',
     ]);
     expect(seen.store.get(STORE_KEY)).toEqual({
       watchdogs: {
         default: {
           keys: [{ key: 'missing null check in parse', severity: 'concern' }],
-          notes: [{ text: 'Missing null check in parse().', severity: 'concern', delivery: 'nudged' }],
+          notes: [{ text: 'Missing null check in parse().', severity: 'concern', delivery: 'nudge pending' }],
         },
       },
       lastUsed: NOW,
@@ -73,7 +73,7 @@ describe('the note hook: destructive check, emission guard and note history', ()
       result: 'Queued. Do not re-raise.',
     });
     expect(seen.logs.slice(logsBefore)).toEqual([
-      '[blocker] default: rm -rf dist also deletes the checked-in fixtures. (nudged)',
+      '[blocker] default: rm -rf dist also deletes the checked-in fixtures. (nudge pending)',
     ]);
   });
 
@@ -118,9 +118,9 @@ describe('the note hook: destructive check, emission guard and note history', ()
       'Nit two. displaced',
       'Nit three. aside on next prompt',
       'Nit four. aside on next prompt',
-      'The parser drops the last token. nudged',
-      'The cache key ignores the locale. nudged',
-      'The build skips the parser tests. nudged',
+      'The parser drops the last token. nudge pending',
+      'The cache key ignores the locale. nudge pending',
+      'The build skips the parser tests. nudge pending',
     ]);
   });
 });

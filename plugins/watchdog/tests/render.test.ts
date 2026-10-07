@@ -41,7 +41,7 @@ const result = (
 
 const textOf = (rows: readonly SessionAppendInput[], feed: Feed = startFeed(['default'])): string => {
   const recorded = rows.reduce(recordRow, feed);
-  const batch = backlogBatch(closeUpdate(recorded, 'turn'), 'default');
+  const batch = backlogBatch(closeUpdate(recorded, 'turn', 1), 'default');
   return batch === undefined ? '' : renderBatch(batch.updates);
 };
 

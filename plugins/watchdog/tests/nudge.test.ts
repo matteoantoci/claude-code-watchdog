@@ -68,7 +68,7 @@ describe('late note and nudge', () => {
     await personTurn($, 't1');
     await $.turn.complete(turnEnd('t1'));
     await sendNote($, 'concern', CONCERN);
-    expect(seen.logs.at(-1)).toBe(`[concern] default: ${CONCERN} (nudged)`);
+    expect(seen.logs.at(-1)).toBe(`[concern] default: ${CONCERN} (nudge pending)`);
 
     await reviewEnd($);
     await seen.clock.advance(1999);
@@ -284,7 +284,7 @@ describe('the nudge budget after a refused nudge (§10.3, §10.4)', () => {
     await $.agent.spawn(REVIEW_SPAWN);
     await lateBlocker($, BLOCKER);
 
-    expect(seen.logs.at(-1)).toBe(`[blocker] default: ${BLOCKER} (nudged)`);
+    expect(seen.logs.at(-1)).toBe(`[blocker] default: ${BLOCKER} (nudge pending)`);
     expect((await $.command.run(typed('status'))).text?.split('\n')[0]).toBe('watchdog on · nudge 0/1 · cooldown 0');
     expect(stateIn(state, SESSION_ID, 'nudge')).toMatchObject({ nudges: 0, dueAt: null, notes: [] });
   });

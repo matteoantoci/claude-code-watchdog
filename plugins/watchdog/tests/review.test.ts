@@ -174,7 +174,7 @@ describe('one review at a time, and no self-review', () => {
     await $.agent.spawn(SPAWN);
     await $.tool.call({ tool: 'mcp__watchdog__note', agentId: REVIEW_AGENT, note: 'Check null.', severity: 'concern' });
     await $.turn.complete(reviewEnd);
-    expect(seen.logs).toEqual(['[concern] default: Check null. (nudged)']);
+    expect(seen.logs).toEqual(['[concern] default: Check null. (nudge pending)']);
     // The engine's echo of that row, and another plugin's log row, in the recorded notice shape.
     await append($, noticeRow('n1', seen.logs[0] ?? ''));
     await append($, withText(LOG_NOTICE_ROW, 'n2', 'linter: 0 problems'));

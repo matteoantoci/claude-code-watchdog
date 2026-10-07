@@ -7,6 +7,7 @@ import { errorText } from '../errors';
 import { currentMode } from '../lifecycle/mode';
 import { addLogRecord, currentLog, errorRecord } from '../log/log';
 import { addDeliveryRoute, heldNotes, holdNote, rerouteNotes, takeNotes } from '../note/notes';
+import { batchedOf, editsSince } from '../note/outdated';
 import { isPersonPrompt } from '../person';
 import {
   currentNudgeClock,
@@ -14,11 +15,13 @@ import {
   endMainTurn,
   giveBackNudge,
   immuneTurnsWarning,
-  lateRoute,
+  isNudgePending,
+  lateRouteNow,
+  nudgeNotes,
   nudgeStatus,
   nudgeValue,
   restoreNudge,
-  routeNote,
+  routeNow,
   setImmuneTurns,
   setNudgeClock,
   spendNudge,
@@ -26,7 +29,7 @@ import {
 } from './nudge';
 import { countTurn, currentTurn, restoreTurn } from './turns';
 import { wrapNotes, wrappedNote } from './wrapper';
-import type { DeliveryState, HeldNote, Note } from '../note/notes';
+import type { DeliveryState, HeldNote } from '../note/notes';
 import type { OnEvents } from '../on';
 import type { EngineInterface, Hook, MatchedHook, PluginOptions, Timer } from 'claude-code';
 
@@ -45,33 +48,25 @@ const guidance = async ($: EngineInterface): Promise<string> => {
   return memory.guidance;
 };
 
-// §10.7: held notes in one wrapper, each under its watchdog's name, with its age now.
+// §10.7: held notes in one wrapper, each under its watchdog's name, with its age now; §10.8: each take counts the
+// edits since the note's batch again.
 const wrapHeld = (head: string, notes: readonly HeldNote[]): string =>
   wrapNotes(
     head,
-    notes.map((note) => wrappedNote(note, watchdogBySlug(note.watchdog)?.name ?? note.watchdog, currentTurn()))
+    notes.map((note) =>
+      wrappedNote(note, {
+        name: watchdogBySlug(note.watchdog)?.name ?? note.watchdog,
+        turn: currentTurn(),
+        edits: editsSince(batchedOf(note)),
+      })
+    )
   );
-
-const isNudged = (note: HeldNote): boolean => note.delivery === 'nudged';
 
 // §14.1: `$.state` keeps the budget, the cooldown and the nudge that waits with its notes; a refused write
 // loses only what a reload would carry over.
 const saveNudge = async ($: EngineInterface): Promise<void> => {
-  const notes = heldNotes()
-    .filter(isNudged)
-    .map((note) => ({
-      watchdog: note.watchdog,
-      agentId: note.agentId,
-      severity: note.severity,
-      text: note.text,
-      turn: note.turn,
-      subagent: note.subagent,
-    }));
-  await $.state.set({ plugin: 'watchdog', key: 'nudge' }, nudgeValue(notes)).catch(() => undefined);
+  await $.state.set({ plugin: 'watchdog', key: 'nudge' }, nudgeValue(nudgeNotes(heldNotes()))).catch(() => undefined);
 };
-
-// §10.3: the route of a late note (a steer that got no tool result, or a refused append).
-const lateDelivery = (note: HeldNote): DeliveryState => lateRoute(note.severity, currentRouting());
 
 type Undelivered = {
   readonly notes: readonly HeldNote[];
@@ -105,13 +100,13 @@ const appendNotes = async ($: EngineInterface, notes: readonly HeldNote[]): Prom
 
 // §10.1: a failed append keeps the notes undelivered: they take the late-note route (§10.3).
 const steer = async ($: EngineInterface): Promise<void> => {
-  const notes = takeNotes('steered');
+  const notes = takeNotes(['steered'], 'steered');
   if (notes.length === 0) {
     return;
   }
   const problem = await appendNotes($, notes);
   if (problem !== undefined) {
-    await keepUndelivered($, { notes, route: lateDelivery, error: `steer append failed: ${problem}` });
+    await keepUndelivered($, { notes, route: lateRouteNow, error: `steer append failed: ${problem}` });
   }
 };
 
@@ -136,12 +131,12 @@ const submitNudge = async ($: EngineInterface, notes: readonly HeldNote[]): Prom
 };
 
 // §10.3, §10.4: the callback of the 2 s wait sends one nudge with every late note that waits, while no turn
-// runs (a nudge queued behind a turn would survive Esc). A refused nudge gives the budget back, and its
-// notes wait as an aside.
+// runs (a nudge queued behind a turn would survive Esc); the notes go out as `nudged`. A refused nudge gives the
+// budget back, and its notes wait as an aside.
 const sendNudge = async ($: EngineInterface): Promise<void> => {
   memory.wait = undefined;
   setNudgeClock({ ...currentNudgeClock(), dueAt: null });
-  const notes = currentRouting().isTurnRunning ? [] : takeNotes('nudged');
+  const notes = currentRouting().isTurnRunning ? [] : takeNotes(['nudge pending'], 'nudged');
   if (notes.length > 0) {
     spendNudge();
   }
@@ -164,7 +159,7 @@ const startWait = ($: EngineInterface, ms: number): void => {
 // the nudge. Only a `turn.complete` (or the load) starts it: a submit from a timer that a `tool.call` hook
 // set is refused, so the note hook never does.
 const canArm = (): boolean =>
-  !currentRouting().isTurnRunning && memory.wait === undefined && heldNotes().some(isNudged);
+  !currentRouting().isTurnRunning && memory.wait === undefined && heldNotes().some(isNudgePending);
 
 // The clock is read before the wait starts, so a wait that runs out at once finds `dueAt` set and its nudge's
 // budget is not written over.
@@ -188,7 +183,7 @@ const onTurnStart: Hook<'turn.start'> = async ($, e, next) => {
   startMainTurn(e.text);
   memory.wait?.cancel();
   memory.wait = undefined;
-  rerouteNotes((note) => (isNudged(note) ? 'steered' : note.delivery));
+  rerouteNotes((note) => (isNudgePending(note) ? 'steered' : note.delivery));
   await $.state.set({ plugin: 'watchdog', key: 'turns' }, turn).catch(() => undefined);
   await saveNudge($);
   return next(e);
@@ -200,7 +195,7 @@ const onTurnComplete: Hook<'turn.complete'> = async ($, e, next) => {
   const result = await next(e);
   if (e.agentId === undefined) {
     endMainTurn(e.isAborted);
-    rerouteNotes((note) => (note.delivery === 'steered' || isNudged(note) ? lateDelivery(note) : note.delivery));
+    rerouteNotes((note) => (note.delivery === 'steered' || isNudgePending(note) ? lateRouteNow(note) : note.delivery));
   }
   await armNudge($);
   return result;
@@ -211,7 +206,9 @@ const onTurnComplete: Hook<'turn.complete'> = async ($, e, next) => {
 const asideText = async ($: EngineInterface): Promise<string | undefined> => {
   const isWaiting = heldNotes().some((note) => note.delivery === 'aside on next prompt' || note.delivery === 'held');
   const head = isWaiting ? await guidance($).catch(() => undefined) : undefined;
-  return head === undefined ? undefined : wrapHeld(head, takeNotes('aside on next prompt', 'held'));
+  return head === undefined
+    ? undefined
+    : wrapHeld(head, takeNotes(['aside on next prompt', 'held'], 'aside on next prompt'));
 };
 
 // §10.2, §10.4: a person prompt resets the nudge budget and carries the aside in its `context`, added on
@@ -237,7 +234,7 @@ const restoreDelivery = async ($: EngineInterface): Promise<void> => {
     restoreTurn(turns.value);
   }
   for (const note of restoreNudge(nudge?.value)) {
-    holdNote({ ...note, delivery: 'nudged' });
+    holdNote({ ...note, delivery: 'nudge pending' });
   }
   const { dueAt } = currentNudgeClock();
   if (dueAt !== null) {
@@ -253,9 +250,6 @@ const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
   return result;
 };
 
-// §10.1 to §10.4: the route of each admitted note.
-const route = (note: Note): DeliveryState => routeNote(note.severity, currentRouting());
-
 export const installDelivery = (
   on: OnEvents<'turn.start' | 'turn.complete' | 'tool.call' | 'prompt.submit' | 'session.start'>,
   options: PluginOptions
@@ -266,7 +260,7 @@ export const installDelivery = (
   on('tool.call', { tool: /^/u }, onToolCall);
   on('prompt.submit', onPromptSubmit);
   on('session.start', { isInteractive: [true, false] }, onSessionStart);
-  addDeliveryRoute(route);
+  addDeliveryRoute(routeNow);
   addStatusHead(() => (currentMode() === 'on' ? nudgeStatus(currentRouting()) : []));
   addStatusLines(() => {
     const warning = immuneTurnsWarning();

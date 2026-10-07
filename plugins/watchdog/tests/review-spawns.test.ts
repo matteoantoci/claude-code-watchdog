@@ -85,7 +85,7 @@ describe('two reviews at once (§7.5)', () => {
       note: 'The lexer drops tabs.',
       severity: 'concern',
     });
-    expect(seen.logs.at(-1)).toBe('[concern] b: The lexer drops tabs. (nudged)');
+    expect(seen.logs.at(-1)).toBe('[concern] b: The lexer drops tabs. (nudge pending)');
     await $.tool.call({
       tool: 'mcp__watchdog__note',
       agentId: agentA,
