@@ -1,9 +1,9 @@
 # The README demo. Run it from the repo root: vhs docs/assets/demo.tape
 # It needs vhs, a logged-in `claude` (2.1.290 or later) and costs a few cents of tokens: the session runs on
 # `haiku`, the default watchdog reviews on `opus`. The note the watchdog sends differs from run to run.
-# FontSize 14 leaves the band rows for two cards with the blank row between them: the band may take at most
-# half the terminal's rows, the prompt included.
-# The committed GIF is re-encoded at 8 frames a second and 64 colors to stay under 2 MB:
+# FontSize 14 keeps the band (its rule, one row for each card, and the expanded note below its card) readable
+# beside the transcript.
+# The committed GIF is re-encoded at 8 frames a second and 64 colors to stay under 2 MB (about 28 s, 1.3 MB):
 #   ffmpeg -i demo.gif -vf "fps=8,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" out.gif
 
 Output docs/assets/demo.gif
@@ -55,21 +55,36 @@ Sleep 500ms
 Show
 Sleep 3s
 
-# Skip the wait for the review.
+# Skip the wait for the review. The band's rule ends with the focus hint once a card shows.
 Hide
-Wait+Screen@240s /CONCERN|BLOCKER/
+Wait+Screen@240s /ctrl\+x tab/
 Sleep 1s
 Show
-Sleep 7s
+Sleep 3s
 
-# Skip to the end of the turn: while the agent works, "esc to interrupt" stands before "← for agents".
+# Skip to the end of the turn: while the agent works, "esc to interrupt" stands before "← for agents". The card
+# stays until the next person prompt; at the idle prompt an Esc that reaches the prompt does nothing.
 Hide
 Wait+Screen@180s /(cycle\)|subagents) · ←/
 Sleep 500ms
 Show
+Sleep 1s
+# Focus the band, expand the top card with its letter, collapse it, give the focus back to the prompt.
+Ctrl+X
+Tab
+Sleep 800ms
+Type "a"
+Wait+Screen@10s /▾/
+Sleep 4s
+Type "a"
+Wait+Screen@10s /▸/
+Sleep 1s
+Escape
+Sleep 800ms
 Type "/watchdog status"
 Sleep 800ms
 Enter
+Wait+Screen@20s / tok · /
 Sleep 5s
 
 Hide
