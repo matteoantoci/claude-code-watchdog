@@ -23,17 +23,22 @@ const NIT = '.env.example still lists STRIPE_SECRET; config.ts reads STRIPE_SECR
 const BLOCKER = 'The migration deletes the users table before it copies the rows.';
 const NEW_CONCERN = 'The new /export route skips requireAuth; every other admin route has it.';
 
+// §13.1: notes of 3 rows each as Markdown, a line and a list of 2 items. With a nit, 3 cards and `+N more` take
+// 17 rows: the count line, 3 headers and `+N more`, 3 blank rows and 3 bodies.
+const LISTED_BLOCKER =
+  'The migration loses the users\n- `up()` drops `users` at line 12\n- the copy reads `users` at line 30';
+const LISTED_NEW = 'The new /export route is open\n- it skips `requireAuth`\n- every other admin route has it';
+const LISTED_OLD = 'parseDate drops the timezone\n- `date.spec.ts:40` passes only in UTC\n- CI runs in UTC';
+
+// The keyed rows of the card list, top to bottom.
+const LIST_KEYS = ['watchdog-card-0', 'watchdog-card-1', 'watchdog-card-2', 'watchdog-more'];
+
 // The keyed rows of the watchdog's band, top to bottom.
-const ROW_KEYS = [
-  'watchdog-band',
-  'watchdog-off',
-  'watchdog-count',
-  'watchdog-trouble',
-  'watchdog-card-0',
-  'watchdog-card-1',
-  'watchdog-card-2',
-  'watchdog-more',
-];
+const ROW_KEYS = ['watchdog-band', 'watchdog-off', 'watchdog-count', 'watchdog-trouble', ...LIST_KEYS];
+
+// §13.1: the blank rows above each row of the card list: one between two cards and above `+N more`, or none.
+const SPACED = { 'watchdog-card-0': 0, 'watchdog-card-1': 1, 'watchdog-card-2': 1, 'watchdog-more': 1 };
+const TIGHT = { 'watchdog-card-0': 0, 'watchdog-card-1': 0, 'watchdog-card-2': 0, 'watchdog-more': 0 };
 
 const stubBand = (on: Stubs, options: Parameters<typeof stubDelivery>[1] = {}, seed: StateSeed = {}): void => {
   stubDelivery(on, options);
@@ -48,6 +53,14 @@ const fourNotes = async ($: Engine): Promise<void> => {
   await sendNote($, 'nit', NIT);
   await sendNote($, 'blocker', BLOCKER);
   await sendNote($, 'concern', NEW_CONCERN);
+};
+
+// The 3 listed notes and the nit, sent as `fourNotes` sends its notes.
+const listedNotes = async ($: Engine): Promise<void> => {
+  await sendNote($, 'concern', LISTED_OLD);
+  await sendNote($, 'nit', NIT);
+  await sendNote($, 'blocker', LISTED_BLOCKER);
+  await sendNote($, 'concern', LISTED_NEW);
 };
 
 // §16.2: the kit draws `AbovePrompt` on every surface; each check runs on the two that raise the band.
@@ -78,10 +91,21 @@ const textProps = async ($: Engine, texts: readonly RegExp[], props: BandProps =
     Promise.all(texts.map(async (text) => (await ui.find({ type: 'Text', text }))?.props))
   );
 
+// The blank rows above each row of the card list (its `marginTop`), by key; a row not drawn is absent.
+const gaps = async ($: Engine, props: BandProps = {}): Promise<Record<string, number>[]> =>
+  onBand($, props, async (ui) => {
+    const found = await Promise.all(
+      LIST_KEYS.map(async (key) => [key, (await ui.find({ key }))?.props['marginTop']] as const)
+    );
+    return Object.fromEntries(
+      found.filter((entry): entry is readonly [string, number] => typeof entry[1] === 'number')
+    );
+  });
+
 const onBoth = <T>(value: T): T[] => BAND_SURFACES.map(() => value);
 
 describe('band cards (§13.1)', () => {
-  test('the count line, then the 3 first notes by severity and newest, then +N more', async ($, on: Stubs) => {
+  test('the count line, then the 3 first notes by severity and newest, a blank row between, then +N more', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
@@ -95,6 +119,7 @@ describe('band cards (§13.1)', () => {
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
+    expect(await gaps($)).toEqual(onBoth(SPACED));
   });
 
   test('a badge is a theme-key background with inverseText; the count line colors each severity', async ($, on: Stubs) => {
@@ -158,8 +183,64 @@ describe('band cards (§13.1)', () => {
   });
 });
 
+describe('band fit to maxRows (§13.1)', () => {
+  const WHOLE = {
+    'watchdog-count': 'watchdog · 1 blocker · 2 concerns · 1 nit',
+    'watchdog-card-0': ` BLOCKER  default · just now · nudged${LISTED_BLOCKER}`,
+    'watchdog-card-1': ` CONCERN  default · just now · nudged${LISTED_NEW}`,
+    'watchdog-card-2': ` CONCERN  default · just now · nudged${LISTED_OLD}`,
+    'watchdog-more': '  +1 more: 1 nit',
+  };
+
+  // A cut card shows one line of the flat text: no code ticks, a list item after a `; `.
+  const CUT_NEW =
+    ' CONCERN  default · just now · nudgedThe new /export route is open; it skips requireAuth; every other admin route has it';
+  const CUT_OLD =
+    ' CONCERN  default · just now · nudgedparseDate drops the timezone; date.spec.ts:40 passes only in UTC; CI runs in UTC';
+
+  test('a band of at most maxRows rows shows every card whole, a blank row between', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await listedNotes($);
+    expect(await rows($, { maxRows: 17 })).toEqual(onBoth(WHOLE));
+    expect(await gaps($, { maxRows: 17 })).toEqual(onBoth(SPACED));
+  });
+
+  test('a taller band cuts the cards below the top one to one line, the last card first', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await listedNotes($);
+    expect(await rows($, { maxRows: 16 })).toEqual(onBoth({ ...WHOLE, 'watchdog-card-2': CUT_OLD }));
+    expect(await textProps($, [/^parseDate drops the timezone; /u], { maxRows: 16 })).toEqual(
+      onBoth([{ wrap: 'truncate-end' }])
+    );
+    expect(await rows($, { maxRows: 14 })).toEqual(
+      onBoth({ ...WHOLE, 'watchdog-card-1': CUT_NEW, 'watchdog-card-2': CUT_OLD })
+    );
+    expect(await gaps($, { maxRows: 14 })).toEqual(onBoth(SPACED));
+  });
+
+  test('the top card is never cut: the blank rows go, and a band still too tall scrolls', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await listedNotes($);
+    expect(await rows($, { maxRows: 3 })).toEqual(
+      onBoth({ ...WHOLE, 'watchdog-card-1': CUT_NEW, 'watchdog-card-2': CUT_OLD })
+    );
+    expect(await gaps($, { maxRows: 3 })).toEqual(onBoth(TIGHT));
+  });
+
+  test('a surface that gives no maxRows shows every card whole, a blank row between', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await listedNotes($);
+    expect(await rows($, { maxRows: undefined })).toEqual(onBoth(WHOLE));
+    expect(await gaps($, { maxRows: undefined })).toEqual(onBoth(SPACED));
+  });
+});
+
 describe('narrow band (§13.1)', () => {
-  test('below 80 bodyColumns, one line for each note: [<severity>] <text>', async ($, on: Stubs) => {
+  test('below 80 bodyColumns, one line for each note: [<severity>] <text>, no blank row', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
@@ -172,6 +253,7 @@ describe('narrow band (§13.1)', () => {
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
+    expect(await gaps($, { bodyColumns: 75 })).toEqual(onBoth(TIGHT));
   });
 
   test('below 50 bodyColumns, the text is cut to min(40, bodyColumns - tag - 1) characters', async ($, on: Stubs) => {

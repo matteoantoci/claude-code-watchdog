@@ -126,6 +126,9 @@ export const BAND_TINY_TEXT_MAX = 40;
 // §13.1: the note text of a full card indents this many columns under its header.
 export const BAND_CARD_INDENT = 2;
 
+// §13.1: the blank rows between two cards of a full band, and above its `+N more` line.
+export const BAND_CARD_GAP = 1;
+
 // §12.5: the halt's next try shows in whole minutes.
 export const MINUTE_MS = 60_000;
 

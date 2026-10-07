@@ -1,4 +1,5 @@
 import {
+  BAND_CARD_GAP,
   BAND_CARD_INDENT,
   BAND_CARD_LIMIT,
   BAND_LINE_COLUMNS,
@@ -6,24 +7,33 @@ import {
   BAND_TINY_TEXT_MAX,
 } from '../constants';
 import { severityRank } from '../note/tool';
+import { fitBand, wrappedRows } from './fit';
 import type { Severity } from '../note/tool';
 import type { Band, Card } from './cards';
+import type { BandFit } from './fit';
 import type { Elements, RenderChildren, RenderElement } from 'claude-code';
 
 // §13.1: only `Box`, `Text` and `Markdown`; the terminal and the desktop tables both have them.
 export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text' | 'Markdown'>;
 
-// What the band draws: the on flag (undefined before any), the cards, the failure line (§12.5) and
-// `props.bodyColumns`.
+// What the band draws: the on flag (undefined before any), the cards, the failure line (§12.5),
+// `props.bodyColumns` and `props.maxRows` (undefined on a surface that does not give it).
 export type BandView = {
   readonly isOn: boolean | undefined;
   readonly band: Band;
   readonly trouble: string | undefined;
   readonly columns: number;
+  readonly maxRows: number | undefined;
 };
 
 // §13.1: full cards, one line for each note below 80 `bodyColumns`, the cut text below 50.
 type Mode = 'full' | 'line' | 'tiny';
+
+// How one card draws: `isCut` cuts a full card's body to one line to fit `maxRows`.
+type CardView = { readonly mode: Mode; readonly columns: number; readonly turn: number; readonly isCut: boolean };
+
+// §13.1: one line for each note is never cut further, and has no blank row between the notes.
+const LINE_FIT: BandFit = { cut: [], hasGaps: false };
 
 type Totals = Band['totals'];
 
@@ -99,9 +109,14 @@ const header = (el: BandElements, card: Card, turn: number): RenderElement => {
 
 // §13.1: a full card, or one line `[<severity>] <text>`; below 50 columns the text is cut to
 // `min(40, bodyColumns - tag - 1)` characters, so the row fills `bodyColumns`.
-const cardOf = (el: BandElements, card: Card, view: { mode: Mode; columns: number; turn: number }): RenderElement => {
+const cardOf = (el: BandElements, card: Card, view: CardView): RenderElement => {
   if (view.mode === 'full') {
-    const body = el.Box({ marginLeft: BAND_CARD_INDENT, children: [el.Markdown({ text: card.text })] });
+    // A body cut to fit `maxRows` is one line of the flat text, ending in `…`: with no Markdown, the cut splits
+    // no code span or link.
+    const text = view.isCut
+      ? el.Text({ wrap: 'truncate-end', children: flat(card.text) })
+      : el.Markdown({ text: card.text });
+    const body = el.Box({ marginLeft: BAND_CARD_INDENT, children: [text] });
     return el.Box({ flexDirection: 'column', children: [header(el, card, view.turn), body] });
   }
   const tag = `[${[card.severity, ...(card.subagent === undefined ? [] : [card.subagent])].join(' · ')}]`;
@@ -121,19 +136,13 @@ const modeOf = (columns: number): Mode => {
   return columns < BAND_LINE_COLUMNS ? 'line' : 'full';
 };
 
-// §13.1, §12.5, §5.2: the count line, the failure line, the first 3 notes by severity then newest, and
-// `+N more: <severities>`; one dim line after `/watchdog off`; nothing before the session was ever on.
-export const bandTree = (el: BandElements, view: BandView): RenderElement | undefined => {
-  if (view.isOn === false) {
-    return row(el, 'watchdog-off', el.Text({ dimColor: true, children: 'watchdog · off · /watchdog on' }));
-  }
-  if (view.isOn !== true) {
-    return undefined;
-  }
-  const mode = modeOf(view.columns);
+// §13.1: the first 3 notes by severity then newest, and `+N more: <severities>`. In a full band a blank row
+// stands between two of them, and the cards below the top one are cut to fit `maxRows` (`fitBand`).
+const cardList = (el: BandElements, view: BandView, mode: Mode): RenderElement[] => {
   const sorted = view.band.cards.toSorted(
     (a, b) => severityRank(b.severity) - severityRank(a.severity) || b.seq - a.seq
   );
+  const shown = sorted.slice(0, BAND_CARD_LIMIT);
   const hidden = sorted.slice(BAND_CARD_LIMIT);
   const more = el.Text({
     wrap: 'truncate-end',
@@ -142,7 +151,37 @@ export const bandTree = (el: BandElements, view: BandView): RenderElement | unde
       ...severityParts(el, totalsOf(hidden)),
     ],
   });
+  const items = shown.length + (hidden.length === 0 ? 0 : 1);
+  // Each body in its indented width; the count line, the failure line, a card header and `+N more` are one row.
+  const rows = {
+    bodies: shown.map((card) => wrappedRows(card.text, view.columns - BAND_CARD_INDENT)),
+    lines: 1 + (view.trouble === undefined ? 0 : 1) + items,
+    gaps: Math.max(0, items - 1),
+  };
+  const fit = mode === 'full' ? fitBand(rows, view.maxRows) : LINE_FIT;
   const cardView = { mode, columns: view.columns, turn: view.band.turn };
+  const list = [
+    ...shown.map((card, index) => ({
+      key: `watchdog-card-${index}`,
+      child: cardOf(el, card, { ...cardView, isCut: fit.cut[index] === true }),
+    })),
+    ...(hidden.length === 0 ? [] : [{ key: 'watchdog-more', child: more }]),
+  ];
+  return list.map(({ key, child }, index) =>
+    el.Box({ key, flexDirection: 'column', marginTop: index > 0 && fit.hasGaps ? BAND_CARD_GAP : 0, children: [child] })
+  );
+};
+
+// §13.1, §12.5, §5.2: the count line, the failure line, then the cards; one dim line after `/watchdog off`;
+// nothing before the session was ever on.
+export const bandTree = (el: BandElements, view: BandView): RenderElement | undefined => {
+  if (view.isOn === false) {
+    return row(el, 'watchdog-off', el.Text({ dimColor: true, children: 'watchdog · off · /watchdog on' }));
+  }
+  if (view.isOn !== true) {
+    return undefined;
+  }
+  const mode = modeOf(view.columns);
   return el.Box({
     flexDirection: 'column',
     children: [
@@ -150,10 +189,7 @@ export const bandTree = (el: BandElements, view: BandView): RenderElement | unde
       view.trouble === undefined
         ? null
         : row(el, 'watchdog-trouble', el.Text({ color: 'error', wrap: 'truncate-end', children: view.trouble })),
-      ...sorted
-        .slice(0, BAND_CARD_LIMIT)
-        .map((card, index) => row(el, `watchdog-card-${index}`, cardOf(el, card, cardView))),
-      hidden.length === 0 ? null : row(el, 'watchdog-more', more),
+      ...cardList(el, view, mode),
     ],
   });
 };

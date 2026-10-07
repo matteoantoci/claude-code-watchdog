@@ -1,8 +1,10 @@
 # The README demo. Run it from the repo root: vhs docs/assets/demo.tape
 # It needs vhs, a logged-in `claude` (2.1.290 or later) and costs a few cents of tokens: the session runs on
 # `haiku`, the default watchdog reviews on `opus`. The note the watchdog sends differs from run to run.
-# The committed GIF is re-encoded at 10 frames a second to stay under 2 MB:
-#   ffmpeg -i demo.gif -vf "fps=10,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" out.gif
+# FontSize 14 leaves the band rows for two cards with the blank row between them: the band may take at most
+# half the terminal's rows, the prompt included.
+# The committed GIF is re-encoded at 8 frames a second and 64 colors to stay under 2 MB:
+#   ffmpeg -i demo.gif -vf "fps=8,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" out.gif
 
 Output docs/assets/demo.gif
 Require claude
@@ -10,8 +12,9 @@ Require claude
 Set Shell bash
 Set Width 1200
 Set Height 700
-Set FontSize 16
+Set FontSize 14
 Set Padding 16
+Set Theme "GitHub Dark"
 Set Framerate 15
 Set TypingSpeed 30ms
 

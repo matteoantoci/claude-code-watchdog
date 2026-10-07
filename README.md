@@ -39,8 +39,9 @@ Then run `/watchdog on` (reviews are off until you do) and ask Claude for a smal
 
 ## Cost and off switch
 
-- Each review is one more agent, on `opus` with `medium` effort by default (in the demo: 15.3k tokens, $0.05). The
-  built-in "You should know" mod, when on, runs its own side agent too; turn it off in `/plugin` to pay for one only.
+- Each review is one more agent, on `opus` with `medium` effort by default (in the demo: 2 reviews, 38.8k tokens,
+  $0.06). The built-in "You should know" mod, when on, runs its own side agent too; turn it off in `/plugin` to pay
+  for one only.
 - `/watchdog off` stops reviews for this session. `/plugin uninstall watchdog@matteoantoci` removes the plugin.
 - Settings, in `/plugin` (Installed, Watchdog, Configure options) or `/config`: `onByDefault` (default `false`) turns
   reviews on in each new interactive session. `immuneTurns` (0 to 5, default `3`) is the number of turns after a nudge

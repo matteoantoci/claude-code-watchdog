@@ -120,7 +120,7 @@ const onBand: BandHook = async ($, e, next) => {
   const columns = e.props.bodyColumns;
   const trouble = await troubleText($, health, columns);
   const el = $.ui.resolve(e);
-  const tree = bandTree(el, { isOn, band, trouble, columns });
+  const tree = bandTree(el, { isOn, band, trouble, columns, maxRows: e.props.maxRows });
   return tree === undefined ? base : el.Box({ key: 'watchdog-band', flexDirection: 'column', children: [base, tree] });
 };
 
