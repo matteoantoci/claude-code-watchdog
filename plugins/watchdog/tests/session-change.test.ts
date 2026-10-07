@@ -156,7 +156,13 @@ describe('§14.3 /clear, /resume, /branch', () => {
     expect(stateIn(state, NEW_ID, 'log')).toEqual([expect.objectContaining({ kind: 'review', agentId: REVIEW_AGENT })]);
     expect(stateIn(state, NEW_ID, 'ledger')).toEqual(stateIn(state, SESSION_ID, 'ledger'));
     expect(stateIn(state, NEW_ID, 'ledger')).toMatchObject({ session: { reviews: 1, tokens: 1280 } });
-    expect(stateIn(state, NEW_ID, 'nudge')).toEqual({ nudges: 1, nudgeTurn: null, dueAt: null, notes: [] });
+    expect(stateIn(state, NEW_ID, 'nudge')).toEqual({
+      nudges: 1,
+      blockerNudges: 0,
+      nudgeTurn: null,
+      dueAt: null,
+      notes: [],
+    });
   });
 
   test('/branch copies the note history to the new id, guard keys too, and replays the last prompt to the end', async ($, on: Stubs) => {

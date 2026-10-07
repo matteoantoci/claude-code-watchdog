@@ -121,7 +121,7 @@ describe('§12.1 to §12.3: a review that ends with reason "error"', () => {
     );
     expect(reviews(seen)).toHaveLength(1);
     expect(await status($)).toEqual([
-      'watchdog on · nudge 0/1 · cooldown 0',
+      'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0',
       'on source: /watchdog on',
       'default idle · fail 1/3',
       `last error: default: ${OVERLOAD}`,

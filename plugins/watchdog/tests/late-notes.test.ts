@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { cooldownLeft, immuneTurnsOf, routeNote } from '../hooks/delivery/nudge';
+import { budgetOf, cooldownLeft, immuneTurnsOf, nudgeStatus, routeNote } from '../hooks/delivery/nudge';
 import { isPersonPrompt } from '../hooks/person';
 import type { Routing } from '../hooks/delivery/nudge';
 
@@ -8,8 +8,8 @@ const IDLE: Routing = {
   turn: 4,
   isTurnRunning: false,
   isAfterEsc: false,
-  isNudgeTurn: false,
   nudges: 0,
+  blockerNudges: 0,
   nudgeTurn: null,
   immuneTurns: 3,
   isHeadless: false,
@@ -40,10 +40,10 @@ describe('the route of an admitted note', () => {
 
   test('a concern or a blocker while a main turn runs waits for the next tool result', () => {
     expect(routeNote('concern', { ...IDLE, isTurnRunning: true })).toBe('steered');
-    expect(routeNote('blocker', { ...IDLE, isTurnRunning: true, nudges: 1, isAfterEsc: true })).toBe('steered');
+    expect(routeNote('blocker', { ...IDLE, isTurnRunning: true, blockerNudges: 2, isAfterEsc: true })).toBe('steered');
   });
 
-  test('a late concern or blocker gets the one nudge of the person prompt', () => {
+  test('a late concern or blocker waits for a nudge while its budget of the person prompt lasts', () => {
     expect(routeNote('concern', IDLE)).toBe('nudge pending');
     expect(routeNote('blocker', IDLE)).toBe('nudge pending');
   });
@@ -55,15 +55,23 @@ describe('the route of an admitted note', () => {
     expect(routeNote('blocker', { ...headless, isTurnRunning: true })).toBe('steered');
   });
 
-  test('over budget, after Esc and after the nudge turn a late note waits for the next person prompt', () => {
-    for (const routing of [
-      { ...IDLE, nudges: 1 },
-      { ...IDLE, isAfterEsc: true },
-      { ...IDLE, isNudgeTurn: true },
-    ]) {
-      expect(routeNote('concern', routing)).toBe('held');
-      expect(routeNote('blocker', routing)).toBe('held');
-    }
+  test('a late concern over its 1 nudge, after Esc, or after the nudge turn (in its cooldown) is held', () => {
+    expect(routeNote('concern', { ...IDLE, nudges: 1 })).toBe('held');
+    expect(routeNote('concern', { ...IDLE, isAfterEsc: true })).toBe('held');
+    // The counter is still at the nudge turn: it cools down also with immuneTurns 0.
+    expect(routeNote('concern', { ...IDLE, nudgeTurn: 4, immuneTurns: 0 })).toBe('held');
+  });
+
+  test('a late blocker has a budget of 2 nudges of its own: a spent concern nudge and a nudge turn leave it one', () => {
+    expect(routeNote('blocker', { ...IDLE, nudges: 1, nudgeTurn: 4 })).toBe('nudge pending');
+    expect(routeNote('blocker', { ...IDLE, blockerNudges: 1, nudgeTurn: 4 })).toBe('nudge pending');
+    expect(routeNote('blocker', { ...IDLE, blockerNudges: 2 })).toBe('held');
+    expect(routeNote('blocker', { ...IDLE, isAfterEsc: true })).toBe('held');
+  });
+
+  test('a nudge that carries a blocker takes the blocker budget; a nudge of concerns alone the concern budget', () => {
+    expect(budgetOf([{ severity: 'concern' }, { severity: 'blocker' }])).toBe('blockerNudges');
+    expect(budgetOf([{ severity: 'concern' }, { severity: 'concern' }])).toBe('nudges');
   });
 
   test('the cooldown holds a late concern for immuneTurns main turns after the nudge turn; a blocker is exempt', () => {
@@ -77,12 +85,21 @@ describe('the route of an admitted note', () => {
   });
 });
 
-describe('the cooldown the status shows', () => {
+describe('the budgets and the cooldown the status shows', () => {
   test('the main turns of the cooldown still to come; 0 before the first nudge', () => {
     expect(cooldownLeft(IDLE)).toBe(0);
     expect(cooldownLeft({ ...IDLE, turn: 2, nudgeTurn: 2 })).toBe(3);
     expect(cooldownLeft({ ...IDLE, turn: 4, nudgeTurn: 2 })).toBe(1);
     expect(cooldownLeft({ ...IDLE, turn: 9, nudgeTurn: 2 })).toBe(0);
+  });
+
+  test('the concern budget, the blocker budget and the cooldown, each as a part of the first line', () => {
+    expect(nudgeStatus(IDLE)).toEqual(['nudge 0/1', 'blocker 0/2', 'cooldown 0']);
+    expect(nudgeStatus({ ...IDLE, nudges: 1, blockerNudges: 2, nudgeTurn: 3 })).toEqual([
+      'nudge 1/1',
+      'blocker 2/2',
+      'cooldown 2',
+    ]);
   });
 });
 

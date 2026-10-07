@@ -21,7 +21,9 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     stubRender(on);
     await runReview($, OPUS_USAGE);
     const reply = await $.command.run(typed('status'));
-    expect(reply.text).toBe('watchdog on · nudge 0/1 · cooldown 0\non source: /watchdog on\ndefault idle');
+    expect(reply.text).toBe(
+      'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0\non source: /watchdog on\ndefault idle'
+    );
 
     // One row, drawn on the terminal and on the desktop.
     const terminal = await mountOutput($, { args: 'status', text: shown(reply.text), requestId: 'row-1' }, TERMINAL);
@@ -38,12 +40,15 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     await expectTable(await mountOutput($, { args: 'status', text: shown(reply.text, BESIDE) }, TERMINAL));
   });
 
-  test('a bare /watchdog draws the table too; below 80 columns a row is `name state $`', async ($, on: Stubs) => {
+  test('a bare /watchdog draws the table too; below 80 columns a row is `name state $` and the first line has no tokens', async ($, on: Stubs) => {
     stubSession(on);
     stubRender(on);
     await runReview($, { ...OPUS_USAGE, model: 'claude-opus-4-5' });
     const reply = await $.command.run(typed(''));
     const ui = await mountOutput($, { args: '', text: shown(reply.text) }, { surface: 'terminal', columns: 79 });
+    expect((await ui.find({ type: 'Text', text: /^watchdog on/u }))?.text).toBe(
+      'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0 · $?'
+    );
     expect((await ui.find({ key: 'row:default' }))?.text).toBe('default idle $?');
     expect((await ui.find({ key: 'session' }))?.text).toBe('session $?');
     expect(await ui.find({ key: 'header' })).toBeUndefined();

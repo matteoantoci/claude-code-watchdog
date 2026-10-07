@@ -28,7 +28,8 @@ and then `nudged` (the plugin starts a turn so that Claude reads it), `held` or 
 with your next prompt). When Claude edited files after the review read its update, the card says
 `may be outdated: N edits since`, and Claude reads the same mark with the note. The next review of the same watchdog
 sees the edits and the note; when the note no longer holds, it retracts it: the card goes, and a note that waits
-never reaches Claude.
+never reaches Claude. A blocker that may be outdated and came after Claude's reply waits as `held` for that review
+before it nudges, so Claude does not go after a bug it already fixed.
 
 ## What runs on your machine
 
@@ -53,7 +54,11 @@ never reaches Claude.
 - `/watchdog off` stops reviews for this session. `/plugin uninstall watchdog@matteoantoci` removes the plugin.
 - Settings, in `/plugin` (Installed, Watchdog, Configure options) or `/config`: `onByDefault` (default `false`) turns
   reviews on in each new interactive session. `immuneTurns` (0 to 5, default `3`) is the number of turns after a nudge
-  before the next one; a nudge is a turn that the plugin starts so that Claude reads a note that came after its reply.
+  before the next nudge for a concern; a nudge is a turn that the plugin starts so that Claude reads a note that came
+  after its reply.
+- Each nudge is one more turn of Claude. After each of your prompts the plugin sends at most 1 nudge for concerns and
+  2 for blockers (a concern that comes with a blocker rides along); a later note waits for your next prompt.
+  `/watchdog status` shows both counts, for example `nudge 1/1 · blocker 0/2`.
 
 ## Commands
 

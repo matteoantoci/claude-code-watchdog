@@ -103,11 +103,11 @@ describe('steer delivery', () => {
     expectOneSteerError(written);
   });
 
-  test('in the nudge turn the budget is spent: a steer whose append rejects waits as an aside on the next person prompt', async ($, on: LateStubs) => {
+  test('after the nudge turn the cooldown holds a concern: a steer whose append rejects waits as an aside on the next person prompt', async ($, on: LateStubs) => {
     const seen = stubDelivery(on);
     const written = keepWritten(on);
     await startReview($);
-    // A blocker steered with no tool result is late at the turn end: it spends the one nudge.
+    // A blocker steered with no tool result is late at the turn end: it takes a blocker nudge.
     await $.tool.call({
       tool: NOTE,
       agentId: REVIEW_AGENT,

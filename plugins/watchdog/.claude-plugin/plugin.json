@@ -16,7 +16,7 @@
     "immuneTurns": {
       "type": "number",
       "title": "Immune turns",
-      "description": "Main turns after a nudge before the next nudge (0 to 5).",
+      "description": "Main turns after a nudge before the next nudge for a concern (0 to 5).",
       "required": false,
       "default": 3
     }

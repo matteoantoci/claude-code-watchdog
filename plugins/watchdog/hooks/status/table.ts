@@ -26,6 +26,8 @@ export type TableRow = {
 export type StatusTable = {
   readonly text: string;
   readonly head: string;
+  // §13.3: the first line below 80 columns: no tokens, as in the rows.
+  readonly narrowHead: string;
   readonly rows: readonly TableRow[];
   readonly session: TableRow | null;
   // §12.4: the last error, red; `last error: none` while on and there is none.
@@ -112,14 +114,16 @@ export const statusTable = (input: {
   const { sections, session } = input;
   const rows = input.watchdogs.map((status) => watchdogRow(status, input.configFile));
   const hasTotals = rows.length > 0 || session.reviews > 0;
-  const totals = hasTotals ? [`${tokenText(session.tokens)} tok`, costText(session.cost)] : [];
+  const tokens = hasTotals ? [`${tokenText(session.tokens)} tok`] : [];
+  const cost = hasTotals ? [costText(session.cost)] : [];
   const lastError =
     sections.errors.length === 0 && rows.length > 0
       ? [{ text: 'last error: none', isRed: false }]
       : sections.errors.map((text) => ({ text, isRed: true }));
   return {
     text: input.text,
-    head: [...sections.head, ...totals].join(' · '),
+    head: [...sections.head, ...tokens, ...cost].join(' · '),
+    narrowHead: [...sections.head, ...cost].join(' · '),
     rows,
     session: hasTotals
       ? {

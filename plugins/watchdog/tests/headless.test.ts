@@ -47,7 +47,7 @@ const stubEnd = (on: OnEvents<EndEvents>): Written => {
 
 const ENV_ON = { HOME, CLAUDE_WATCHDOG: 'on' };
 
-const ON_STATUS = 'watchdog on · nudge 0/1 · cooldown 0\non source: CLAUDE_WATCHDOG\ndefault idle';
+const ON_STATUS = 'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0\non source: CLAUDE_WATCHDOG\ndefault idle';
 
 const END = { reason: 'other', sessionId: SESSION_ID, resume: { id: SESSION_ID } } as const;
 

@@ -35,7 +35,7 @@ An area plugs into another area's work through the registries, called once in it
 
 | Registry                        | File                | What it adds                                                                                                   |
 | ------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `addStatusHead(parts)`          | `command/status.ts` | parts of the first `/watchdog status` line (`watchdog on · nudge 1/1`)                                         |
+| `addStatusHead(parts)`          | `command/status.ts` | parts of the first `/watchdog status` line (`watchdog on · nudge 1/1 · blocker 0/2`)                           |
 | `addStatusLines(lines, place?)` | `command/status.ts` | status lines; `place` is `line` (default), `watchdogs` or `error`                                              |
 | `addDumpLines(lines)`           | `dump/sections.ts`  | lines of `/watchdog dump`                                                                                      |
 | `addNoteGuard(guard)`           | `note/notes.ts`     | a note check after the destructive check, before the emission guard; the first ack it returns drops the note   |

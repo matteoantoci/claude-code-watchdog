@@ -63,8 +63,11 @@ export const ALLOW_SET_CAP = 500;
 // §10.3: a late note waits this long after a `turn.complete` before the nudge goes out.
 export const NUDGE_WAIT_MS = 2000;
 
-// §10.4: the nudges for each person prompt.
+// §10.4: the nudges of concerns alone for each person prompt.
 export const NUDGE_BUDGET = 1;
+
+// §10.4: the nudges that carry a blocker for each person prompt; the concerns of such a nudge take none of the above.
+export const BLOCKER_NUDGE_BUDGET = 2;
 
 // §4.1: the nudge cooldown in main turns when `immuneTurns` is absent or bad, and its top.
 export const DEFAULT_IMMUNE_TURNS = 3;

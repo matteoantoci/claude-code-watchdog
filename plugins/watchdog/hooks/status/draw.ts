@@ -117,15 +117,18 @@ const lineText = (E: TableElements, text: string, style: TextProps): RenderEleme
   E.Text({ ...style, wrap: 'truncate-end', children: text });
 
 // §13.3: the snapshot of one `/watchdog status`: the first line, the rows, the session row, `last error` (red
-// when there is one), then the lines of the other areas. `columns` is the width the surface measured.
-export const drawStatus = (E: TableElements, table: StatusTable, columns: number | undefined): RenderElement =>
-  E.Box({
+// when there is one), then the lines of the other areas. `columns` is the width the surface measured; below 80 the
+// first line and the rows narrow.
+export const drawStatus = (E: TableElements, table: StatusTable, columns: number | undefined): RenderElement => {
+  const isNarrow = columns !== undefined && columns < STATUS_NARROW_COLUMNS;
+  return E.Box({
     key: 'watchdog-status',
     flexDirection: 'column',
     children: [
-      lineText(E, table.head, { bold: true }),
-      ...rowsOf(E, table, columns !== undefined && columns < STATUS_NARROW_COLUMNS),
+      lineText(E, isNarrow ? table.narrowHead : table.head, { bold: true }),
+      ...rowsOf(E, table, isNarrow),
       ...table.lastError.map((line) => lineText(E, line.text, line.isRed ? { color: 'error' } : { dimColor: true })),
       ...table.lines.map((line) => lineText(E, line, {})),
     ],
   });
+};

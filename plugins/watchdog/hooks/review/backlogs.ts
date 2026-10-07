@@ -2,6 +2,7 @@ import { currentTurn } from '../delivery/turns';
 import { closeUpdate, currentFeed, backlogBatch, setFeed } from '../feed/feed';
 import { changeSubagentFeed, closeSubagentUpdate, watchedSubagent, watchedSubagents } from '../subagents/watch';
 import { cadenceOf } from './cadence';
+import { slotOf } from './slots';
 import type { Watchdog } from '../agents/roster';
 import type { Batch, Feed, UpdateClose } from '../feed/feed';
 import type { WatchedSubagent } from '../subagents/watch';
@@ -89,4 +90,17 @@ export const changeBacklog = (subagent: string | undefined, change: (feed: Feed)
   }
   const live = new Set(watchedFeeds().flatMap(({ feed }) => feed.ends.map((close) => close.uuid)));
   [...order.ranks.keys()].filter((uuid) => !live.has(uuid)).forEach((uuid) => order.ranks.delete(uuid));
+};
+
+// §10.8: whether a review of the watchdog `slug` runs now (on any watched agent, §7.5), or is due on the watched agent
+// `subagent` (none for the primary agent): the watchdog is idle, and its cadence there is due with a backlog (§7.4).
+export const isReviewComing = (slug: string, subagent: string | undefined): boolean => {
+  const slot = slotOf(slug);
+  const feed = watchedFeeds().find((watched) => watched.subagent?.agentId === subagent)?.feed;
+  const isDue =
+    slot.state === 'idle' &&
+    cadenceOf(cadenceKey(slug, subagent)).isDue &&
+    feed !== undefined &&
+    backlogBatch(feed, slug) !== undefined;
+  return slot.state === 'reviewing' || isDue;
 };

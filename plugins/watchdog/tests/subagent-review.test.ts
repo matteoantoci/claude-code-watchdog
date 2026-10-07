@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { readHistory, watchdogNotes } from '../hooks/note/history';
-import { PERSON_PROMPT, REVIEW_SPAWN, sendNote, stubDelivery, wrapped } from './fixtures/delivery';
+import { PERSON_PROMPT, REVIEW_SPAWN, nudgeTurnText, sendNote, stubDelivery, wrapped } from './fixtures/delivery';
 import { stateIn, stubState } from './fixtures/on-state';
 import {
   REVIEW_AGENT,
@@ -8,6 +8,7 @@ import {
   START,
   USAGE,
   mainRow,
+  reviewAgentId,
   stubSession,
   subagentId,
   turnEnd,
@@ -251,6 +252,42 @@ describe('delivery of the notes on a subagent (§11.3)', () => {
     expect(nudges(seen)).toEqual([wrapped(`<note severity="blocker" subagent="Explore">${BLOCKER}</note>`)]);
     await $.prompt.submit(PERSON_PROMPT);
     expect(seen.prompts.at(-1)?.context).toEqual([wrapped(`<note severity="nit" subagent="Explore">${NIT}</note>`)]);
+  });
+
+  test('late blockers on a subagent share the blocker budget with the primary agent: 2 nudges, then held', async ($, on: DeliveryStubs) => {
+    const seen = stubDelivery(on, { files: EXPLORE_ON, isReviewIdPerSpawn: true });
+    const blocker = async (agentId: string, text: string): Promise<void> => {
+      await $.tool.call({ tool: 'mcp__watchdog__note', agentId, note: text, severity: 'blocker' });
+      await $.turn.complete({ ...turnEnd(`r-${text}`), agentId, usage: USAGE });
+    };
+    const nudgeTurn = async (turnId: string): Promise<void> => {
+      await $.turn.start({ text: nudgeTurnText(nudges(seen).at(-1) ?? ''), turnId });
+      await $.turn.complete(turnEnd(turnId));
+    };
+    await startSubagentReview($);
+    const onSubagent = reviewAgentId(REVIEW_SPAWN.tool_use_id);
+    await $.turn.complete(turnEnd('t1'));
+    await $.turn.complete({ ...turnEnd('s1'), agentId: SUB });
+    await blocker(onSubagent, 'Blocker one.');
+    await seen.clock.advance(2000);
+    expect(nudges(seen)).toEqual([wrapped('<note severity="blocker" subagent="Explore">Blocker one.</note>')]);
+
+    // A review agent of the primary agent: the engine teaches its id while no review runs.
+    await nudgeTurn('n1');
+    const toolUseId = 'toolu_plugin_00000000000000000000000000000009';
+    await $.agent.spawn({ ...REVIEW_SPAWN, tool_use_id: toolUseId });
+    await blocker(reviewAgentId(toolUseId), 'Blocker two.');
+    await seen.clock.advance(2000);
+    expect(nudges(seen).at(-1)).toBe(wrapped('<note severity="blocker">Blocker two.</note>'));
+
+    await nudgeTurn('n2');
+    await blocker(onSubagent, 'Blocker three.');
+    expect(seen.logs.at(-1)).toBe('[blocker · Explore] default: Blocker three. (held)');
+    await seen.clock.advance(2000);
+    expect(nudges(seen)).toHaveLength(2);
+    expect((await $.command.run(typed('status'))).text?.split('\n')[0]).toBe(
+      'watchdog on · nudge 0/1 · blocker 2/2 · cooldown 3'
+    );
   });
 });
 

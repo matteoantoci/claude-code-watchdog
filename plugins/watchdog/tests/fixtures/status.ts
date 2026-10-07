@@ -77,7 +77,7 @@ export const DESKTOP = { surface: 'desktop', columns: 120 } as const;
 // The table of `runReview`'s session, while on.
 export const expectTable = async (ui: Mounted<RenderSurface, 'CommandOutput'>): Promise<void> => {
   expect((await ui.find({ type: 'Text', text: /^watchdog on/u }))?.text).toBe(
-    'watchdog on · nudge 0/1 · cooldown 0 · 27.5k tok · $0.15'
+    'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0 · 27.5k tok · $0.15'
   );
   expect(await ui.find({ text: 'engine row' })).toBeUndefined();
   expect((await ui.find({ key: 'row:default' }))?.text).toMatch(

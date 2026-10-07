@@ -57,7 +57,7 @@ const review = (
   );
 
 const SECTIONS = {
-  head: ['watchdog on', 'nudge 1/1', 'cooldown 3'],
+  head: ['watchdog on', 'nudge 1/1', 'blocker 0/2', 'cooldown 3'],
   errors: [],
   lines: ['on source: /watchdog on', 'warning: ./WATCHDOG.json: unknown key "x"; key dropped'],
 };
@@ -77,7 +77,9 @@ describe('/watchdog status table (§13.3)', () => {
       session: security,
       configFile: '~/.claude/WATCHDOG.json',
     });
-    expect(table.head).toBe('watchdog on · nudge 1/1 · cooldown 3 · 12.0k tok · $0.04');
+    expect(table.head).toBe('watchdog on · nudge 1/1 · blocker 0/2 · cooldown 3 · 12.0k tok · $0.04');
+    // Below 80 columns the first line leaves out the tokens, as the rows do.
+    expect(table.narrowHead).toBe('watchdog on · nudge 1/1 · blocker 0/2 · cooldown 3 · $0.04');
     expect(table.rows).toEqual([
       {
         name: 'security*',
@@ -176,7 +178,15 @@ describe('/watchdog status table (§13.3)', () => {
   test('off, the table is the first line and the lines; the session totals show once a review ran', () => {
     const off = { head: ['watchdog off'], errors: [], lines: [] };
     const empty = statusTable({ text: 'r', sections: off, watchdogs: [], session: EMPTY_TALLY, configFile: undefined });
-    expect(empty).toEqual({ text: 'r', head: 'watchdog off', rows: [], session: null, lastError: [], lines: [] });
+    expect(empty).toEqual({
+      text: 'r',
+      head: 'watchdog off',
+      narrowHead: 'watchdog off',
+      rows: [],
+      session: null,
+      lastError: [],
+      lines: [],
+    });
     const ran = review(EMPTY_TALLY, STYLE, { model: 'claude-sonnet-5-5', input: 5000, output: 0 });
     const after = statusTable({ text: 'r', sections: off, watchdogs: [], session: ran, configFile: undefined });
     expect(after.head).toBe('watchdog off · 5.0k tok · $0.01');

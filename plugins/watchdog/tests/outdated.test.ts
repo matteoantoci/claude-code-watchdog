@@ -3,7 +3,7 @@ import { cardKey } from '../hooks/band/cards';
 import { normalizeNote } from '../hooks/note/guard';
 import { noteId } from '../hooks/note/retract';
 import { bandTarget, stubEngineBand } from './fixtures/band';
-import { PERSON_PROMPT, REVIEW_SPAWN, nudgeTurnText, stubDelivery } from './fixtures/delivery';
+import { PERSON_PROMPT, REVIEW_SPAWN, nudgeTurnText, stubDelivery, wrapped } from './fixtures/delivery';
 import { stateIn, stubState } from './fixtures/on-state';
 import { SESSION_ID, START, USAGE, mainRow, reviewAgentId, turnEnd, typed } from './fixtures/session';
 import type { Band } from '../hooks/band/cards';
@@ -13,7 +13,7 @@ import type { NoteHistory } from '../hooks/note/history';
 import type { OnEvents } from '../hooks/on';
 import type { DeliveryEvents, DeliverySeen } from './fixtures/delivery';
 import type { OnStateSeen } from './fixtures/on-state';
-import type { SessionAppendInput, ToolCallResult } from 'claude-code';
+import type { SessionAppendInput, ToolCallArgs, ToolCallResult } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
 type Stubs = OnEvents<DeliveryEvents | 'state.get' | 'state.set' | 'ui.render'>;
@@ -87,6 +87,12 @@ const reviewEnd = async ($: Engine, agentId: string): Promise<void> => {
   await $.turn.complete({ ...turnEnd(`end-${agentId}`), agentId, usage: USAGE });
 };
 
+// A `Read` of a running review agent (the kit types core tools without `agentId`); like each hook, it draws the band
+// (§13.1).
+const reviewRead = async ($: Engine, agentId: string): Promise<void> => {
+  await $.tool.call({ tool: 'Read', agentId, file_path: CART } as ToolCallArgs);
+};
+
 const nudges = (seen: DeliverySeen): string[] =>
   seen.prompts.filter((prompt) => prompt.text.startsWith('<watchdog-notes>')).map((prompt) => prompt.text);
 
@@ -130,7 +136,7 @@ const theRace = async ($: Engine): Promise<string> => {
 describe('§10.8 the outdated mark', () => {
   test('each note after an edit is marked, whatever it names, and never dropped', async ($, on: Stubs) => {
     const { seen, state } = setUp(on);
-    await theRace($);
+    const first = await theRace($);
 
     expect(seen.logs.slice(-2)).toEqual([
       `[blocker] default: ${BLOCKER} (steered)`,
@@ -149,14 +155,18 @@ describe('§10.8 the outdated mark', () => {
     );
     await ui.unmount();
 
+    // §10.8: the review that sent the blocker still runs, so the marked blocker waits for a later review (below); the
+    // marked concern goes. The running review's next tool call draws the band.
     await seen.clock.advance(2000);
-    expect(nudges(seen)).toHaveLength(1);
-    expect(nudges(seen)[0]).toContain(
-      `<note severity="blocker" turns_ago="1" outdated="1 edit since its review">${BLOCKER}</note>`
+    expect(nudges(seen)).toEqual([
+      wrapped(`<note severity="concern" turns_ago="1" outdated="1 edit since its review">${OTHER}</note>`),
+    ]);
+    await reviewRead($, first);
+    const held = await $.ui.mount(bandTarget('terminal', { bodyColumns: 200 }));
+    expect((await held.find({ key: 'watchdog-card-0' }))?.text).toBe(
+      `▸ BLOCKER  default · may be outdated: 1 edit since · ${BLOCKER} · 1 turn ago · held`
     );
-    expect(nudges(seen)[0]).toContain(
-      `<note severity="concern" turns_ago="1" outdated="1 edit since its review">${OTHER}</note>`
-    );
+    await held.unmount();
   });
 
   test('later reviews that stay silent drop nothing; the mark stays once the edit row left the feed', async ($, on: Stubs) => {
@@ -295,5 +305,104 @@ describe('§10.8 a retraction', () => {
     });
     expect(seen.logs.slice(rows)).toEqual([]);
     expect(cards(state).map(({ watchdog, text }) => ({ watchdog, text }))).toEqual([{ watchdog: 'b', text: BLOCKER }]);
+  });
+});
+
+// Watchdog `a` reviews every 2nd update, so review 1 takes turns 1 and 2. Turn 3 edits cart.py; review 1, on its old
+// batch, sends the blocker while turn 3 runs, and turn 3 ends: the blocker is late and marked, and no review is due.
+const EVERY_SECOND = {
+  '/repo/WATCHDOG.json': { text: JSON.stringify({ watchdogs: [{ name: 'a', reviewInterval: 2 }] }), mtimeMs: 1 },
+};
+
+const slowRace = async ($: Engine): Promise<string> => {
+  await $.session.start(START);
+  await $.command.run(typed('on'));
+  await personTurn($, 't1', [mainRow('u1', 'user', 'Add cart_total.'), mainRow('a1', 'assistant', 'Done.')]);
+  await $.turn.complete(turnEnd('t1'));
+  await personTurn($, 't2', [mainRow('u2', 'user', 'Add apply_discount.'), mainRow('a2', 'assistant', 'Done.')]);
+  await $.turn.complete(turnEnd('t2'));
+  const first = await learnReview($, 1, 'a');
+  await personTurn($, 't3', [mainRow('u3', 'user', 'Check apply_discount.'), editRow('e1', CART)]);
+  await note($, first, THE_BLOCKER);
+  await $.turn.complete(turnEnd('t3'));
+  return first;
+};
+
+const MARKED_BLOCKER = `<note severity="blocker" turns_ago="1" outdated="1 edit since its review">${BLOCKER}</note>`;
+
+const MARKED_A = `<note watchdog="a" severity="blocker" turns_ago="1" outdated="1 edit since its review">${BLOCKER}</note>`;
+
+const statusHead = async ($: Engine): Promise<string | undefined> =>
+  (await $.command.run(typed('status'))).text?.split('\n')[0];
+
+describe('§10.8 a late blocker with the outdated mark', () => {
+  test('it waits as held for a review of its watchdog that sees it, then takes a nudge of the blocker budget', async ($, on: Stubs) => {
+    const { seen, state } = setUp(on);
+    const first = await theRace($);
+    await seen.clock.advance(2000);
+    expect(nudges(seen)).toHaveLength(1);
+    await reviewRead($, first);
+    expect(cards(state).map(({ text, delivery, edits }) => ({ text, delivery, edits }))).toEqual([
+      { text: BLOCKER, delivery: 'held', edits: 1 },
+      { text: OTHER, delivery: 'nudged', edits: 1 },
+    ]);
+    expect(await statusHead($)).toBe('watchdog on · nudge 1/1 · blocker 0/2 · cooldown 0');
+
+    // Review 1 sent it, so its end lets it wait on: review 2 is due, and its recap lists the blocker as held.
+    await reviewEnd($, first);
+    const id = noteId(cardKey({ watchdog: 'default', text: BLOCKER }));
+    expect(seen.spawns.at(-1)?.prompt).toContain(
+      `- [blocker · open ${id} · may be outdated: 1 edit since] ${BLOCKER} (held)`
+    );
+    const second = await learnReview($, 2);
+    await seen.clock.advance(2000);
+    expect(nudges(seen)).toHaveLength(1);
+
+    // Review 2 retracts nothing: the blocker goes, still marked.
+    await reviewEnd($, second);
+    await seen.clock.advance(2000);
+    expect(nudges(seen)[1]).toBe(wrapped(MARKED_BLOCKER));
+    expect(await statusHead($)).toBe('watchdog on · nudge 1/1 · blocker 1/2 · cooldown 0');
+    // The status command, like each hook, drew the band.
+    expect(cards(state).find((card) => card.text === BLOCKER)?.delivery).toBe('nudged');
+  });
+
+  test('the review that sees it retracts it: it never nudges and never reaches the aside', async ($, on: Stubs) => {
+    const { seen, state } = setUp(on);
+    const first = await theRace($);
+    await seen.clock.advance(2000);
+    await reviewEnd($, first);
+    const second = await learnReview($, 2);
+    const id = noteId(cardKey({ watchdog: 'default', text: BLOCKER }));
+    expect(await resolve($, second, { id, reason: REASON })).toEqual({ result: 'Retracted.' });
+    await reviewEnd($, second);
+    await seen.clock.advance(2000);
+
+    expect(nudges(seen)).toHaveLength(1);
+    expect(nudges(seen)[0]).not.toContain(BLOCKER);
+    expect(cards(state).map((card) => card.text)).toEqual([OTHER]);
+    await $.prompt.submit(PERSON_PROMPT);
+    expect(seen.prompts.at(-1)?.context).toBeUndefined();
+  });
+
+  test('with no review of its watchdog running or due at the end of the 2 s wait, it goes in that nudge at once', async ($, on: Stubs) => {
+    const { seen } = setUp(on, { files: EVERY_SECOND });
+    const first = await slowRace($);
+    await reviewEnd($, first);
+    await seen.clock.advance(2000);
+    expect(nudges(seen)).toEqual([wrapped(MARKED_A)]);
+  });
+
+  test('the end of the review that sent it lets it go when no other review of its watchdog is due', async ($, on: Stubs) => {
+    const { seen, state } = setUp(on, { files: EVERY_SECOND });
+    const first = await slowRace($);
+    await seen.clock.advance(2000);
+    expect(nudges(seen)).toEqual([]);
+    await reviewRead($, first);
+    expect(cards(state).map(({ delivery, edits }) => ({ delivery, edits }))).toEqual([{ delivery: 'held', edits: 1 }]);
+
+    await reviewEnd($, first);
+    await seen.clock.advance(2000);
+    expect(nudges(seen)).toEqual([wrapped(MARKED_A)]);
   });
 });

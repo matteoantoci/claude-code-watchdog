@@ -1,4 +1,4 @@
-import { DEFAULT_IMMUNE_TURNS, MAX_IMMUNE_TURNS, NUDGE_BUDGET } from '../constants';
+import { BLOCKER_NUDGE_BUDGET, DEFAULT_IMMUNE_TURNS, MAX_IMMUNE_TURNS, NUDGE_BUDGET } from '../constants';
 import { isInteractiveSession } from '../lifecycle/on-order';
 import { currentTurn } from './turns';
 import type { DeliveryState, HeldNote, Note } from '../note/notes';
@@ -13,12 +13,20 @@ export type NudgeNote = Nudge['notes'][number];
 // The `nudge` key less its notes: module memory keeps the notes in the held list.
 export type NudgeClock = Omit<Nudge, 'notes'>;
 
+// §10.4: the budget a nudge takes, by its count in the `nudge` key: `blockerNudges` for a nudge that carries a
+// blocker, `nudges` for a nudge of concerns alone.
+export type NudgeBudget = 'nudges' | 'blockerNudges';
+
+const BUDGET_TOPS: Readonly<Record<NudgeBudget, number>> = {
+  nudges: NUDGE_BUDGET,
+  blockerNudges: BLOCKER_NUDGE_BUDGET,
+};
+
 // The main loop as the routes read it: the §10.7 counter, a main turn that runs, the end of the last one.
 export type MainLoop = {
   readonly turn: number;
   readonly isTurnRunning: boolean;
   readonly isAfterEsc: boolean;
-  readonly isNudgeTurn: boolean;
 };
 
 // `isHeadless`: a `-p` or SDK session (§5.3), which has no nudge and no cards (§10.6).
@@ -37,16 +45,17 @@ const isInCooldown = (at: Cooldown): boolean => at.nudgeTurn !== null && at.turn
 export const cooldownLeft = (at: Cooldown): number =>
   at.nudgeTurn === null ? 0 : Math.max(0, at.nudgeTurn + at.immuneTurns - at.turn);
 
-// §10.3, §10.4: a late concern or blocker gets the one nudge of its person prompt, and waits for it as
-// `nudge pending`. Over budget, after Esc, after the nudge turn, or a concern in the cooldown: `held`, a card and an
-// aside on the next person prompt. §10.6: a headless session has no nudge and no cards: the note waits as an aside.
+// §10.3, §10.4: a late concern or blocker waits for a nudge as `nudge pending` while its budget of the person prompt
+// lasts: 1 nudge of concerns, 2 that carry a blocker. Over its budget, after Esc, or a concern in the cooldown (which
+// covers the nudge turn): `held`, a card and an aside on the next person prompt. §10.6: a headless session has no
+// nudge and no cards: the note waits as an aside.
 export const lateRoute = (severity: Severity, at: Routing): 'nudge pending' | 'held' | 'aside on next prompt' => {
   if (at.isHeadless) {
     return 'aside on next prompt';
   }
-  const isSpent = at.nudges >= NUDGE_BUDGET || at.isNudgeTurn || at.isAfterEsc;
-  const isCooling = severity !== 'blocker' && isInCooldown(at);
-  return isSpent || isCooling ? 'held' : 'nudge pending';
+  const isSpent =
+    severity === 'blocker' ? at.blockerNudges >= BLOCKER_NUDGE_BUDGET : at.nudges >= NUDGE_BUDGET || isInCooldown(at);
+  return isSpent || at.isAfterEsc ? 'held' : 'nudge pending';
 };
 
 // §10.1 to §10.4: a nit waits for the next person prompt; a concern or blocker steers while a main turn
@@ -71,11 +80,18 @@ export const nudgeNotes = (notes: readonly HeldNote[]): NudgeNote[] =>
     batchEdits: note.batchEdits,
     turn: note.turn,
     subagent: note.subagent,
+    reviewWait: note.reviewWait,
   }));
 
-// §13.3: the nudge budget and the cooldown on the status first line.
+// §10.4: a nudge that carries a blocker takes the blocker budget, and the concerns in it ride along; a nudge of
+// concerns alone takes the concern budget.
+export const budgetOf = (notes: readonly Pick<Note, 'severity'>[]): NudgeBudget =>
+  notes.some((note) => note.severity === 'blocker') ? 'blockerNudges' : 'nudges';
+
+// §13.3: the two nudge budgets and the cooldown on the status first line.
 export const nudgeStatus = (at: Routing): readonly string[] => [
   `nudge ${at.nudges}/${NUDGE_BUDGET}`,
+  `blocker ${at.blockerNudges}/${BLOCKER_NUDGE_BUDGET}`,
   `cooldown ${cooldownLeft(at)}`,
 ];
 
@@ -100,8 +116,8 @@ const memory: {
   immuneTurns: number;
   warning: string | undefined;
 } = {
-  loop: { isTurnRunning: false, isAfterEsc: false, isNudgeTurn: false },
-  clock: { nudges: 0, nudgeTurn: null, dueAt: null },
+  loop: { isTurnRunning: false, isAfterEsc: false },
+  clock: { nudges: 0, blockerNudges: 0, nudgeTurn: null, dueAt: null },
   immuneTurns: DEFAULT_IMMUNE_TURNS,
   warning: undefined,
 };
@@ -110,6 +126,7 @@ export const currentRouting = (): Routing => ({
   turn: currentTurn(),
   ...memory.loop,
   nudges: memory.clock.nudges,
+  blockerNudges: memory.clock.blockerNudges,
   nudgeTurn: memory.clock.nudgeTurn,
   immuneTurns: memory.immuneTurns,
   isHeadless: !isInteractiveSession(),
@@ -134,7 +151,7 @@ export const immuneTurnsWarning = (): string | undefined => memory.warning;
 // and the nudge's own turn starts the cooldown (§10.4).
 export const startMainTurn = (text: string): void => {
   const isNudgeTurn = text.startsWith(NUDGE_FRAME);
-  memory.loop = { isTurnRunning: true, isAfterEsc: false, isNudgeTurn };
+  memory.loop = { isTurnRunning: true, isAfterEsc: false };
   memory.clock = { ...memory.clock, dueAt: null, nudgeTurn: isNudgeTurn ? currentTurn() : memory.clock.nudgeTurn };
 };
 
@@ -143,22 +160,22 @@ export const endMainTurn = (isAborted: boolean): void => {
   memory.loop = { ...memory.loop, isTurnRunning: false, isAfterEsc: isAborted };
 };
 
-// §10.3, §10.4: the budget, the cooldown start and the end of the 2 s wait of the nudge that waits.
+// §10.3, §10.4: the two budgets, the cooldown start and the end of the 2 s wait of the nudge that waits.
 export const currentNudgeClock = (): NudgeClock => memory.clock;
 
 export const setNudgeClock = (clock: NudgeClock): void => {
   memory.clock = clock;
 };
 
-// §10.4: a nudge that goes out takes the budget of its person prompt.
-export const spendNudge = (): void => {
-  memory.clock = { ...memory.clock, nudges: memory.clock.nudges + 1 };
+// §10.4: a nudge that goes out takes one of its budget (`budgetOf`) for its person prompt, never past the top.
+export const spendNudge = (budget: NudgeBudget): void => {
+  memory.clock = { ...memory.clock, [budget]: Math.min(BUDGET_TOPS[budget], memory.clock[budget] + 1) };
 };
 
-// §10.3, §10.4: a refused nudge gives its budget back. A person prompt that came while the nudge was in flight
-// already reset the budget, so the count never goes below 0.
-export const giveBackNudge = (): void => {
-  memory.clock = { ...memory.clock, nudges: Math.max(0, memory.clock.nudges - 1) };
+// §10.3, §10.4: a refused nudge gives back what it took. A person prompt that came while the nudge was in flight
+// already reset the budgets, so a count never goes below 0.
+export const giveBackNudge = (budget: NudgeBudget): void => {
+  memory.clock = { ...memory.clock, [budget]: Math.max(0, memory.clock[budget] - 1) };
 };
 
 // The `$.state` value: the clock and the late notes of the nudge that waits.
@@ -172,6 +189,11 @@ export const restoreNudge = (value: Nudge | undefined): readonly NudgeNote[] => 
   if (value === undefined) {
     return [];
   }
-  memory.clock = { nudges: value.nudges, nudgeTurn: value.nudgeTurn, dueAt: value.dueAt };
+  memory.clock = {
+    nudges: value.nudges,
+    blockerNudges: value.blockerNudges,
+    nudgeTurn: value.nudgeTurn,
+    dueAt: value.dueAt,
+  };
   return value.dueAt === null ? [] : value.notes;
 };

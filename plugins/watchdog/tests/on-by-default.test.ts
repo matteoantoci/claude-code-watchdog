@@ -21,7 +21,9 @@ describe('on order at session.start', () => {
       const state = stubOnState(on);
       await $.session.start(START);
       const status = await $.command.run(typed('status'));
-      expect(status.text).toBe('watchdog on · nudge 0/1 · cooldown 0\non source: onByDefault\ndefault idle');
+      expect(status.text).toBe(
+        'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0\non source: onByDefault\ndefault idle'
+      );
       expect(seen.agents.map((agent) => agent.name)).toEqual(['default']);
       expect(seen.preflights).toHaveLength(1);
       expect(state.onWrites).toEqual([{ isOn: true, source: 'onByDefault' }]);
@@ -49,7 +51,7 @@ describe('on order at session.start', () => {
     stubOnState(on);
     await $.session.start(START);
     expect((await $.command.run(typed('status'))).text).toBe(
-      'watchdog on · nudge 0/1 · cooldown 0\non source: /watchdog on\ndefault idle'
+      'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0\non source: /watchdog on\ndefault idle'
     );
   });
 
@@ -95,7 +97,7 @@ describe('Desktop attach', () => {
     expect((await $.command.run(typed('status'))).text).toBe('watchdog off');
     await $.session.attach(DESKTOP_ATTACH);
     expect((await $.command.run(typed('status'))).text).toBe(
-      'watchdog on · nudge 0/1 · cooldown 0\non source: onByDefault\ndefault idle'
+      'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0\non source: onByDefault\ndefault idle'
     );
     expect(seen.preflights).toHaveLength(1);
   });
@@ -123,7 +125,7 @@ describe('Desktop attach', () => {
       });
       await $.session.start(DESKTOP_START);
       expect((await $.command.run(typed('status'))).text).toBe(
-        'watchdog on · nudge 0/1 · cooldown 0\non source: CLAUDE_WATCHDOG\ndefault idle'
+        'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0\non source: CLAUDE_WATCHDOG\ndefault idle'
       );
       await $.session.attach(DESKTOP_ATTACH);
       expect((await $.command.run(typed('status'))).text).toBe('watchdog off');
@@ -142,7 +144,7 @@ describe('Desktop attach', () => {
       await $.session.start(DESKTOP_START);
       await $.session.attach(DESKTOP_ATTACH);
       expect((await $.command.run(typed('status'))).text).toBe(
-        'watchdog on · nudge 0/1 · cooldown 0\non source: onByDefault\ndefault idle'
+        'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0\non source: onByDefault\ndefault idle'
       );
       expect(seen.preflights).toHaveLength(1);
     }

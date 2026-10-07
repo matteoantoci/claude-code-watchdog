@@ -9,7 +9,7 @@ import type { SessionEvents, SessionStubs } from './fixtures/session';
 type DelayStubs = OnEvents<SessionEvents | 'clock.after'>;
 
 // The status head while on from `/watchdog on`; the roster lines follow it.
-const ON_HEAD = 'watchdog on · nudge 0/1 · cooldown 0\non source: /watchdog on';
+const ON_HEAD = 'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0\non source: /watchdog on';
 
 // A project roster of one watchdog on a full model id.
 const PINNED = {
@@ -87,7 +87,7 @@ describe('/watchdog on', () => {
       },
     ]);
     expect(seen.preflights).toEqual([{ model: 'opus', prompt: expect.any(String), maxTokens: 1 }]);
-    expect(reply.text).toBe('watchdog on · nudge 0/1 · cooldown 0\non source: /watchdog on\ndefault idle');
+    expect(reply.text).toBe(`${ON_HEAD}\ndefault idle`);
   });
 
   test('agent.offer hides each watchdog type from the model and passes other types', async ($, on: SessionStubs) => {
@@ -138,7 +138,7 @@ describe('/watchdog on', () => {
     await $.command.run(typed('on'));
     const status = await $.command.run(typed('status'));
     expect(status.text).toMatch(
-      /^watchdog on · nudge 0\/1 · cooldown 0\non source: \/watchdog on\ndefault blocked: .*allowedMcpServers refuses watchdog$/u
+      /^watchdog on · nudge 0\/1 · blocker 0\/2 · cooldown 0\non source: \/watchdog on\ndefault blocked: .*allowedMcpServers refuses watchdog$/u
     );
     expect(seen.logs).toEqual([
       expect.stringMatching(/^watchdog: default blocked: .*allowedMcpServers refuses watchdog$/u),

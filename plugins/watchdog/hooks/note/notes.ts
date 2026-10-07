@@ -22,6 +22,9 @@ export const isDeliveryState = (value: unknown): value is DeliveryState =>
 // §11.3: the watched subagent that a note is about (`WatchdogSubagentRef` of the state contract).
 export type SubagentRef = NonNullable<PluginState['watchdog']['nudge']['notes'][number]['subagent']>;
 
+// §10.8: the wait of a late blocker with the outdated mark for a review of its watchdog (`WatchdogReviewWait`).
+export type ReviewWait = NonNullable<PluginState['watchdog']['nudge']['notes'][number]['reviewWait']>;
+
 // One note a watchdog sent; `watchdog` is its slug. §10.8: `batchEdits` is the edit count of its review's batch
 // (null when no batch of a running review was known), `turn` the main-loop turn counter of that batch, else of the
 // note's arrival (§10.7). §11.3: `subagent` is the watched subagent of a review of a subagent.
@@ -35,7 +38,8 @@ export type Note = {
   readonly subagent?: SubagentRef;
 };
 
-export type HeldNote = Note & { readonly delivery: DeliveryState };
+// §10.8: `reviewWait` marks a late blocker that waits as `held` for a review of its watchdog, or whose wait ended.
+export type HeldNote = Note & { readonly delivery: DeliveryState; readonly reviewWait?: ReviewWait };
 
 // Another area's guard drops a note after the destructive check (§12.6) and before the emission guard (§9):
 // it returns the ack the watchdog reads, or undefined.
@@ -142,16 +146,24 @@ export const takeBoundNotes = (agentId: string): HeldNote[] =>
 // The held notes, oldest first, as they wait now.
 export const heldNotes = (): readonly HeldNote[] => held;
 
-// §10.3: a late note changes its route in place (a steer with no tool result before the turn ended, a nudge
-// whose wait a new turn ended).
-export const rerouteNotes = (route: (note: HeldNote) => DeliveryState): void => {
+// §10.3, §10.8: a held note changes in place: a late note's route (a steer with no tool result before the turn ended,
+// a nudge whose wait a new turn ended), or the wait of an outdated blocker for a review. `change` returns the note
+// itself for no change.
+export const changeHeldNotes = (change: (note: HeldNote) => HeldNote): void => {
   held.forEach((note, index) => {
-    const delivery = isBound(note) ? note.delivery : route(note);
-    if (delivery !== note.delivery) {
-      const rerouted = { ...note, delivery };
-      held[index] = rerouted;
-      tell(note, rerouted);
+    const changed = isBound(note) ? note : change(note);
+    if (changed !== note) {
+      held[index] = changed;
+      tell(note, changed);
     }
+  });
+};
+
+// §10.3: a late note changes its route in place.
+export const rerouteNotes = (route: (note: HeldNote) => DeliveryState): void => {
+  changeHeldNotes((note) => {
+    const delivery = route(note);
+    return delivery === note.delivery ? note : { ...note, delivery };
   });
 };
 

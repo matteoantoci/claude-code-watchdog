@@ -7,9 +7,10 @@ import { errorText } from '../errors';
 import { currentMode } from '../lifecycle/mode';
 import { addLogRecord, currentLog, errorRecord } from '../log/log';
 import { addDeliveryRoute, heldNotes, holdNote, rerouteNotes, takeNotes } from '../note/notes';
-import { batchedOf, editsSince } from '../note/outdated';
 import { isPersonPrompt } from '../person';
+import { wrapHeldNotes } from './held';
 import {
+  budgetOf,
   currentNudgeClock,
   currentRouting,
   endMainTurn,
@@ -27,8 +28,8 @@ import {
   spendNudge,
   startMainTurn,
 } from './nudge';
-import { countTurn, currentTurn, restoreTurn } from './turns';
-import { wrapNotes, wrappedNote } from './wrapper';
+import { endReviewWaits, takeNudgeNotes } from './review-wait';
+import { countTurn, restoreTurn } from './turns';
 import type { DeliveryState, HeldNote } from '../note/notes';
 import type { OnEvents } from '../on';
 import type { EngineInterface, Hook, MatchedHook, PluginOptions, Timer } from 'claude-code';
@@ -48,21 +49,7 @@ const guidance = async ($: EngineInterface): Promise<string> => {
   return memory.guidance;
 };
 
-// §10.7: held notes in one wrapper, each under its watchdog's name, with its age now; §10.8: each take counts the
-// edits since the note's batch again.
-const wrapHeld = (head: string, notes: readonly HeldNote[]): string =>
-  wrapNotes(
-    head,
-    notes.map((note) =>
-      wrappedNote(note, {
-        name: watchdogBySlug(note.watchdog)?.name ?? note.watchdog,
-        turn: currentTurn(),
-        edits: editsSince(batchedOf(note)),
-      })
-    )
-  );
-
-// §14.1: `$.state` keeps the budget, the cooldown and the nudge that waits with its notes; a refused write
+// §14.1: `$.state` keeps the budgets, the cooldown and the nudge that waits with its notes; a refused write
 // loses only what a reload would carry over.
 const saveNudge = async ($: EngineInterface): Promise<void> => {
   await $.state.set({ plugin: 'watchdog', key: 'nudge' }, nudgeValue(nudgeNotes(heldNotes()))).catch(() => undefined);
@@ -90,7 +77,7 @@ const keepUndelivered = async ($: EngineInterface, undelivered: Undelivered): Pr
 // §10.1: one user row with the wrapped notes. Returns the reason of a reject or a deny, or undefined.
 const appendNotes = async ($: EngineInterface, notes: readonly HeldNote[]): Promise<string | undefined> => {
   try {
-    const text = wrapHeld(await guidance($), notes);
+    const text = wrapHeldNotes(await guidance($), notes);
     const appended = await $.session.append({ message: { type: 'user', content: [{ type: 'text', text }] } });
     return 'deny' in appended ? appended.deny : undefined;
   } catch (error) {
@@ -123,7 +110,7 @@ const onToolCall: SteerHook = async ($, e, next) => {
 // §10.3: one awaited `$.prompt.submit` with the wrapped notes. Returns the reason of a reject or a drop.
 const submitNudge = async ($: EngineInterface, notes: readonly HeldNote[]): Promise<string | undefined> => {
   try {
-    const submitted = await $.prompt.submit({ text: wrapHeld(await guidance($), notes) });
+    const submitted = await $.prompt.submit({ text: wrapHeldNotes(await guidance($), notes) });
     return submitted.drop;
   } catch (error) {
     return errorText(error);
@@ -131,19 +118,20 @@ const submitNudge = async ($: EngineInterface, notes: readonly HeldNote[]): Prom
 };
 
 // §10.3, §10.4: the callback of the 2 s wait sends one nudge with every late note that waits, while no turn
-// runs (a nudge queued behind a turn would survive Esc); the notes go out as `nudged`. A refused nudge gives the
-// budget back, and its notes wait as an aside.
+// runs (a nudge queued behind a turn would survive Esc); the notes go out as `nudged`, and an outdated blocker may
+// wait for a review first (§10.8). A refused nudge gives its budget back, and its notes wait as an aside.
 const sendNudge = async ($: EngineInterface): Promise<void> => {
   memory.wait = undefined;
   setNudgeClock({ ...currentNudgeClock(), dueAt: null });
-  const notes = currentRouting().isTurnRunning ? [] : takeNotes(['nudge pending'], 'nudged');
+  const notes = currentRouting().isTurnRunning ? [] : takeNudgeNotes();
+  const budget = budgetOf(notes);
   if (notes.length > 0) {
-    spendNudge();
+    spendNudge(budget);
   }
   await saveNudge($);
   const problem = notes.length === 0 ? undefined : await submitNudge($, notes);
   if (problem !== undefined) {
-    giveBackNudge();
+    giveBackNudge(budget);
     await keepUndelivered($, { notes, route: () => 'held', error: `nudge failed: ${problem}` });
     await saveNudge($);
   }
@@ -190,13 +178,15 @@ const onTurnStart: Hook<'turn.start'> = async ($, e, next) => {
 };
 
 // §10.3: at the main-loop end, a steer with no tool result is a late note; after Esc (`isAborted`) it waits
-// as an aside. Any `turn.complete` while the session is idle (a review's own too) starts the 2 s wait.
+// as an aside. §10.8: a review's end ends the wait of the outdated blockers it saw. Any `turn.complete` while the
+// session is idle (a review's own too) starts the 2 s wait.
 const onTurnComplete: Hook<'turn.complete'> = async ($, e, next) => {
   const result = await next(e);
   if (e.agentId === undefined) {
     endMainTurn(e.isAborted);
     rerouteNotes((note) => (note.delivery === 'steered' || isNudgePending(note) ? lateRouteNow(note) : note.delivery));
   }
+  endReviewWaits(e.agentId);
   await armNudge($);
   return result;
 };
@@ -208,23 +198,23 @@ const asideText = async ($: EngineInterface): Promise<string | undefined> => {
   const head = isWaiting ? await guidance($).catch(() => undefined) : undefined;
   return head === undefined
     ? undefined
-    : wrapHeld(head, takeNotes(['aside on next prompt', 'held'], 'aside on next prompt'));
+    : wrapHeldNotes(head, takeNotes(['aside on next prompt', 'held'], 'aside on next prompt'));
 };
 
-// §10.2, §10.4: a person prompt resets the nudge budget and carries the aside in its `context`, added on
+// §10.2, §10.4: a person prompt resets both nudge budgets and carries the aside in its `context`, added on
 // the way down: a `context` added to the result after `next` is dropped (d.ts 8803-8805). Any other origin,
 // a task notification too (§10.5), passes as it came.
 const onPromptSubmit: Hook<'prompt.submit'> = async ($, e, next) => {
   if (!isPersonPrompt(e.origin)) {
     return next(e);
   }
-  setNudgeClock({ ...currentNudgeClock(), nudges: 0 });
+  setNudgeClock({ ...currentNudgeClock(), nudges: 0, blockerNudges: 0 });
   await saveNudge($);
   const aside = await asideText($);
   return next(aside === undefined ? e : { ...e, context: [...(e.context ?? []), aside] });
 };
 
-// §10.3, §14.6: a reload cancels the old instance's timers. At load the counter, the budget, the cooldown
+// §10.3, §14.6: a reload cancels the old instance's timers. At load the counter, the budgets, the cooldown
 // and the nudge that waits come back from `$.state`, and the wait starts again with the time left.
 const restoreDelivery = async ($: EngineInterface): Promise<void> => {
   memory.isLoaded = true;

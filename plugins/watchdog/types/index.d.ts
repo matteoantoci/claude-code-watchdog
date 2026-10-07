@@ -103,6 +103,9 @@ export type WatchdogLogRecord =
   // §7.8 action 6: a review stopped after its 10 min; `agentId` is null when its id never came.
   | { readonly kind: 'timeout'; readonly watchdog: string; readonly agentId: string | null; readonly time: number };
 
+// §10.8: the wait of a late blocker with the outdated mark for a review of its watchdog.
+export type WatchdogReviewWait = 'waiting' | 'done';
+
 // §10.3: a late note of the nudge that waits, as the note hook admitted it: the watchdog slug, the review
 // agent, the edit count of its review's batch (null when none was known) and the main-loop turn of that batch,
 // else of its arrival (§10.7, §10.8).
@@ -115,12 +118,17 @@ export type WatchdogNudgeNote = {
   readonly turn: number;
   // §10.7: the subagent of a late note on a subagent.
   readonly subagent?: WatchdogSubagentRef;
+  // §10.8: a late blocker with the outdated mark that waits as `held` for a review of its watchdog (`waiting`), or
+  // whose wait ended (`done`), so that it never waits again; absent for a note that never waited.
+  readonly reviewWait?: WatchdogReviewWait;
 };
 
-// §10.3, §10.4: the nudge budget of the current person prompt, the cooldown start and the nudge that waits.
+// §10.3, §10.4: the two nudge budgets of the current person prompt, the cooldown start and the nudge that waits.
 export type WatchdogNudge = {
-  // Nudges sent since the last person prompt.
+  // Nudges of concerns alone sent since the last person prompt.
   readonly nudges: number;
+  // Nudges that carried a blocker sent since the last person prompt.
+  readonly blockerNudges: number;
   // The `turns` counter at the last nudge turn, where the cooldown starts; null before the first nudge.
   readonly nudgeTurn: number | null;
   // When the 2 s wait of the nudge that waits ends, ms since the epoch; null when no nudge waits.

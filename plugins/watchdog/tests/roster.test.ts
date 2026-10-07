@@ -37,7 +37,7 @@ const startOn = async ($: Engine): Promise<void> => {
 };
 
 // The first two status lines while on; the roster lines follow them.
-const ON_HEAD = 'watchdog on · nudge 0/1 · cooldown 0\non source: /watchdog on';
+const ON_HEAD = 'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0\non source: /watchdog on';
 
 const status = async ($: Engine): Promise<string> => (await $.command.run(typed('status'))).text ?? '';
 
@@ -134,7 +134,7 @@ describe('warnings (§4.6)', () => {
 
     expect(seen.logs).toEqual(['2 WATCHDOG.json warnings; see /watchdog status']);
     expect((await status($)).split('\n')).toEqual([
-      'watchdog on · nudge 0/1 · cooldown 0',
+      'watchdog on · nudge 0/1 · blocker 0/2 · cooldown 0',
       'on source: /watchdog on',
       'a idle · ~/.claude/WATCHDOG.json',
       'warning: ~/.claude/WATCHDOG.json: watchdog "a": tool "Bash" is refused; tool dropped',
