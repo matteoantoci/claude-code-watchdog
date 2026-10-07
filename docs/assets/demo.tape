@@ -3,8 +3,8 @@
 # `haiku`, the default watchdog reviews on `opus`. The note the watchdog sends differs from run to run.
 # FontSize 14 keeps the band (its rule, one row for each card, and the expanded note below its card) readable
 # beside the transcript.
-# The committed GIF is re-encoded at 8 frames a second and 64 colors to stay under 2 MB (about 28 s, 1.3 MB):
-#   ffmpeg -i demo.gif -vf "fps=8,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" out.gif
+# The committed GIF is re-encoded at 8 frames a second and 40 colors to stay under 2 MB (about 29 s, 2.0 MB):
+#   ffmpeg -i demo.gif -vf "fps=8,split[a][b];[a]palettegen=max_colors=40:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" out.gif
 
 Output docs/assets/demo.gif
 Require claude
@@ -62,14 +62,15 @@ Sleep 1s
 Show
 Sleep 3s
 
-# Skip to the end of the turn: while the agent works, "esc to interrupt" stands before "← for agents". The card
-# stays until the next person prompt; at the idle prompt an Esc that reaches the prompt does nothing.
+# Skip to the delivery: the nudge prompt that starts a turn, or the state a note keeps without one. Once Claude fixed
+# the bug, a later review may retract the note, so the card opens while that turn runs: the band keeps the focus
+# through a plugin prompt and a running turn (live check on 2.1.292).
 Hide
-Wait+Screen@180s /(cycle\)|subagents) · ←/
+Wait+Screen@120s /Prompt from the watchdog plugin|\((steered|held|aside on next prompt)\)/
 Sleep 500ms
 Show
 Sleep 1s
-# Focus the band, expand the top card with its letter, collapse it, give the focus back to the prompt.
+# Focus the band, expand the top card with its letter, collapse it.
 Ctrl+X
 Tab
 Sleep 800ms
@@ -78,6 +79,14 @@ Wait+Screen@10s /▾/
 Sleep 4s
 Type "a"
 Wait+Screen@10s /▸/
+Sleep 1s
+
+# Skip to the end of the turn: while the agent works, "esc to interrupt" stands before "← for agents". At the idle
+# prompt Esc gives the focus back to the prompt; an Esc that reaches the prompt does nothing.
+Hide
+Wait+Screen@180s /(cycle\)|subagents) · ←/
+Sleep 500ms
+Show
 Sleep 1s
 Escape
 Sleep 800ms

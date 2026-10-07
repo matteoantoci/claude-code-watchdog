@@ -3,7 +3,7 @@
 A second model reviews each step that Claude Code takes and sends it short notes while it works: `nit`, `concern` or
 `blocker`.
 
-![A watchdog flags a planted bug, Claude fixes it, the band cards mark the notes as maybe outdated and the top one opens to the whole note, /watchdog status shows the review cost, and a later review retracts both notes, so the band's rule counts no open notes](docs/assets/demo.gif)
+![A watchdog flags a planted bug and nudges Claude, which fixes it; the band card marks the note as maybe outdated and opens to the whole note, /watchdog status shows the review cost, and a later review retracts the note, so the band's rule counts no open notes](docs/assets/demo.gif)
 
 ## Requirements
 
@@ -47,8 +47,8 @@ never reaches Claude.
 
 ## Cost and off switch
 
-- Each review is one more agent, on `opus` with `medium` effort by default (in the demo: 2 reviews, 40.5k tokens,
-  $0.09). The built-in "You should know" mod, when on, runs its own side agent too; turn it off in `/plugin` to pay
+- Each review is one more agent, on `opus` with `medium` effort by default (in the demo: 2 reviews, 31.4k tokens,
+  $0.05). The built-in "You should know" mod, when on, runs its own side agent too; turn it off in `/plugin` to pay
   for one only.
 - `/watchdog off` stops reviews for this session. `/plugin uninstall watchdog@matteoantoci` removes the plugin.
 - Settings, in `/plugin` (Installed, Watchdog, Configure options) or `/config`: `onByDefault` (default `false`) turns
