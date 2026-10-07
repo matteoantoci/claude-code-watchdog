@@ -3,7 +3,7 @@
 # `haiku`, the default watchdog reviews on `opus`. The note the watchdog sends differs from run to run.
 # FontSize 14 keeps the band (its rule, one row for each card, and the expanded note below its card) readable
 # beside the transcript.
-# The committed GIF is re-encoded at 8 frames a second and 64 colors to stay under 2 MB (about 28 s, 1.3 MB):
+# The committed GIF is re-encoded at 8 frames a second and 64 colors to stay under 2 MB (about 28 s, 1.6 MB):
 #   ffmpeg -i demo.gif -vf "fps=8,split[a][b];[a]palettegen=max_colors=64:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" out.gif
 
 Output docs/assets/demo.gif
