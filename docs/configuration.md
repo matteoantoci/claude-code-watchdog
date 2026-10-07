@@ -43,7 +43,7 @@ and `Glob`. A `WATCHDOG.json` file sets the roster, the list of watchdogs of a s
   `anthropic/` may come before it and `:<effort>` after it. Only `anthropic` works. Default `opus`.
 - `effort`: `low`, `medium`, `high`, `xhigh`, `max` or `auto` for the session's effort. Default `medium`. It overrides
   the `:<effort>` of `model`.
-- `tools`: see [Tool grants](#tool-grants). `[]` leaves only the watchdog's own `note` tool.
+- `tools`: see [Tool grants](#tool-grants). `[]` leaves only the watchdog's own `note` and `resolve` tools.
 - `reviewMode`: `turn` (default) reviews at the end of each tool round and of each turn; `agent-end` only at the end of
   each turn.
 - `reviewInterval`: review every Nth update that the review mode counts. Default `1`. The skipped updates join the

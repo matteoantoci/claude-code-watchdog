@@ -1,6 +1,6 @@
 import { COMMAND } from '../command/spec';
 import { errorText } from '../errors';
-import { NOTE_TOOL } from '../note/tool';
+import { WATCHDOG_TOOLS } from '../note/tool';
 import { envSwitch, settingsUnreadWarning } from './headless';
 import { setMode } from './mode';
 import { addOnWarning, notePrompt, setEnvOn } from './on-order';
@@ -9,10 +9,10 @@ import type { OnEvents } from '../on';
 import type { EnvSwitch } from './headless';
 import type { EngineInterface, Hook } from 'claude-code';
 
-// §8.3: the note tool exists from the next prompt on, so it registers before any spawn. `/watchdog on`
-// registers it again and blocks the watchdogs on a refusal, so a refusal here waits for that.
-const registerNoteTool = async ($: EngineInterface): Promise<void> => {
-  await $.tool.register(NOTE_TOOL).catch(() => undefined);
+// §8.3, §10.8: the `note` and `resolve` tools exist from the next prompt on, so they register before any spawn.
+// `/watchdog on` registers them again and blocks the watchdogs on a refusal, so a refusal here waits for that.
+const registerTools = async ($: EngineInterface): Promise<void> => {
+  await Promise.all(WATCHDOG_TOOLS.map(async (tool) => $.tool.register(tool).catch(() => undefined)));
 };
 
 // §5.1: the call throws for a name that another plugin has; one row tells the person.
@@ -50,14 +50,14 @@ const takeEnvSwitch = async ($: EngineInterface, isUsed: boolean): Promise<void>
   }
 };
 
-// §5.1: the version gate first, the command last. In `unsupported` no note tool registers.
+// §5.1: the version gate first, the command last. In `unsupported` no tool registers.
 const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
   const { base } = await $.session.version();
   const isSupported = isSupportedVersion(base);
   setMode(isSupported ? 'off' : 'unsupported');
   await takeEnvSwitch($, isSupported && !e.isInteractive);
   if (isSupported) {
-    await registerNoteTool($);
+    await registerTools($);
   }
   await registerCommand($);
   return next(e);

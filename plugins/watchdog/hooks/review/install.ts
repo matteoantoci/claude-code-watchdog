@@ -11,6 +11,7 @@ import { currentMode } from '../lifecycle/mode';
 import { isInteractiveSession } from '../lifecycle/on-order';
 import { addLogRecord, currentLog, errorRecord, rememberPrompt, unreviewedRecord } from '../log/log';
 import { liveHistory, notesKey, readHistory, watchdogNotes } from '../note/history';
+import { recapEntries } from '../note/retract';
 import { isPersonPrompt } from '../person';
 import { resolveEffort, sessionEffort, setSessionEffort } from '../roster/model';
 import { taskPrompts } from '../subagents/watch';
@@ -22,7 +23,7 @@ import { IDLE, isReady, learnReviewAgent, runningReview, setSlot, slotOf } from 
 import { addReviewStatus } from './status';
 import type { Watchdog } from '../agents/roster';
 import type { UpdateClose } from '../feed/feed';
-import type { RecapNote } from '../note/history';
+import type { RecapEntry } from '../note/retract';
 import type { OnEvents } from '../on';
 import type { WatchedSubagent } from '../subagents/watch';
 import type { Backlog } from './backlogs';
@@ -39,12 +40,12 @@ const save = async ($: EngineInterface): Promise<void> => {
   await $.state.set({ plugin: 'watchdog', key: 'ids' }, watchdogIds()).catch(() => undefined);
 };
 
-// §7.7 part 1: the watchdog's newest 20 notes on the watched agent: the note area's live copy of
-// `notes:<sessionId>` (or `notes:<sessionId>:<agentId>` of a subagent, §11.4), else the stored value.
-const recapNotes = async ($: EngineInterface, slug: string, agentId?: string): Promise<readonly RecapNote[]> => {
+// §7.7 part 1, §10.8: the watchdog's newest 20 notes on the watched agent, each open one with its id and mark: the
+// live copy of `notes:<sessionId>` (or `notes:<sessionId>:<agentId>` of a subagent, §11.4), else the stored value.
+const recapNotes = async ($: EngineInterface, slug: string, agentId?: string): Promise<readonly RecapEntry[]> => {
   const sessionId = await $.session.id();
   const history = liveHistory(sessionId, agentId) ?? readHistory(await $.store.get(notesKey(sessionId, agentId)));
-  return watchdogNotes(history, slug).notes;
+  return recapEntries(watchdogNotes(history, slug).notes, slug, agentId);
 };
 
 // §7.7, §11.4: the recap of a subagent review reads that subagent's conversation; its part 2 is the task.

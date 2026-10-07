@@ -25,9 +25,10 @@ Click the card's `▸`, or press ctrl+x tab and then its letter (`a`, `b`, `c`),
 
 A card ends with the note's age and state: `steered` (Claude reads it after its next tool result), `nudge pending`
 and then `nudged` (the plugin starts a turn so that Claude reads it), `held` or `aside on next prompt` (Claude reads it
-with your next prompt). When Claude edited a file that the note names after the review read it, the card says
-`may be outdated: N edits since`, and Claude reads the same mark with the note. A later review of the same watchdog
-that reads those edits and does not send the note again removes its card.
+with your next prompt). When Claude edited files after the review read its update, the card says
+`may be outdated: N edits since`, and Claude reads the same mark with the note. The next review of the same watchdog
+sees the edits and the note; when the note no longer holds, it retracts it: the card goes, and a note that waits
+never reaches Claude.
 
 ## What runs on your machine
 
@@ -73,7 +74,7 @@ are in [docs/configuration.md](docs/configuration.md). This file adds a second r
 ## Limitations
 
 - Notes are advice: the agent may reject one. A review runs in the background, so a note can come after the step; the
-  outdated mark above counts only edits to a file the note names.
+  outdated mark above counts every edit since the review, whatever file it touched.
 - Reviews run only on Anthropic models. `claude -p` needs `CLAUDE_WATCHDOG=on` and has no nudge and no cards: see
   [docs/headless.md](docs/headless.md).
 - The cost comes from the plugin's own price table (`plugins/watchdog/hooks/prices.ts`); a model not in it shows `$?`.

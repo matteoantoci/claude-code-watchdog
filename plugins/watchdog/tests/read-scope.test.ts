@@ -101,6 +101,7 @@ describe('the tool.call guard', () => {
   test('a review agent runs its own tools and note, and nothing else', () => {
     expect(guardDeny('Read', tools, true)).toBeUndefined();
     expect(guardDeny('mcp__watchdog__note', tools, true)).toBeUndefined();
+    expect(guardDeny('mcp__watchdog__resolve', tools, true)).toBeUndefined();
     expect(guardDeny('Bash', tools, true)).toBe(toolDeny('Bash'));
     expect(guardDeny('Edit', [], true)).toBe(toolDeny('Edit'));
   });

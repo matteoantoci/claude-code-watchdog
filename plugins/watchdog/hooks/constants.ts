@@ -139,9 +139,13 @@ export const MINUTE_MS = 60_000;
 // §14.4: `$.session.messages()` gives the newest 4096 messages; at this length the list slides as it grows.
 export const MESSAGES_READ_CAP = 4096;
 
-// §14.4: the message hash is 32-bit FNV-1a: its offset basis and its prime.
+// §14.4, §10.8: the rewind mark and the note id hash with 32-bit FNV-1a: its offset basis and its prime.
 export const FNV_OFFSET_BASIS = 2_166_136_261;
 export const FNV_PRIME = 16_777_619;
+
+// §10.8: an open note's id is its hash in this many digits of this base.
+export const NOTE_ID_DIGITS = 4;
+export const NOTE_ID_RADIX = 36;
 
 // §14.2: the `$.store` prune keeps the keys of this many sessions, the newest by `lastUsed`.
 export const STORE_SESSION_CAP = 50;

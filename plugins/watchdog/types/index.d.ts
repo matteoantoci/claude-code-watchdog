@@ -15,9 +15,9 @@ export type WatchdogFeedRow = {
   readonly brief?: string;
   // The id of a tool call, which its result row names.
   readonly call?: string;
-  // §10.8: the file path of an `Edit`, `Write`, `MultiEdit` or `NotebookEdit` call, which the outdated mark of a
-  // note counts.
-  readonly edit?: string;
+  // §10.8: the row is an `Edit`, `Write`, `MultiEdit` or `NotebookEdit` call, which the outdated mark of a note
+  // counts.
+  readonly edit?: true;
 };
 
 // §7.5: how a boundary closed an update: mid-turn (`step`), at the end of a turn, or at an Esc.
@@ -49,8 +49,13 @@ export type WatchdogSubagent = {
   readonly isRunning: boolean;
 };
 
-// §13.4: one note of a review, as the dump shows it.
-export type WatchdogLogNote = { readonly severity: string; readonly text: string; readonly delivery: string };
+// §13.4: one note of a review, as the dump shows it. §10.8: `reason` is why a review agent retracted it.
+export type WatchdogLogNote = {
+  readonly severity: string;
+  readonly text: string;
+  readonly delivery: string;
+  readonly reason?: string;
+};
 
 // §13.4: the token counts of a review's `turn.complete` usage, and the model that ran.
 export type WatchdogLogUsage = {
@@ -152,8 +157,9 @@ export type WatchdogRunningReview = {
 // §13.1: one band card: an admitted note since the last person prompt. `key` is the watchdog slug and the
 // normalized text (§9.1), `seq` the order of admission (newest highest), `name` the watchdog's display name,
 // `turn` the main-loop turn of the note's batch (§10.7), `subagent` the type of a watched subagent (§11.3).
-// §10.8: `watchdog` is the slug, `batchEnd` the last row of the note's batch (null when none was known),
-// `subagentId` the `agentId` of a watched subagent, `edits` the edits since the batch that the note names.
+// §10.8: `watchdog` is the slug, `agentId` the review agent that sent the note, `batchEnd` the last row of the
+// note's batch (null when none was known), `subagentId` the `agentId` of a watched subagent, `edits` the edits of
+// the watched agent since that batch.
 export type WatchdogCard = {
   readonly key: string;
   readonly seq: number;
@@ -164,6 +170,7 @@ export type WatchdogCard = {
   readonly delivery: string;
   readonly subagent?: string;
   readonly watchdog: string;
+  readonly agentId: string;
   readonly batchEnd: string | null;
   readonly subagentId?: string;
   readonly edits: number;

@@ -27,7 +27,7 @@ import {
   setOnSource,
 } from '../lifecycle/on-order';
 import { clearHeldNotes } from '../note/notes';
-import { NOTE_TOOL } from '../note/tool';
+import { WATCHDOG_TOOLS } from '../note/tool';
 import { resetCadences } from '../review/cadence';
 import { slotsAfterOn } from '../review/slots';
 import { buildRoster } from '../roster/merge';
@@ -51,15 +51,15 @@ const saveOnState = async ($: EngineInterface): Promise<void> => {
   await $.state.set({ plugin: 'watchdog', key: 'feed' }, currentFeed()).catch(() => undefined);
 };
 
-// §5.2 step 1, §6.1, §8.3: the note tool, then one agent type for each watchdog that can run. Maps each slug
-// to the reason that blocks it, or undefined.
+// §5.2 step 1, §6.1, §8.3, §10.8: the mod's tools, then each runnable watchdog's agent type; each slug → its blocker.
 const registerAll = async (
   $: EngineInterface,
   watchdogs: readonly Watchdog[]
 ): Promise<Map<string, string | undefined>> => {
-  const noteProblem = await $.tool.register(NOTE_TOOL).then(() => undefined, errorText);
-  if (noteProblem !== undefined) {
-    return new Map(watchdogs.map((watchdog) => [watchdog.slug, noteProblem]));
+  const registered = Promise.all(WATCHDOG_TOOLS.map(async (tool) => $.tool.register(tool)));
+  const toolProblem = await registered.then(() => undefined, errorText);
+  if (toolProblem !== undefined) {
+    return new Map(watchdogs.map((watchdog) => [watchdog.slug, toolProblem]));
   }
   const base = await $.fs.read(`${$.plugin.root}/prompts/system.md`);
   const problems = await Promise.all(

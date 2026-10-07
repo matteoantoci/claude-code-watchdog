@@ -1,4 +1,3 @@
-import { NOTE_TOOL_NAME } from '../agents/spec';
 import { TOKENS_K, TOKENS_M } from '../constants';
 import { costText } from '../prices';
 import type { Watchdog } from '../agents/roster';
@@ -53,8 +52,8 @@ const RED_STATES: Readonly<Record<Slot['state'], boolean>> = {
   halted: true,
 };
 
-// §6.3, §13.3: the tools a watchdog has without a mark.
-const UNMARKED_TOOLS: Readonly<Record<string, true>> = { Read: true, Grep: true, Glob: true, [NOTE_TOOL_NAME]: true };
+// §6.3, §13.3: the tools a watchdog has without a mark; the roster never lists the mod's own tools.
+const UNMARKED_TOOLS: Readonly<Record<string, true>> = { Read: true, Grep: true, Glob: true };
 
 const TOOL_MARK = '*';
 

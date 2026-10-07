@@ -1,4 +1,4 @@
-import { NOTE_TOOL_NAME } from '../agents/spec';
+import { WATCHDOG_TOOL_NAMES } from '../agents/spec';
 
 // §6.3: the default tools, and the only tools a project file grants.
 const READ_ONLY_TOOLS: Readonly<Record<string, true>> = { Read: true, Grep: true, Glob: true };
@@ -112,12 +112,12 @@ const toolProblem = (tool: string, isUser: boolean): string | undefined => {
 };
 
 // §6.3: the tools an entry gets from the file that holds it, and a warning for each tool it drops. The mod
-// always adds the note tool, so a listed note tool is left out here.
+// always adds its `note` and `resolve` tools, so a listed one is left out here.
 export const checkTools = (
   names: readonly string[],
   isUser: boolean
 ): { tools: readonly string[]; problems: readonly string[] } => {
-  const named = names.map(toolName).filter((tool) => tool !== NOTE_TOOL_NAME);
+  const named = names.map(toolName).filter((tool) => !WATCHDOG_TOOL_NAMES.includes(tool));
   const problems = named.map((tool) => toolProblem(tool, isUser));
   return {
     tools: [...new Set(named.filter((_tool, index) => problems[index] === undefined))],

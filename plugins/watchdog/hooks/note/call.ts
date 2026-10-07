@@ -12,8 +12,8 @@ import type { MatchedHook } from 'claude-code';
 
 export type NoteCall = Parameters<MatchedHook<'tool.call', { tool: 'mcp__watchdog__note' }>>[1];
 
-// §8.3: the deny for the main loop and for an unknown agent.
-const NOT_A_WATCHDOG = 'Only watchdog agents can call this tool.';
+// §8.3, §10.8: the deny of the `note` and `resolve` tools for the main loop and for an unknown agent.
+export const NOT_A_WATCHDOG = 'Only watchdog agents can call this tool.';
 const BAD_ARGUMENTS = 'A note needs `note` text and a `severity` of nit, concern or blocker.';
 
 // §12.6, §10.8: the batch of the running review of this agent: the feed it reads (the primary agent's, or the

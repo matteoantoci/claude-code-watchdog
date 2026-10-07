@@ -32,7 +32,7 @@ describe('the <watchdog-notes> wrapper', () => {
     );
   });
 
-  test('§10.8: a note with edits since its batch on a file it names carries the outdated attribute', () => {
+  test('§10.8: a note with edits since its batch carries the outdated attribute', () => {
     const text = wrapNotes(GUIDANCE, [
       { severity: 'blocker', turnsAgo: 1, edits: 1, text: 'cart.py line 3 subtracts.' },
       { severity: 'concern', turnsAgo: 0, edits: 2, text: 'cart.py has no test.' },

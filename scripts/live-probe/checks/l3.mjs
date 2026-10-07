@@ -706,7 +706,7 @@ const ECHOES = [
     '§7.3 items 2, 3: a delivered <watchdog-notes> wrapper',
     /^\[[^\]\n]+\][^\n]*(?:<watchdog-notes|The watchdog plugin sent a message:)/mu,
   ],
-  ['§7.3 item 1: a note call of a watchdog agent', /→ mcp__watchdog__note\(/u],
+  ['§7.3 item 1: a note or resolve call of a watchdog agent', /→ mcp__watchdog__(?:note|resolve)\(/u],
   ['§7.3 item 1: the spawn prompt row of a watchdog agent', /^\[coordinator\]/mu],
   ['§7.3 items 4, 5: a synthetic Agent call of a spawn', /toolu_plugin_/u],
   ['§7.3 item 6: the stopped-review prompt', /Background agent "[^"\n]*" was stopped by the user/u],

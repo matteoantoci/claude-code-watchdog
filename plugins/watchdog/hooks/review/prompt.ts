@@ -1,7 +1,8 @@
+import { outdatedMark } from '../note/outdated';
 import { renderBatch } from './batch';
 import { recapPrompts, recapUpdates } from './recap';
 import type { Update } from '../feed/feed';
-import type { RecapNote } from '../note/history';
+import type { RecapEntry } from '../note/retract';
 import type { RecapSource } from './recap';
 
 // §7.7: what one spawn prompt is built from: the new updates (part 4), the watchdog's newest 20 notes
@@ -9,11 +10,19 @@ import type { RecapSource } from './recap';
 // `subagent` is the type of a watched subagent; its part 2 is its task.
 export type ReviewInput = RecapSource & {
   readonly updates: readonly Update[];
-  readonly notes: readonly RecapNote[];
+  readonly notes: readonly RecapEntry[];
   readonly subagent?: string;
 };
 
 const part = (heading: string, body: string): string[] => (body === '' ? [] : [`### ${heading}\n\n${body}`]);
+
+// §7.7, §10.8: one note with its severity, and for an open note its id and its outdated mark, then its delivery
+// state: `- [blocker · open k3x9 · may be outdated: 1 edit since] … (steered)`.
+const noteLine = (note: RecapEntry): string => {
+  const id = note.open === undefined ? [] : [`open ${note.open.id}`];
+  const mark = note.open === undefined ? undefined : outdatedMark(note.open.edits);
+  return `- [${[note.severity, ...id, ...(mark === undefined ? [] : [mark])].join(' · ')}] ${note.text} (${note.delivery})`;
+};
 
 // §7.7: the spawn prompt has 4 parts, each newest first: the watchdog's notes with their severity and
 // delivery state, the person's prompts, the older updates, and the new updates under omp's
@@ -22,13 +31,7 @@ const part = (heading: string, body: string): string[] => (body === '' ? [] : [`
 // §12.3: the compact prompt of a too-long retry collapses every update and has no older updates.
 export const reviewPrompt = (input: ReviewInput, options: { readonly isCompact?: boolean } = {}): string =>
   [
-    ...part(
-      'Your notes so far (newest first)',
-      input.notes
-        .toReversed()
-        .map((note) => `- [${note.severity}] ${note.text} (${note.delivery})`)
-        .join('\n')
-    ),
+    ...part('Your notes so far (newest first)', input.notes.toReversed().map(noteLine).join('\n')),
     ...part(
       input.subagent === undefined
         ? "The person's prompts since the watchdog started (newest first)"

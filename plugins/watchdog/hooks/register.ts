@@ -35,9 +35,9 @@ export const register: Register = (on, options) => {
   installGuidance(on);
   installAgents(on);
   installFeed(on);
-  installNote(on);
   installReview(on);
   installLog(on);
+  installNote(on);
   installSubagents(on);
   installDelivery(on, options);
   installTools(on);

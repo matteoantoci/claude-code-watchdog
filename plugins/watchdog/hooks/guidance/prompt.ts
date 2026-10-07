@@ -1,4 +1,4 @@
-import { NOTE_TOOL_NAME } from '../agents/spec';
+import { WATCHDOG_TOOL_NAMES } from '../agents/spec';
 import { fill, fillEach } from './template';
 
 // §8.2: the shipped fragments, as `prompts/context-files.md`, `memory-context.md` and `active-repo-watchdog.md`.
@@ -43,7 +43,7 @@ const memoryContext = (template: string, files: readonly ContextFile[], tools: r
     .filter((file) => file.type === MEMORY_TYPE)
     .map((file) => file.content.trim())
     .filter((text) => text !== '');
-  const hasMemoryTools = tools.some((tool) => tool.startsWith('mcp__') && tool !== NOTE_TOOL_NAME);
+  const hasMemoryTools = tools.some((tool) => tool.startsWith('mcp__') && !WATCHDOG_TOOL_NAMES.includes(tool));
   const kept = hasMemoryTools ? template : template.replace(MEMORY_TOOL_SENTENCE, '');
   return texts.length === 0 ? '' : fill(kept, { memoryInstructions: texts.join('\n\n') }).trim();
 };

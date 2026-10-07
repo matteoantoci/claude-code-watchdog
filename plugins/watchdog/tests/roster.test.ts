@@ -73,7 +73,12 @@ describe('roster from WATCHDOG.json (§4.2, §4.3)', () => {
     await startOn($);
 
     expect(seen.agents.map(({ name, model, effort, tools }) => ({ name, model, effort, tools }))).toEqual([
-      { name: 'security', model: 'sonnet', effort: 'high', tools: ['Read', 'mcp__watchdog__note'] },
+      {
+        name: 'security',
+        model: 'sonnet',
+        effort: 'high',
+        tools: ['Read', 'mcp__watchdog__note', 'mcp__watchdog__resolve'],
+      },
     ]);
     expect(seen.preflights.map((request) => request.model)).toEqual(['sonnet']);
     expect(await status($)).toBe(`${ON_HEAD}\nSecurity idle · ./WATCHDOG.json\nstyle disabled · ./WATCHDOG.json`);

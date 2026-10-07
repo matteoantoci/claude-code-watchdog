@@ -35,7 +35,7 @@ const NOTE_SCHEMA = {
 };
 
 describe('/watchdog on', () => {
-  test('registers the note tool and the watchdog:default agent, then runs one 1-token preflight', async ($, on: SessionStubs) => {
+  test('registers the note and resolve tools and the watchdog:default agent, then runs one 1-token preflight', async ($, on: SessionStubs) => {
     const seen = stubSession(on);
     await $.session.start(START);
     const registeredAtStart = seen.tools.length;
@@ -51,6 +51,21 @@ describe('/watchdog on', () => {
         ].join('\n'),
         inputSchema: NOTE_SCHEMA,
       },
+      {
+        name: 'resolve',
+        description: [
+          'Retract one of your open notes that no longer holds.',
+          "It leaves the person's band; a note not yet delivered never reaches the agent.",
+        ].join('\n'),
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'The id of an open note, as your notes so far list it.' },
+            reason: { type: 'string', description: 'Why the note no longer holds, in one short sentence.' },
+          },
+          required: ['id', 'reason'],
+        },
+      },
     ]);
     expect(seen.reads.map((path) => path.slice(path.lastIndexOf('/prompts/')))).toEqual([
       '/prompts/system.md',
@@ -63,7 +78,7 @@ describe('/watchdog on', () => {
         name: 'default',
         description: expect.any(String),
         prompt: 'BASE Granted tools: `Read`, `Grep`, `Glob`. max 4.',
-        tools: ['Read', 'Grep', 'Glob', 'mcp__watchdog__note'],
+        tools: ['Read', 'Grep', 'Glob', 'mcp__watchdog__note', 'mcp__watchdog__resolve'],
         disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit'],
         model: 'opus',
         effort: 'medium',

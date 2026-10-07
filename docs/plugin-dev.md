@@ -47,6 +47,12 @@ An area plugs into another area's work through the registries, called once in it
 
 Call `addStatusLines(() => [...lines])` in the area's `installX(on)`. Return `[]` for no line. The callback reads the area's module memory, so the hooks of the area must keep that memory current. Lines placed at `watchdogs` are the text form of rows that the status table (`status/`) draws itself.
 
+## Add a tool of the review agents
+
+1. Add its `ToolSpec` to `WATCHDOG_TOOLS` in `note/tool.ts`. `lifecycle/install.ts` registers the list at `session.start`, and `command/install.ts` again at `/watchdog on`. `WATCHDOG_TOOL_NAMES` (`agents/spec.ts`) derives each `mcp__watchdog__<name>`: each watchdog's agent gets them, the tool guard lets them through, and the roster leaves them out of a `tools` list.
+2. Serve the tool with a `tool.call` hook whose matcher names it as a literal, as `note/install.ts` does for `mcp__watchdog__note` and `mcp__watchdog__resolve`. The hook answers `{ result }` or `{ deny }` without `next(e)`, catches every error, and chains the same `.catch`.
+3. Add a line about it to `prompts/system.md`, and update the tool list of the tests that register it (`on-off`, `command`, `roster`).
+
 ## Add a `$.state` key
 
 1. Add one property inside `interface PluginState { watchdog: { … } }` in `types/index.d.ts`. `validate` sees only keys written there, not keys reached through an alias.

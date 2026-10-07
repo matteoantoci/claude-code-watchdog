@@ -22,9 +22,13 @@ const quote = (text: string): string =>
     .map((line) => (line === '' ? '>' : `> ${line}`))
     .join('\n');
 
+// §13.4, §10.8: each note with its state; a retracted note adds the review agent's reason.
 const notesText = (notes: ReviewRecord['notes']): string[] => [
   `- notes: ${notes.length === 0 ? 'none' : String(notes.length)}`,
-  ...notes.map((note) => `  - [${note.severity}] ${note.text} (${note.delivery})`),
+  ...notes.flatMap((note) => [
+    `  - [${note.severity}] ${note.text} (${note.delivery})`,
+    ...(note.reason === undefined ? [] : [`    - retracted: ${note.reason}`]),
+  ]),
 ];
 
 const usageText = (usage: ReviewRecord['usage']): string =>

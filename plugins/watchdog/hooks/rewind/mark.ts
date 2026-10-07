@@ -1,5 +1,6 @@
 // §14.4: rewind detection. Pure: the rewind area's hooks read the conversation, the stop area stops the reviews.
-import { FNV_OFFSET_BASIS, FNV_PRIME, MESSAGES_READ_CAP } from '../constants';
+import { MESSAGES_READ_CAP } from '../constants';
+import { fnv1a } from '../hash';
 import type { Feed } from '../feed/feed';
 import type { SessionMessage } from 'claude-code';
 
@@ -11,9 +12,7 @@ export const REWIND_MARKER = '[user rewound the conversation]';
 export type Mark = { readonly index: number; readonly hash: string; readonly isCapped: boolean };
 
 const hashOf = (message: SessionMessage): string =>
-  Array.from([message.role, message.text, ...message.toolUses.map((use) => use.tool_use_id)].join('\n'))
-    .reduce((hash, char) => Math.imul(hash ^ (char.codePointAt(0) ?? 0), FNV_PRIME) >>> 0, FNV_OFFSET_BASIS)
-    .toString();
+  fnv1a([message.role, message.text, ...message.toolUses.map((use) => use.tool_use_id)].join('\n')).toString();
 
 export const markOf = (messages: readonly SessionMessage[]): Mark | undefined => {
   const last = messages.at(-1);

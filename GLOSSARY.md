@@ -75,8 +75,14 @@ A note that is not delivered before the watched agent's turn ends. It becomes a 
 A delivery that starts a new turn after the primary agent stopped, so that it checks a late note.
 
 **Outdated note**:
-A note on a file that the watched agent edited after the review read its batch. The note is marked, not dropped. A later review of the same watchdog that reads those edits and does not send the note again supersedes it: the note leaves the band undelivered, or, when it was delivered, only its card goes.
+A note after whose review the watched agent edited files, whatever files the note names. The note is marked, not dropped.
 _Avoid_: stale note
+
+**Open note**:
+A note that waits for its delivery, or whose card still shows on the band. A later review of its watchdog sees it with its id and its outdated mark.
+
+**Retraction**:
+A review agent's `resolve` call on an open note of its own watchdog that no longer holds. The note leaves the band with the state `dropped:superseded` and, when it waits, never reaches the watched agent. A later review that stays silent retracts nothing.
 
 **Task notification**:
 The engine's prompt that reports a finished background subagent to the primary agent. It starts a main turn, or it goes into a turn that runs. It is not a prompt from the person.

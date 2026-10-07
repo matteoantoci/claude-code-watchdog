@@ -1,4 +1,5 @@
 import { MAX_TURNS } from '../constants';
+import { WATCHDOG_TOOLS } from '../note/tool';
 import { resolveEffort } from '../roster/model';
 import type { SessionEffort } from '../roster/model';
 import type { Watchdog } from './roster';
@@ -6,8 +7,9 @@ import type { AgentSpec } from 'claude-code';
 
 export const TYPE_PREFIX = 'watchdog:';
 
-// §8.3: the model calls the `note` tool by this name.
-export const NOTE_TOOL_NAME = 'mcp__watchdog__note';
+// §8.3, §10.8: the model calls each tool of the mod (`note`, `resolve`) as `mcp__watchdog__<name>`; each watchdog
+// has them all, whatever its roster entry lists.
+export const WATCHDOG_TOOL_NAMES: readonly string[] = WATCHDOG_TOOLS.map((tool) => `mcp__watchdog__${tool.name}`);
 
 // §6.1: `disallowedTools` removes the mutating tools from the agent's request.
 const DISALLOWED_TOOLS = ['Bash', 'Edit', 'Write', 'NotebookEdit'];
@@ -27,7 +29,7 @@ export const agentSpec = (watchdog: Watchdog, prompt: string, session: SessionEf
   name: watchdog.slug,
   description: `Watchdog ${watchdog.name}: reviews the primary agent's updates. Only the watchdog plugin spawns it.`,
   prompt,
-  tools: [...watchdog.tools, NOTE_TOOL_NAME],
+  tools: [...watchdog.tools, ...WATCHDOG_TOOL_NAMES],
   disallowedTools: DISALLOWED_TOOLS,
   model: watchdog.model,
   effort: resolveEffort(watchdog.effort, session),

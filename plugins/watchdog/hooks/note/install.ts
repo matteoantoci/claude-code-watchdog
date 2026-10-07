@@ -22,19 +22,19 @@ import {
   watchdogNotes,
 } from './history';
 import { deliveryFor, guardNote, heldNoteOf, holdNote, logRow, replaceHeldNote, watchHeldNotes } from './notes';
-import { recordNoteCall } from './outdated';
-import { SUPERSEDED, settleReview } from './supersede';
+import { SUPERSEDED, retract, retractionOf } from './retract';
 import type { OnEvents } from '../on';
 import type { NoteCall } from './call';
 import type { Verdict } from './guard';
 import type { NoteHistory } from './history';
 import type { HeldNote, Note } from './notes';
+import type { ResolveCall } from './retract';
 import type { Severity } from './tool';
 import type { EngineInterface, MatchedHook, ToolCallResult } from 'claude-code';
 
 type NoteHook = MatchedHook<'tool.call', { tool: 'mcp__watchdog__note' }>;
 
-type ReviewEndHook = MatchedHook<'turn.complete', { agentId: RegExp; reason: 'answer' }>;
+type ResolveHook = MatchedHook<'tool.call', { tool: 'mcp__watchdog__resolve' }>;
 
 // §9.5: the ack of an admitted note.
 const ADMITTED = 'Queued. Do not re-raise.';
@@ -156,13 +156,12 @@ const refusal = ($: EngineInterface, note: Note): ToolCallResult | undefined => 
 
 // §8.3, §12.6, §9: a note of a known watchdog passes the destructive check first, then the guards of other
 // areas, then the emission guard of its watched agent (§11.4); the history is written back after each
-// admitted note. §10.8: each call of a review counts for the repeat check at its end.
+// admitted note.
 const admitNote = async ($: EngineInterface, e: NoteCall): Promise<ToolCallResult> => {
   const note = noteOf(e);
   if ('deny' in note) {
     return note;
   }
-  recordNoteCall(note);
   const refused = refusal($, note);
   if (refused !== undefined) {
     return refused;
@@ -192,32 +191,45 @@ const onNote: NoteHook = async ($, e) => {
   }
 };
 
-// §10.8: a review that ends with an answer settles the notes of its watchdog before `next(e)`, so the review area
-// beneath has not moved its cursor and the feed still holds the rows of its batch. Each superseded held note writes
-// one row; a refused write of the review log loses only what a reload would carry over.
-const onReviewEnd: ReviewEndHook = async ($, e, next) => {
-  const superseded = settleReview(e.agentId);
-  superseded.forEach((note) => {
-    $.ui.log(logRow({ ...note, delivery: SUPERSEDED }, watchdogBySlug(note.watchdog)?.name ?? note.watchdog));
-  });
-  if (superseded.length > 0) {
-    await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog()).catch(() => undefined);
+// §10.8: a retraction drops the open note and writes one row; the history of the note's watched agent and the review
+// log are written back. A refused write keeps the live copies; the store area shows a refused history write.
+const retractNote = async ($: EngineInterface, e: ResolveCall): Promise<ToolCallResult> => {
+  const asked = retractionOf(e);
+  if (!('note' in asked)) {
+    return asked;
   }
-  return next(e);
+  const { note, reason } = asked;
+  const sessionId = await loadHistory($, note.subagent?.agentId);
+  const ack = retract(note, reason);
+  $.ui.log(logRow({ ...note, delivery: SUPERSEDED }, watchdogBySlug(note.watchdog)?.name ?? note.watchdog));
+  await saveHistory($, sessionId, note.subagent?.agentId);
+  await $.state.set({ plugin: 'watchdog', key: 'log' }, currentLog()).catch(() => undefined);
+  return { result: ack };
+};
+
+// §8.3, §10.8: the `resolve` hook answers like the `note` hook: without `next(e)`, and it catches every error.
+const onResolve: ResolveHook = async ($, e) => {
+  try {
+    return await retractNote($, e);
+  } catch (error) {
+    return { deny: `The note was not retracted: ${errorText(error)}` };
+  }
 };
 
 // §8.3: the `.catch` form of 2.1.290; it denies only a call from a watchdog agent or a fork. The tool
-// name is a literal so that `claude plugin validate` lists the matcher. §7.7, §9.6: the recap shows the state each
-// held note has now (a new route, a delivery); the next write of the history keeps it. Install before the review
-// area, whose `turn.complete` hook moves the cursor of the review that ends (§10.8); the matcher only tells this
-// `on()` from the other areas'.
-export const installNote = (on: OnEvents<'tool.call' | 'turn.complete'>): void => {
+// names are literals so that `claude plugin validate` lists the matchers. §7.7, §9.6: the recap shows the state each
+// held note has now (a new route, a delivery); the next write of the history keeps it.
+export const installNote = (on: OnEvents<'tool.call'>): void => {
   on('tool.call', { tool: 'mcp__watchdog__note' }, onNote).catch((_$, e, next) =>
     next.called || next.origin.plugin !== 'watchdog' || e.agentId === undefined
       ? next(e)
       : { deny: 'The note was not recorded.' }
   );
-  on('turn.complete', { agentId: /^/u, reason: 'answer' }, onReviewEnd);
+  on('tool.call', { tool: 'mcp__watchdog__resolve' }, onResolve).catch((_$, e, next) =>
+    next.called || next.origin.plugin !== 'watchdog' || e.agentId === undefined
+      ? next(e)
+      : { deny: 'The note was not retracted.' }
+  );
   watchHeldNotes((_before, after) => {
     const change = { key: normalizeNote(after.text), delivery: after.delivery };
     changeLiveHistory(after.subagent?.agentId, (history) => updateNote(history, after.watchdog, change));

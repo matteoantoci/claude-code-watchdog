@@ -98,14 +98,22 @@ export const restoreLog = (records: readonly LogRecord[]): void => {
   memory.log = [...records, ...memory.log].slice(-LOG_RECORD_CAP);
 };
 
-// §10.8, §13.4: a held note that a later review superseded shows its new state in the record of the review that
-// sent it, while the log keeps that record.
-export const markLoggedNote = (agentId: string, text: string, delivery: DeliveryState): void => {
+// §10.8, §13.4: a retracted note shows its new state and the retraction's reason in the record of the review that
+// sent it, while the log keeps that record, or in its trace while that review runs.
+export const markLoggedNote = (
+  agentId: string,
+  text: string,
+  change: { readonly delivery: DeliveryState; readonly reason: string }
+): void => {
+  const mark = (notes: readonly LogNote[]): LogNote[] =>
+    notes.map((note) => (note.text === text ? { ...note, ...change } : note));
   memory.log = memory.log.map((record) =>
-    record.kind === 'review' && record.agentId === agentId
-      ? { ...record, notes: record.notes.map((note) => (note.text === text ? { ...note, delivery } : note)) }
-      : record
+    record.kind === 'review' && record.agentId === agentId ? { ...record, notes: mark(record.notes) } : record
   );
+  const trace = traces.get(agentId);
+  if (trace !== undefined) {
+    traces.set(agentId, { ...trace, notes: mark(trace.notes) });
+  }
 };
 
 export const recentPrompts = (): readonly ReviewPrompt[] => memory.prompts;

@@ -53,7 +53,7 @@ export const clearGuardKeys = (history: NoteHistory): NoteHistory => ({
   ),
 });
 
-// §10.8: a superseded note's key leaves the guard keys of its watchdog, so a later review may raise it again.
+// §10.8: a retracted note's key leaves the guard keys of its watchdog, so a later review may raise it again.
 export const forgetGuardKey = (history: NoteHistory, slug: string, key: string): NoteHistory => {
   const { keys, notes } = watchdogNotes(history, slug);
   return withNotes(history, slug, { keys: keys.filter((known) => known.key !== key), notes });

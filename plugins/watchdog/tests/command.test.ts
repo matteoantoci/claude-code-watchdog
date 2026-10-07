@@ -61,7 +61,7 @@ describe('/watchdog command', () => {
 });
 
 describe('/watchdog registration', () => {
-  test('session.start registers the note tool after the version gate, the command last', async ($, on: Stubs) => {
+  test('session.start registers the note and resolve tools after the version gate, the command last', async ($, on: Stubs) => {
     const calls: string[] = [];
     on('session.version', () => {
       calls.push('session.version');
@@ -77,7 +77,12 @@ describe('/watchdog registration', () => {
     });
     on('session.start', (_$, e) => ({ cwd: e.cwd }));
     await $.session.start(START);
-    expect(calls).toEqual(['session.version', 'tool.register note', 'command.register watchdog']);
+    expect(calls).toEqual([
+      'session.version',
+      'tool.register note',
+      'tool.register resolve',
+      'command.register watchdog',
+    ]);
   });
 
   test('below 2.1.290, session.start registers no note tool', async ($, on: Stubs) => {

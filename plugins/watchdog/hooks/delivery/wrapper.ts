@@ -4,7 +4,7 @@ import type { Severity } from '../note/tool';
 
 // §10.7: one note as the wrapper writes it. `watchdog` is the name, undefined for the default watchdog;
 // `subagent` the type of a late note on a subagent; `turnsAgo` is the `turn.start` counter now minus its value
-// at the note's batch; §10.8: `edits` counts the edits since that batch on a file the note names.
+// at the note's batch; §10.8: `edits` counts the edits of the watched agent since that batch.
 export type WrappedNote = {
   readonly watchdog?: string;
   readonly severity: Severity;
@@ -40,7 +40,7 @@ export const wrapNotes = (guidance: string, notes: readonly WrappedNote[]): stri
   ['<watchdog-notes>', guidance.trim(), ...notes.map(noteElement), '</watchdog-notes>'].join('\n');
 
 // §10.7: a held note as the wrapper writes it: no name for the default watchdog, the type of a note on a
-// subagent, its age in main turns at `turn`; §10.8: the edits since its batch that it names.
+// subagent, its age in main turns at `turn`; §10.8: the edits since its batch.
 export const wrappedNote = (
   note: Note,
   at: { readonly name: string; readonly turn: number; readonly edits: number }

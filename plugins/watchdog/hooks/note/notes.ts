@@ -54,8 +54,8 @@ const bindings: NoteBinding[] = [];
 const held: HeldNote[] = [];
 
 // §13.1, §7.7: a watcher sees each note that the held list gets (`before` undefined) or changes in place (a raise,
-// a new route, a new batch, §10.8), and each note a delivery takes, in the state it goes out in; a note that leaves
-// the list undelivered (displaced, superseded) reaches no watcher.
+// a new route), and each note a delivery takes, in the state it goes out in; a note that leaves the list undelivered
+// (displaced, retracted) reaches no watcher.
 export type HeldNoteWatcher = (before: HeldNote | undefined, after: HeldNote) => void;
 
 const watchers: HeldNoteWatcher[] = [];
@@ -161,5 +161,5 @@ export const clearHeldNotes = (): void => {
 };
 
 // §13.2, §11.3: the `$.ui.log` row of one note; a note on a subagent shows its type beside the severity.
-export const logRow = (note: HeldNote, name: string): string =>
+export const logRow = (note: Pick<HeldNote, 'severity' | 'subagent' | 'text' | 'delivery'>, name: string): string =>
   `[${[note.severity, ...(note.subagent === undefined ? [] : [note.subagent.type])].join(' · ')}] ${name}: ${note.text} (${note.delivery})`;

@@ -7,6 +7,7 @@ import {
   BAND_TINY_COLUMNS,
   BAND_TINY_TEXT_MAX,
 } from '../constants';
+import { outdatedMark } from '../note/outdated';
 import { severityRank } from '../note/tool';
 import type { Severity } from '../note/tool';
 import type { Band, Card } from './cards';
@@ -139,6 +140,7 @@ const header = (el: BandElements, card: Card, at: { turn: number; sentence: stri
     children: ` ${card.severity.toUpperCase()} `,
   });
   const dim = (text: string): RenderElement => el.Text({ dimColor: true, children: text });
+  const mark = outdatedMark(card.edits);
   return el.Text({
     wrap: 'truncate-end',
     children: [
@@ -146,7 +148,7 @@ const header = (el: BandElements, card: Card, at: { turn: number; sentence: stri
       ' ',
       el.Text({ bold: true, children: card.name }),
       ...(card.subagent === undefined ? [] : [dim(` · ${card.subagent}`)]),
-      ...(card.edits > 0 ? [dim(` · may be outdated: ${plural(card.edits, 'edit')} since`)] : []),
+      ...(mark === undefined ? [] : [dim(` · ${mark}`)]),
       ...(at.sentence === undefined ? [] : [dim(' · '), at.sentence]),
       dim(` · ${ago(card.turn, at.turn)} · ${card.delivery}`),
     ],

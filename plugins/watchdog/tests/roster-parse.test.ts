@@ -132,7 +132,7 @@ describe('tools of an entry (§6.3)', () => {
     ]);
   });
 
-  test('tools [] gives no tools, so the agent has note only', () => {
+  test('tools [] gives no tools, so the agent has only note and resolve', () => {
     expect(entries(project({ watchdogs: [{ name: 'a', tools: [] }] }))[0]?.tools).toEqual([]);
   });
 });
