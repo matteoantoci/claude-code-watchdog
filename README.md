@@ -3,7 +3,7 @@
 A second model reviews each step that Claude Code takes and sends it short notes while it works: `nit`, `concern` or
 `blocker`.
 
-![A watchdog flags a planted bug and nudges Claude, which fixes it; the band card marks the note as maybe outdated and opens to the whole note, /watchdog status shows the review cost, and a later review retracts the note, so the band's rule counts no open notes](docs/assets/demo.gif)
+![A watchdog flags a planted bug and nudges Claude, which fixes it; the band card marks the note as maybe outdated and opens to the whole note, /watchdog status shows the review cost, and a later review retracts the note, so the band's count line reads no open notes](docs/assets/demo.gif)
 
 ## Requirements
 
