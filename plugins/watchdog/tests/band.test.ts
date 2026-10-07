@@ -8,12 +8,12 @@ import {
   startReview,
   stubDelivery,
 } from './fixtures/delivery';
-import { stubState } from './fixtures/on-state';
-import { HEADLESS_START, HOME, NOW, START, typed } from './fixtures/session';
+import { stateIn, stubState } from './fixtures/on-state';
+import { HEADLESS_START, HOME, NOW, SESSION_ID, START, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { BandProps, BandSurface } from './fixtures/band';
 import type { DeliveryEvents } from './fixtures/delivery';
-import type { StateSeed } from './fixtures/on-state';
+import type { OnStateSeen, StateSeed } from './fixtures/on-state';
 import type { Engine, Mounted } from 'claude-code/testing';
 
 type Stubs = OnEvents<DeliveryEvents | 'state.get' | 'state.set' | 'ui.render'>;
@@ -47,10 +47,11 @@ const hinted = (title: string, hotkeys: string, columns = WIDE): string => {
   return `── ${title} ${'─'.repeat(columns - title.length - hint.length - 8)} ${hint} ──`;
 };
 
-const stubBand = (on: Stubs, options: Parameters<typeof stubDelivery>[1] = {}, seed: StateSeed = {}): void => {
+const stubBand = (on: Stubs, options: Parameters<typeof stubDelivery>[1] = {}, seed: StateSeed = {}): OnStateSeen => {
   stubDelivery(on, options);
-  stubState(on, seed);
+  const state = stubState(on, seed);
   stubEngineBand(on);
+  return state;
 };
 
 // One review's 4 notes while the session is idle: the concerns and the blocker wait for a nudge, the nit for
@@ -196,15 +197,16 @@ describe('band cards (§13.1)', () => {
     );
   });
 
-  test('a displaced note leaves the band; the count line keeps the session totals (§9.4)', async ($, on: Stubs) => {
+  test('a displaced note leaves the band and the count line (§9.4)', async ($, on: Stubs) => {
     const file = { text: JSON.stringify({ maxNotesPerReview: 1 }), mtimeMs: 1 };
     stubBand(on, { files: { [`${HOME}/.claude/WATCHDOG.json`]: file } });
     await startReview($);
     await sendNote($, 'nit', NIT);
+    expect((await rows($)).map((shown) => shown['watchdog-count'])).toEqual(onBoth(hinted('watchdog · 1 nit', 'a')));
     await sendNote($, 'concern', NEW_CONCERN);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': hinted('watchdog · 1 concern · 1 nit', 'a'),
+        'watchdog-count': hinted('watchdog · 1 concern', 'a'),
         'watchdog-card-0': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudge pending`,
       })
     );
@@ -230,18 +232,31 @@ describe('band rule (§13.1)', () => {
   });
 
   test('over full cards the rule ends with the focus hint; the hint goes before the title is cut', async ($, on: Stubs) => {
-    const card = { key: 'k', seq: 1, name: 'default', severity: 'blocker', text: BLOCKER, turn: 1, delivery: 'nudged' };
-    const totals = { blocker: 100_000, concern: 100_000, nit: 100_000 };
-    const band = { cards: [card], totals, turn: 1, seq: 1, expanded: null };
+    // 12,000 open cards: 1000 blockers, 1000 concerns, 10,000 nits.
+    const severities = [
+      ...Array.from({ length: 1000 }, () => 'blocker'),
+      ...Array.from({ length: 1000 }, () => 'concern'),
+      ...Array.from({ length: 10_000 }, () => 'nit'),
+    ];
+    const cards = severities.map((severity, index) => ({
+      key: `k${index}`,
+      seq: index + 1,
+      name: 'default',
+      severity,
+      text: BLOCKER,
+      turn: 1,
+      delivery: 'nudged',
+    }));
+    const band = { cards, turn: 1, seq: cards.length, expanded: null };
     stubBand(on, {}, { state: { isOn: true, source: '/watchdog on' }, band });
     await $.session.start(START);
-    const title = 'watchdog · 100000 blockers · 100000 concerns · 100000 nits';
+    const title = 'watchdog · 1000 blockers · 1000 concerns · 10000 nits';
     const counts = async (bodyColumns: number) =>
       (await rows($, { bodyColumns })).map((shown) => shown['watchdog-count']);
-    // The title is 58 cells and the hint `ctrl+x tab · a` 14: with 2 rule cells and a space on each side of both,
-    // the hint needs 82 columns.
-    expect(await counts(82)).toEqual(onBoth(hinted(title, 'a', 82)));
-    expect(await counts(81)).toEqual(onBoth(ruled(title, 81)));
+    // The title is 53 cells and the hint `ctrl+x tab · a/b/c` 18: with 2 rule cells and a space on each side of
+    // both, the hint needs 81 columns.
+    expect(await counts(81)).toEqual(onBoth(hinted(title, 'a/b/c', 81)));
+    expect(await counts(80)).toEqual(onBoth(ruled(title, 80)));
   });
 
   test('with no room for 2 rule cells after the title, the title shows alone', async ($, on: Stubs) => {
@@ -380,15 +395,19 @@ describe('narrow band (§13.1)', () => {
 });
 
 describe('band clear and off (§13.1, §5.2)', () => {
-  test('a person prompt clears the cards; the count line keeps the session totals', async ($, on: Stubs) => {
+  test('a person prompt clears the cards and their count; a later card counts alone', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
     await $.prompt.submit(PERSON_PROMPT);
+    expect(await rows($)).toEqual(onBoth({ 'watchdog-count': ruled('watchdog · no open notes') }));
+    expect((await rows($, { bodyColumns: 45 })).map((shown) => shown['watchdog-count'])).toEqual(
+      onBoth(ruled('watchdog · no open notes', 45))
+    );
     await sendNote($, 'nit', 'The README still names the old CLI flag --legacy.');
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 2 nits', 'a'),
+        'watchdog-count': hinted('watchdog · 1 nit', 'a'),
         'watchdog-card-0':
           '▸ NIT  default · The README still names the old CLI flag --legacy. · just now · aside on next prompt',
       })
@@ -448,14 +467,15 @@ describe('band after a reload (§14.6, §11.3)', () => {
         subagent: 'Explore',
       },
     ],
-    totals: { blocker: 1, concern: 0, nit: 0 },
     turn: 2,
     seq: 1,
     expanded: null,
   };
 
+  const ON = { isOn: true, source: '/watchdog on' };
+
   test('the cards come back from $.state; a note on a subagent shows its type', async ($, on: Stubs) => {
-    stubBand(on, {}, { state: { isOn: true, source: '/watchdog on' }, band: STORED });
+    stubBand(on, {}, { state: ON, band: STORED });
     await $.session.start(START);
     expect(await rows($)).toEqual(
       onBoth({
@@ -466,6 +486,19 @@ describe('band after a reload (§14.6, §11.3)', () => {
     expect((await rows($, { bodyColumns: 75 })).map((shown) => shown['watchdog-card-0'])).toEqual(
       onBoth(`[blocker · Explore] ${BLOCKER}`)
     );
+  });
+
+  test('a value of an earlier version with the session totals loads; the next write drops them', async ($, on: Stubs) => {
+    const band = { ...STORED, totals: { blocker: 7, concern: 3, nit: 0 } };
+    const state = stubBand(on, {}, { state: ON, band });
+    await $.session.start(START);
+    expect((await rows($)).map((shown) => shown['watchdog-count'])).toEqual(
+      onBoth(hinted('watchdog · 1 blocker', 'a'))
+    );
+    await $.turn.start({ text: 'go on', turnId: 't2' });
+    const written = stateIn(state, SESSION_ID, 'band');
+    expect(written).toMatchObject({ cards: [{ key: STORED.cards[0]?.key }], seq: 1, expanded: null });
+    expect(JSON.stringify(written)).not.toContain('totals');
   });
 });
 
@@ -486,7 +519,7 @@ describe('failure line (§12.5)', () => {
     await $.session.start(START);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': ruled('watchdog · no notes'),
+        'watchdog-count': ruled('watchdog · no open notes'),
         'watchdog-trouble': 'watchdog halted · retry in 12 min · /watchdog on to retry now',
       })
     );

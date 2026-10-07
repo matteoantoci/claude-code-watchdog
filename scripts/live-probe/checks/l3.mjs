@@ -688,8 +688,9 @@ export const limitState = {
 const nudgeStarts = (events) =>
   ofEvent(events, 'turn.start', (event) => !event.agentId && String(event.text).startsWith(NUDGE_FRAME));
 
-// §13.1: the band's count line names each severity with its count (`watchdog · 2 concerns · 1 nit`), and a card
-// reads `<SEVERITY>  <watchdog> · [<outdated mark> · ][<sentence> · ]<age> · <delivery state>` (§10.8).
+// §13.1: the band's count line names each severity of the open cards with its count (`watchdog · 2 concerns ·
+// 1 nit`), and a card reads `<SEVERITY>  <watchdog> · [<outdated mark> · ][<sentence> · ]<age> · <delivery state>`
+// (§10.8).
 const SEVERITY_WORD = '(?:blockers?|concerns?|nits?)';
 const CARD_STATES = 'steered|nudge pending|nudged|held|displaced|discarded|aside on next prompt';
 const BAND_CARD = new RegExp(`^\\s*(BLOCKER|CONCERN|NIT)\\s+(\\S+) · ([^\\n]+?) · (${CARD_STATES})\\s*$`, 'gmu');
@@ -1194,7 +1195,7 @@ export const checks = [
   },
   {
     id: 'l3-band-cards-empty',
-    title: 'With no notes, the band paints only the count line "watchdog · no notes"',
+    title: 'With no open note, the band paints only the count line "watchdog · no open notes"',
     source: BAND,
     kind: 'deterministic',
     scenario: 'l3-session',
@@ -1204,7 +1205,7 @@ export const checks = [
       const card = /^\s*(BLOCKER|CONCERN|NIT)\s+\S+ · /mu.test(screen);
       return expectAll(
         {
-          'the count line reads "watchdog · no notes"': /^watchdog · no notes/mu.test(screen),
+          'the count line reads "watchdog · no open notes"': /^watchdog · no open notes/mu.test(screen),
           'no card is painted': !card,
         },
         [flat(screen.split('\n').find((line) => line.startsWith('watchdog · ')) ?? 'no count line', 160)]

@@ -93,6 +93,14 @@ const nudges = (seen: DeliverySeen): string[] =>
 const cards = (state: OnStateSeen): Band['cards'] =>
   (stateIn(state, SESSION_ID, 'band') as Band | undefined)?.cards ?? [];
 
+// §13.1: the text of the count line on the terminal.
+const countLine = async ($: Engine): Promise<string | undefined> => {
+  const ui = await $.ui.mount(bandTarget('terminal', { bodyColumns: 200 }));
+  const text = (await ui.find({ key: 'watchdog-count' }))?.text;
+  await ui.unmount();
+  return text;
+};
+
 const setUp = (
   on: Stubs,
   options: Parameters<typeof stubDelivery>[1] = {}
@@ -197,10 +205,12 @@ describe('§10.8 a retraction', () => {
     );
     const second = await learnReview($, 2);
     const rows = seen.logs.length;
+    expect(await countLine($)).toMatch(/^── watchdog · 1 blocker · 1 concern ─/u);
 
     expect(await resolve($, second, { id: blockerId, reason: REASON })).toEqual({ result: 'Retracted.' });
     expect(seen.logs.slice(rows)).toEqual([`[blocker] default: ${BLOCKER} (dropped:superseded)`]);
     expect(cards(state).map((card) => card.text)).toEqual([OTHER]);
+    expect(await countLine($)).toMatch(/^── watchdog · 1 concern ─/u);
     const records = state.logWrites.at(-1) as readonly LogRecord[];
     const sent = records.find((record) => record.kind === 'review' && record.agentId === first);
     expect(sent?.kind === 'review' ? sent.notes : []).toEqual([

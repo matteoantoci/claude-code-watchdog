@@ -29,7 +29,8 @@ export type BandView = {
 // §13.1: full cards, one line `[<severity>] <text>` for each note below 80 `bodyColumns`, the cut text below 50.
 type Mode = 'full' | 'line' | 'tiny';
 
-type Totals = Band['totals'];
+// The number of cards of each severity.
+type Counts = Readonly<Record<Severity, number>>;
 
 // §13.1: a rule title as text, for its width, and as the elements that draw it.
 type Title = { readonly text: string; readonly parts: readonly RenderChildren[] };
@@ -69,19 +70,19 @@ const ago = (turn: number, now: number): string => {
 const severityText = (el: BandElements, severity: Severity, text: string): RenderElement =>
   el.Text({ color: COLORS[severity], bold: severity !== 'nit', dimColor: severity === 'nit', children: text });
 
-// `1 blocker · 3 concerns · 1 nit`; a severity with no note is left out. The rule measures this text, so its
+// `1 blocker · 3 concerns · 1 nit`; a severity with no card is left out. The rule measures this text, so its
 // width and the drawn counts (`severityParts`) come from one list.
-const counted = (totals: Totals): { readonly severity: Severity; readonly text: string }[] =>
-  SEVERITIES.filter((severity) => totals[severity] > 0).map((severity) => ({
+const counted = (counts: Counts): { readonly severity: Severity; readonly text: string }[] =>
+  SEVERITIES.filter((severity) => counts[severity] > 0).map((severity) => ({
     severity,
-    text: plural(totals[severity], severity),
+    text: plural(counts[severity], severity),
   }));
 
 // The counts of `counted`, each in its color.
-const severityParts = (el: BandElements, totals: Totals): RenderChildren[] =>
-  counted(totals).flatMap(({ severity, text }, index) => [index === 0 ? '' : ' · ', severityText(el, severity, text)]);
+const severityParts = (el: BandElements, counts: Counts): RenderChildren[] =>
+  counted(counts).flatMap(({ severity, text }, index) => [index === 0 ? '' : ' · ', severityText(el, severity, text)]);
 
-const totalsOf = (cards: readonly Card[]): Totals => ({
+const countsOf = (cards: readonly Card[]): Counts => ({
   blocker: cards.filter((card) => card.severity === 'blocker').length,
   concern: cards.filter((card) => card.severity === 'concern').length,
   nit: cards.filter((card) => card.severity === 'nit').length,
@@ -115,18 +116,25 @@ const ruled = (el: BandElements, title: Title, at: { columns: number; hint?: str
   return el.Text({ wrap: 'truncate-end', children: parts });
 };
 
-// §13.1: the first row counts the notes of the session; the cut form only their number.
-const countTitle = (el: BandElements, totals: Totals, mode: Mode): Title => {
-  const total = totals.blocker + totals.concern + totals.nit;
-  if (mode === 'tiny') {
-    const text = `watchdog · ${plural(total, 'note')}`;
+// §13.1: the first row counts the open cards, those under `+N more` too, so a card that leaves lowers it; the cut
+// form only their number.
+const countTitle = (el: BandElements, cards: readonly Card[], mode: Mode): Title => {
+  if (cards.length === 0) {
+    const text = 'watchdog · no open notes';
     return { text, parts: [el.Text({ dimColor: true, children: text })] };
   }
-  const counts = counted(totals).map(({ text }) => text);
+  if (mode === 'tiny') {
+    const text = `watchdog · ${plural(cards.length, 'note')}`;
+    return { text, parts: [el.Text({ dimColor: true, children: text })] };
+  }
+  const counts = countsOf(cards);
   const lead = el.Text({ dimColor: true, children: 'watchdog · ' });
-  return total === 0
-    ? { text: 'watchdog · no notes', parts: [lead, el.Text({ dimColor: true, children: 'no notes' })] }
-    : { text: `watchdog · ${counts.join(' · ')}`, parts: [lead, ...severityParts(el, totals)] };
+  return {
+    text: `watchdog · ${counted(counts)
+      .map(({ text }) => text)
+      .join(' · ')}`,
+    parts: [lead, ...severityParts(el, counts)],
+  };
 };
 
 // §13.1, §11.3: the severity badge (a colored background with `inverseText`), the watchdog, a subagent's type, the
@@ -225,7 +233,7 @@ const cardList = (el: BandElements, view: BandView, mode: Mode): RenderElement[]
     wrap: 'truncate-end',
     children: [
       el.Text({ dimColor: true, children: `  +${hidden.length} more: ` }),
-      ...severityParts(el, totalsOf(hidden)),
+      ...severityParts(el, countsOf(hidden)),
     ],
   });
   return [...cards, row(el, 'watchdog-more', more)];
@@ -245,7 +253,7 @@ export const bandTree = (el: BandElements, view: BandView): RenderElement | unde
   const mode = modeOf(view.columns);
   // §13.1: the focus hint only over full cards, which have a Button each.
   const buttons = mode === 'full' ? Math.min(view.band.cards.length, BAND_CARD_LIMIT) : 0;
-  const count = ruled(el, countTitle(el, view.band.totals, mode), {
+  const count = ruled(el, countTitle(el, view.band.cards, mode), {
     columns: view.columns,
     hint: buttons === 0 ? undefined : focusHint(buttons),
   });

@@ -35,7 +35,16 @@ describe('band cards (§13.1, §11.3)', () => {
       { subagent: 'Explore', delivery: 'nudged' },
       { subagent: undefined, delivery: 'steered' },
     ]);
-    expect(bandState(3)).toMatchObject({ totals: { blocker: 0, concern: 2, nit: 0 }, turn: 3, seq: 2 });
+    expect(bandState(3)).toMatchObject({ turn: 3, seq: 2 });
+  });
+
+  test('a band of an earlier version comes back without its session totals', () => {
+    restoreBand(EMPTY_BAND);
+    addCard(held());
+    const { cards } = bandState(2);
+    const earlier = { cards, totals: { blocker: 0, concern: 9, nit: 0 }, turn: 2, seq: 1, expanded: null };
+    restoreBand(earlier);
+    expect(bandState(2)).toEqual({ cards, turn: 2, seq: 1, expanded: null });
   });
 });
 

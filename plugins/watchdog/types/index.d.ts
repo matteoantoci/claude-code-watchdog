@@ -181,11 +181,10 @@ export type WatchdogCard = {
   readonly edits: number;
 };
 
-// §13.1: the cards, the session totals of the count line, the turn counter the card ages count from (0 with
-// no card), the last `seq` given, and the `key` of the one card whose whole body shows (null when none).
+// §13.1: the open cards, which the count line counts, the turn counter the card ages count from (0 with no card),
+// the last `seq` given, and the `key` of the one card whose whole body shows (null when none).
 export type WatchdogBand = {
   readonly cards: readonly WatchdogCard[];
-  readonly totals: { readonly blocker: number; readonly concern: number; readonly nit: number };
   readonly turn: number;
   readonly seq: number;
   readonly expanded: string | null;

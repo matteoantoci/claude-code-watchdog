@@ -50,7 +50,7 @@ const afterTurnComplete: Hook<'turn.complete'> = async ($, e, next) => {
   return result;
 };
 
-// §13.1: a person prompt clears the cards; the count line keeps the session totals.
+// §13.1: a person prompt clears the cards; the count line then shows no open note.
 const onPrompt: Hook<'prompt.submit'> = async ($, e, next) => {
   if (isPersonPrompt(e.origin)) {
     clearCards();
