@@ -1,104 +1,80 @@
 # watchdog
 
-A Claude Code plugin with a hooks module. Watchdog agents review each update of the agent you work with, each on its own
-model, and push short notes to it: `nit`, `concern` or `blocker`.
+A second model reviews each step that Claude Code takes and sends it short notes while it works: `nit`, `concern` or
+`blocker`.
+
+![A watchdog flags a planted bug, Claude fixes it, and /watchdog status shows the review cost](docs/assets/demo.gif)
 
 ## Requirements
 
-Claude Code 2.1.290 or later. The npm `stable` channel (2.1.285 on 2026-10-06) has no mods. Below 2.1.290 the plugin
-shows `unsupported`. Desktop support starts when Claude.app bundles Claude Code 2.1.290 or later.
+Claude Code 2.1.290 or later. Watchdog is a mod: a plugin whose code Claude Code runs inside your session. The npm
+`stable` channel (2.1.285 on 2026-10-06) has no mods. Below 2.1.290 the plugin shows `unsupported`. Desktop support
+starts when Claude.app bundles Claude Code 2.1.290 or later.
 
-The built-in "You should know" mod and the watchdog both cost tokens on the same session. "You should know" forks the
-conversation on the session's own model every 6th model request of a turn; each watchdog review is one more agent on
-its own model. Turn "You should know" off in `/plugin` if you do not want to pay for both.
-
-## Install
+## Quick start
 
 ```
 /plugin marketplace add matteoantoci/claude-code-watchdog
 /plugin install watchdog@matteoantoci
 ```
 
-## Use
+Then run `/watchdog on` (reviews are off until you do) and ask Claude for a small change. The note shows as a
+`watchdog: [concern] …` line in the transcript and as a card, the plugin's note box above the prompt box. Run
+`/watchdog status` to see each watchdog's reviews, notes, tokens and cost.
 
-- `/watchdog` or `/watchdog status`: a table with each watchdog's state, reviews, notes, tokens and cost, and the
-  session totals. Below 80 columns it narrows to `name state $`. The cost comes from the plugin's own price table
-  (`hooks/prices.ts`); a model that is not in it shows `$?`.
+## What runs on your machine
+
+- The mod runs inside Claude Code with your permissions. Its code is in `plugins/watchdog/hooks/`.
+- It reads the `WATCHDOG.json` and `WATCHDOG.md` files, the session's memory files (such as `CLAUDE.md`), each update
+  of the agent you work with and, when `CLAUDE_WATCHDOG` is set in a `claude -p` run, your project and local settings.
+- It sends each update to the review model, as an agent that Claude Code runs on your account, and puts the notes into
+  your session. `/watchdog on` also sends one 1-token request for each model, to check that it exists. Apart from these
+  model requests through Claude Code, the mod makes no network calls: its code never calls `$.http.fetch` or `fetch`.
+- Its only file write is the dump, under `<config>/watchdog/dumps/` (`<config>` is `$CLAUDE_CONFIG_DIR` or
+  `~/.claude`). It keeps its notes and review state in Claude Code's session state and plugin store. In the terminal,
+  `/watchdog dump` also copies the dump text to the clipboard.
+- By default a reviewer gets `Read`, `Grep` and `Glob`. A project `WATCHDOG.json` can grant no more; only
+  `<config>/WATCHDOG.json` can grant other tools and `mcp__*` tools. `Bash`, `Edit`, `Write`, `NotebookEdit`, `Agent`,
+  `SendMessage`, `AskUserQuestion` and `ToolSearch` are always refused. A reviewer never asks you for a permission.
+
+## Cost and off switch
+
+- Each review is one more agent, on `opus` with `medium` effort by default (in the demo: 15.3k tokens, $0.05). The
+  built-in "You should know" mod, when on, runs its own side agent too; turn it off in `/plugin` to pay for one only.
+- `/watchdog off` stops reviews for this session. `/plugin uninstall watchdog@matteoantoci` removes the plugin.
+- Settings, in `/plugin` (Installed, Watchdog, Configure options) or `/config`: `onByDefault` (default `false`) turns
+  reviews on in each new interactive session. `immuneTurns` (0 to 5, default `3`) is the number of turns after a nudge
+  before the next one; a nudge is a turn that the plugin starts so that Claude reads a note that came after its reply.
+
+## Commands
+
+- `/watchdog` or `/watchdog status`: each watchdog's state, reviews, notes, tokens and cost, and the session totals.
+  For a state such as `halted`, see [docs/failures.md](docs/failures.md).
 - `/watchdog on` and `/watchdog off`: turn reviews on or off for this session.
-- `/watchdog dump` and `/watchdog dump raw`: write the review log to a file; the reply has a button that copies
-  the path.
+- `/watchdog dump` and `/watchdog dump raw`: write the review log to a file (`raw` adds the review prompts).
 
-## Headless runs
+## Configure
 
-```
-CLAUDE_WATCHDOG=on claude -p "…"
-```
-
-- Set `CLAUDE_WATCHDOG` for one run, not in a shell profile. `on` and `1` turn the run on; another value leaves it
-  off with a warning in the dump. The plugin unsets the variable at start, so no Bash command and no nested
-  `claude -p` gets it.
-- `-p` has no nudge and no cards: a late note waits as an aside for the next prompt, and what is left at the end
-  (waiting notes, `unreviewed: N updates` records) goes to the dump file
-  `~/.claude/watchdog/dumps/<sessionId>-<time>.md` (under `$CLAUDE_CONFIG_DIR` when set).
-- `onByDefault` does not apply to `-p`.
-- A project `env` setting (`.claude/settings.json` or `.claude/settings.local.json`) is ignored: the run stays off.
-  The shell, the user settings, `--settings` and managed settings can set it.
-- `total_cost_usd` can leave out the review cost.
-- `claude -p "/watchdog on <prompt>"` does not work: `/watchdog` takes no prompt, so the run replies with the usage
-  line and stays off. Use `CLAUDE_WATCHDOG=on` instead.
-
-## Configure the watchdogs
-
-Without a config file, one watchdog named `default` reviews on `opus` with `medium` effort. A `WATCHDOG.json` file
-sets the roster:
+A `WATCHDOG.json` in your project or in `~/.claude` sets the watchdogs. The load order, every key and the tool grants
+are in [docs/configuration.md](docs/configuration.md). This file adds a second reviewer to the default one:
 
 ```json
-{
-  "instructions": "Shared guidance for every watchdog.",
-  "maxNotesPerReview": 4,
-  "watchdogs": [
-    { "name": "security", "model": "sonnet", "effort": "high", "tools": ["Read", "Grep", "Glob"] },
-    { "name": "tests", "reviewMode": "agent-end", "reviewInterval": 2 }
-  ]
-}
+{ "watchdogs": [{ "name": "default" }, { "name": "security", "model": "sonnet", "effort": "high" }] }
 ```
 
-- Files load in this order: `~/.claude/WATCHDOG.json` (or `$CLAUDE_CONFIG_DIR/WATCHDOG.json`), then for each folder
-  from the git root down to the working folder, `.claude/WATCHDOG.json` and `WATCHDOG.json`. Outside git, only the
-  session root's two files load.
-- The roster is the union of all files; an entry with the same name replaces the earlier one. `"watchdogs": []` with
-  no other entries gives zero watchdogs. `"enabled": false` pauses a watchdog.
-- Entry keys: `name` (required), `enabled`, `model` (`<provider>/<id>[:level]`, only `anthropic`), `effort` (`low`,
-  `medium`, `high`, `xhigh`, `max` or `auto` for the session's effort), `tools`, `reviewMode` (`turn` or
-  `agent-end`), `reviewInterval`, `maxNotesPerReview` (1 to 32), `instructions`.
-- A project file grants only `Read`, `Grep` and `Glob`; the user file also grants other Claude Code tools and
-  `mcp__<server>__<tool>` tools. `Bash`, `Edit`, `Write`, `NotebookEdit`, `Agent`, `SendMessage`, `AskUserQuestion`
-  and `ToolSearch` are always refused.
-- The files are read at `/watchdog on`. After an edit, run `/watchdog off`, then `/watchdog on`. `/watchdog status`
-  lists each warning about the files and says "config changed" after an edit.
+## Limitations
 
-## When a review fails
-
-The plugin adds no retries of its own; Claude Code already retries an overloaded API. A failed review that sent no
-note goes back to the front of the backlog and joins the next review. `/watchdog status` shows `fail 1/3` after a
-failure, a `refused` count, and the last error; the dump keeps each error.
-
-- `halted`: after 3 failed reviews in a row, or at once when the credit balance is too low. The backlog is dropped.
-  The watchdog tries one review at your first prompt after 5 min, then after 15 min, then after each 60 min.
-- `limited`: the subscription limit is reached. The backlog stays, and the watchdog tries one review at your next
-  prompt.
-- `no_model`: the model does not exist or Claude Code ran another one. `blocked`: a permission rule denies `Agent`.
-  Neither one retries by itself.
-
-One log row shows when a watchdog enters one of these states, and `watchdog: <name> is back` when it leaves.
-`/watchdog on` tries every watchdog again at once.
+- Notes are advice: the agent may reject one. A review runs in the background, so a note can come after the step.
+- Reviews run only on Anthropic models. `claude -p` needs `CLAUDE_WATCHDOG=on` and has no nudge and no cards: see
+  [docs/headless.md](docs/headless.md).
+- The cost comes from the plugin's own price table (`plugins/watchdog/hooks/prices.ts`); a model not in it shows `$?`.
 
 ## Development
 
-`npm install` sets up the tools and the pre-commit hook. `npm run check` runs the 5 checks that pre-commit and CI run.
-
-`scripts/live-probe/` is the L3 live probe (spec §16.3). It is not part of the checks above: run it by hand before a
-release and before a bump of the pinned Claude Code version, on a real model and login. See `scripts/live-probe/README.md`.
+`npm install` sets up the tools and the pre-commit hook. `npm run check` runs the 6 checks of pre-commit and CI:
+`rules`, `fmt:check`, `lint`, `typecheck`, `validate` and `test`. See [docs/plugin-dev.md](docs/plugin-dev.md). Before
+a release and before a bump of the pinned Claude Code version, run the live probe by hand, on a real model and login:
+[scripts/live-probe/README.md](scripts/live-probe/README.md).
 
 ## License
 
