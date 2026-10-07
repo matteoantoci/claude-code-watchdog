@@ -688,12 +688,11 @@ export const limitState = {
 const nudgeStarts = (events) =>
   ofEvent(events, 'turn.start', (event) => !event.agentId && String(event.text).startsWith(NUDGE_FRAME));
 
-// §13.1: the band's count line names each severity of the open cards with its count (`watchdog · 2 concerns ·
-// 1 nit`), and a card reads `<SEVERITY>  <watchdog> · [<outdated mark> · ][<sentence> · ]<age> · <delivery state>`
-// (§10.8).
+// §13.1: the band's count line is a rule that names each severity of the open cards with its count
+// (`── watchdog · 2 concerns · 1 nit ──…`). A full card row reads `a: ▸  <SEVERITY>  <watchdog> · …`, cut with
+// `…` at the edge; its tail holds the outdated mark (§10.8), the sentence, the age and the delivery state.
 const SEVERITY_WORD = '(?:blockers?|concerns?|nits?)';
-const CARD_STATES = 'steered|nudge pending|nudged|held|displaced|discarded|aside on next prompt';
-const BAND_CARD = new RegExp(`^\\s*(BLOCKER|CONCERN|NIT)\\s+(\\S+) · ([^\\n]+?) · (${CARD_STATES})\\s*$`, 'gmu');
+const BAND_CARD = new RegExp(`^\\s*(?:[a-c]: [▸▾]\\s+)?(BLOCKER|CONCERN|NIT)\\s+(\\S+) · ([^\\n]*)$`, 'gmu');
 
 // §5.4: a session change keeps the on flag; the `/watchdog status` reply after it starts with `watchdog on`.
 const ON_KEPT = 'the on flag carried over: the status reads "watchdog on"';
@@ -1175,7 +1174,9 @@ export const checks = [
         return inconclusive(['the watchdog sent no note, so the band has no card to paint']);
       }
       const screen = String(obs.screens?.idle ?? '');
-      const count = new RegExp(`^watchdog · (\\d+ ${SEVERITY_WORD}(?: · \\d+ ${SEVERITY_WORD})*)`, 'mu').exec(screen);
+      const count = new RegExp(`^── watchdog · (\\d+ ${SEVERITY_WORD}(?: · \\d+ ${SEVERITY_WORD})*)`, 'mu').exec(
+        screen
+      );
       const cards = [...screen.matchAll(BAND_CARD)];
       return expectAll(
         {
@@ -1202,13 +1203,13 @@ export const checks = [
     needs: [],
     verify: (obs) => {
       const screen = String(obs.screens?.on ?? '');
-      const card = /^\s*(BLOCKER|CONCERN|NIT)\s+\S+ · /mu.test(screen);
+      const card = /^\s*(?:[a-c]: [▸▾]\s+)?(BLOCKER|CONCERN|NIT)\s+\S+ · /mu.test(screen);
       return expectAll(
         {
-          'the count line reads "watchdog · no open notes"': /^watchdog · no open notes/mu.test(screen),
+          'the count line reads "watchdog · no open notes"': /^── watchdog · no open notes/mu.test(screen),
           'no card is painted': !card,
         },
-        [flat(screen.split('\n').find((line) => line.startsWith('watchdog · ')) ?? 'no count line', 160)]
+        [flat(screen.split('\n').find((line) => line.startsWith('── watchdog · ')) ?? 'no count line', 160)]
       );
     },
   },
