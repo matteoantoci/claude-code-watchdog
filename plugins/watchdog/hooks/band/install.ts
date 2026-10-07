@@ -131,9 +131,9 @@ const onBand: BandHook = async ($, e, next) => {
   if (tree === undefined) {
     return base;
   }
-  // §13.1: one blank row parts the band from the transcript above it.
-  const spaced = el.Box({ marginTop: 1, flexDirection: 'column', children: [tree] });
-  return el.Box({ key: 'watchdog-band', flexDirection: 'column', children: [base, spaced] });
+  // §13.1: no row above the count line. The engine draws its `[-]` on the band's first row, so a blank row there
+  // would hold the `[-]` alone, above the rule.
+  return el.Box({ key: 'watchdog-band', flexDirection: 'column', children: [base, tree] });
 };
 
 // Install first, so that these hooks sit above the note, delivery and command hooks that change the cards.

@@ -239,8 +239,19 @@ const cardList = (el: BandElements, view: BandView, mode: Mode): RenderElement[]
   return [...cards, row(el, 'watchdog-more', more)];
 };
 
+// §13.1, §12.5: the failure line, then the cards, under one blank row that parts them from the count line. No blank
+// row when neither shows: the engine keeps its own blank row between the band and the prompt.
+const bandBody = (el: BandElements, view: BandView, mode: Mode): RenderElement[] => {
+  const trouble =
+    view.trouble === undefined
+      ? []
+      : [row(el, 'watchdog-trouble', el.Text({ color: 'error', wrap: 'truncate-end', children: view.trouble }))];
+  const rows = [...trouble, ...cardList(el, view, mode)];
+  return rows.length === 0 ? [] : [el.Box({ marginTop: 1, flexDirection: 'column', children: rows })];
+};
+
 // §13.1, §12.5, §5.2: the count line, the failure line, then the cards; one dim line after `/watchdog off`;
-// nothing before the session was ever on.
+// nothing before the session was ever on. The count line is the first row: the engine draws its `[-]` there.
 export const bandTree = (el: BandElements, view: BandView): RenderElement | undefined => {
   if (view.isOn === false) {
     const off = 'watchdog · off · /watchdog on';
@@ -257,14 +268,5 @@ export const bandTree = (el: BandElements, view: BandView): RenderElement | unde
     columns: view.columns,
     hint: buttons === 0 ? undefined : focusHint(buttons),
   });
-  return el.Box({
-    flexDirection: 'column',
-    children: [
-      row(el, 'watchdog-count', count),
-      view.trouble === undefined
-        ? null
-        : row(el, 'watchdog-trouble', el.Text({ color: 'error', wrap: 'truncate-end', children: view.trouble })),
-      ...cardList(el, view, mode),
-    ],
-  });
+  return el.Box({ flexDirection: 'column', children: [row(el, 'watchdog-count', count), ...bandBody(el, view, mode)] });
 };

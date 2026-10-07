@@ -103,6 +103,43 @@ const textProps = async ($: Engine, texts: readonly RegExp[], props: BandProps =
 const propsOf = async ($: Engine, type: string, props: BandProps = {}) =>
   onBand($, props, async (ui) => (await ui.findAll({ type })).map((found) => found.props));
 
+// An element of `ui.drawn()`, plain data: the props that add blank rows, its `key`, and its children.
+type Placed = {
+  type: string;
+  props?: Partial<Record<`${'margin' | 'padding'}${'' | 'Y' | 'Top' | 'Bottom'}`, number>> & { key?: string };
+  children?: readonly unknown[];
+};
+
+const isPlaced = (node: unknown): node is Placed => typeof node === 'object' && node !== null && 'type' in node;
+
+// A row of the watchdog's band, keyed as `ROW_KEYS` keys it (an expanded card with its body).
+const ROW_KEY = /^watchdog-(?:off|count|trouble|card-\d|more)$/u;
+
+// The blank rows that a Box's margin and padding add on one side.
+const blanks = (side: 'Top' | 'Bottom', props: NonNullable<Placed['props']> = {}): string[] => {
+  const margin = props[`margin${side}`] ?? props.marginY ?? props.margin ?? 0;
+  const padding = props[`padding${side}`] ?? props.paddingY ?? props.padding ?? 0;
+  return Array.from({ length: margin + padding }, () => 'blank');
+};
+
+// §13.1: the rows of a drawn element top to bottom, as the column Boxes stack them: a watchdog row by its key,
+// another leaf (the kit's engine band) by its text, and `blank` for each row that a margin or a padding adds.
+const stack = (node: Placed): string[] => {
+  const key = node.props?.key;
+  const children = node.children ?? [];
+  const inner = key !== undefined && ROW_KEY.test(key) ? [key] : children.filter(isPlaced).flatMap(stack);
+  const shown =
+    inner.length === 0 ? [children.filter((child): child is string => typeof child === 'string').join('')] : inner;
+  return [...blanks('Top', node.props), ...shown, ...blanks('Bottom', node.props)];
+};
+
+// The rows of the band as drawn, the engine's band first.
+const layout = async ($: Engine, props: BandProps = {}): Promise<string[][]> =>
+  onBand($, props, async (ui) => {
+    const drawn: unknown = await ui.drawn();
+    return isPlaced(drawn) ? stack(drawn) : [];
+  });
+
 // A person's press on the Button keyed `key`, on the terminal only: a press on each surface would toggle it twice.
 const press = async ($: Engine, key: string): Promise<void> => {
   const ui = await $.ui.mount(bandTarget('terminal'));
@@ -127,9 +164,7 @@ describe('band cards (§13.1)', () => {
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
-    // One blank row above the band, none between its rows, and no body under a collapsed card.
-    const margins = (await propsOf($, 'Box')).map((boxes) => boxes.filter((box) => 'marginTop' in box));
-    expect(margins).toEqual(onBoth([{ marginTop: 1, flexDirection: 'column' }]));
+    // No body under a collapsed card.
     expect(await propsOf($, 'Markdown')).toEqual(onBoth([]));
   });
 
@@ -210,6 +245,45 @@ describe('band cards (§13.1)', () => {
         'watchdog-card-0': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudge pending`,
       })
     );
+  });
+});
+
+// Live check on 2.1.292 (fullscreen): the engine draws its `[-]` on the band's first row, whatever puts a blank row
+// there (a margin, a padding, a blank Text), and keeps one blank row of its own between the band and the prompt,
+// with no band too.
+describe('band rows (§13.1)', () => {
+  test('the count line is the first row; one blank row parts it from the cards and +N more; none after them', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await fourNotes($);
+    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-count', 'blank', ...LIST_KEYS]));
+    expect(await layout($, { bodyColumns: 75 })).toEqual(
+      onBoth([ENGINE_BAND, 'watchdog-count', 'blank', ...LIST_KEYS])
+    );
+  });
+
+  test('an expanded card keeps the rows: its body is inside its own row', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await listedNotes($);
+    await press($, 'watchdog-expand-0');
+    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-count', 'blank', ...LIST_KEYS]));
+  });
+
+  test('with no card and no failure line, the count line alone: no blank row under it', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await fourNotes($);
+    await $.prompt.submit(PERSON_PROMPT);
+    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-count']));
+  });
+
+  test('after /watchdog off, the off rule alone', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await fourNotes($);
+    await $.command.run(typed('off'));
+    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-off']));
   });
 });
 
@@ -523,6 +597,8 @@ describe('failure line (§12.5)', () => {
         'watchdog-trouble': 'watchdog halted · retry in 12 min · /watchdog on to retry now',
       })
     );
+    // §13.1: the blank row parts the count line from the failure line too.
+    expect(await layout($)).toEqual(onBoth([ENGINE_BAND, 'watchdog-count', 'blank', 'watchdog-trouble']));
     expect(await textProps($, [/^watchdog halted/u])).toEqual(onBoth([{ color: 'error', wrap: 'truncate-end' }]));
     expect((await rows($, { bodyColumns: 75 })).map((shown) => shown['watchdog-trouble'])).toEqual(
       onBoth('watchdog: 1 problem · /watchdog status')
