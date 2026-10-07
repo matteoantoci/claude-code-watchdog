@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { cardKey } from '../hooks/band/cards';
 import { batchClose, closeUpdate, moveCursor, recordRow, setFeed, startFeed } from '../hooks/feed/feed';
-import { editsSince, outdatedMark } from '../hooks/note/outdated';
+import { editsSince, outdatedMark, shortOutdatedMark } from '../hooks/note/outdated';
 import { noteId } from '../hooks/note/retract';
 import { mainRow } from './fixtures/session';
 import type { SessionAppendInput } from 'claude-code';
@@ -42,11 +42,16 @@ describe('§10.8 the outdated mark', () => {
     expect(editsSince({ batchEdits: 3 })).toBe(0);
   });
 
-  test('the card and the recap show the mark from 1 edit on', () => {
+  test('an expanded card and the recap show the mark from 1 edit on; a collapsed card row its short form', () => {
     expect([0, 1, 2].map((edits) => outdatedMark(edits))).toEqual([
       undefined,
       'may be outdated: 1 edit since',
       'may be outdated: 2 edits since',
+    ]);
+    expect([0, 1, 2].map((edits) => shortOutdatedMark(edits))).toEqual([
+      undefined,
+      'outdated? 1 edit',
+      'outdated? 2 edits',
     ]);
   });
 });

@@ -146,14 +146,22 @@ describe('§10.8 the outdated mark', () => {
       { text: BLOCKER, turn: 1, edits: 1 },
       { text: OTHER, turn: 1, edits: 1 },
     ]);
+    // §13.1: a collapsed row shows the short mark in its status; the expanded header the whole mark.
     const ui = await $.ui.mount(bandTarget('terminal', { bodyColumns: 200 }));
     expect((await ui.find({ key: 'watchdog-card-0' }))?.text).toBe(
-      `▸ BLOCKER  default · may be outdated: 1 edit since · ${BLOCKER} · 1 turn ago · nudge pending`
+      `▸ BLOCKER  ${BLOCKER}  nudge pending · outdated? 1 edit`
     );
     expect((await ui.find({ key: 'watchdog-card-1' }))?.text).toBe(
-      `▸ CONCERN  default · may be outdated: 1 edit since · ${OTHER} · 1 turn ago · nudge pending`
+      `▸ CONCERN  ${OTHER}  nudge pending · outdated? 1 edit`
     );
+    await ui.press({ key: 'watchdog-expand-0' });
     await ui.unmount();
+    const expanded = await $.ui.mount(bandTarget('terminal', { bodyColumns: 200 }));
+    expect((await expanded.find({ key: 'watchdog-card-0' }))?.text).toBe(
+      `▾ BLOCKER  default · 1 turn ago · nudge pending · may be outdated: 1 edit since${BLOCKER}`
+    );
+    await expanded.press({ key: 'watchdog-expand-0' });
+    await expanded.unmount();
 
     // §10.8: the review that sent the blocker still runs, so the marked blocker waits for a later review (below); the
     // marked concern goes. The running review's next tool call draws the band.
@@ -163,9 +171,7 @@ describe('§10.8 the outdated mark', () => {
     ]);
     await reviewRead($, first);
     const held = await $.ui.mount(bandTarget('terminal', { bodyColumns: 200 }));
-    expect((await held.find({ key: 'watchdog-card-0' }))?.text).toBe(
-      `▸ BLOCKER  default · may be outdated: 1 edit since · ${BLOCKER} · 1 turn ago · held`
-    );
+    expect((await held.find({ key: 'watchdog-card-0' }))?.text).toBe(`▸ BLOCKER  ${BLOCKER}  held · outdated? 1 edit`);
     await held.unmount();
   });
 

@@ -135,6 +135,15 @@ export const BAND_CARD_INDENT = 2;
 // §13.1: the fewest blank cells between the count line's title and the focus hint; with less room, the hint goes.
 export const BAND_HINT_GAP = 2;
 
+// §13.1: the fewest blank cells between a card row's lead and its status, which ends flush right at `bodyColumns`.
+export const BAND_STATUS_GAP = 2;
+
+// §13.1: below 80 `bodyColumns`, a one-line card shows its status only when this many cells of note text stay.
+export const BAND_STATUS_MIN_TEXT = 20;
+
+// §13.1: a collapsed full card names its watchdog only when at least this many watchdogs of the roster are enabled.
+export const BAND_NAMED_WATCHDOGS = 2;
+
 // §12.5: the halt's next try shows in whole minutes.
 export const MINUTE_MS = 60_000;
 

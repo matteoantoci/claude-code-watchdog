@@ -689,12 +689,15 @@ const nudgeStarts = (events) =>
   ofEvent(events, 'turn.start', (event) => !event.agentId && String(event.text).startsWith(NUDGE_FRAME));
 
 // §13.1: the band's first row is a dotted divider, which holds the engine's `[-]` at its end; the count line under it
-// names each severity of the open cards with its count (`watchdog · 2 concerns · 1 nit`). A full card row reads
-// `a: ▸  <SEVERITY>  <watchdog> · …`, cut with `…` at the edge; its tail holds the outdated mark (§10.8), the
-// sentence, the age and the delivery state.
+// names each severity of the open cards with its count (`watchdog · 2 concerns · 1 nit`). A collapsed full card row
+// reads `a: ▸  <SEVERITY>  <first sentence>`, cut with `…`, then, flush right after 2 or more blank cells, its dim
+// status: a subagent's type, `held`, `nudge pending` or `aside`, the short outdated mark (§10.8); none for a note the
+// agent has. The row names the watchdog (`<watchdog> · <sentence>`) only with 2 or more watchdogs enabled.
 const SEVERITY_WORD = '(?:blockers?|concerns?|nits?)';
 const BAND_DIVIDER = '^┄+[^\\n]*\\n';
-const BAND_CARD = new RegExp(`^\\s*(?:[a-c]: [▸▾]\\s+)?(BLOCKER|CONCERN|NIT)\\s+(\\S+) · ([^\\n]*)$`, 'gmu');
+const BAND_CARD_SOURCE =
+  '^\\s*(?:[a-c]: [▸▾]\\s+)?(BLOCKER|CONCERN|NIT) {2}(\\S(?:[^\\n]*?\\S)?)(?: {2,}(\\S[^\\n]*?))?\\s*$';
+const BAND_CARD = new RegExp(BAND_CARD_SOURCE, 'gmu');
 
 // §5.4: a session change keeps the on flag; the `/watchdog status` reply after it starts with `watchdog on`.
 const ON_KEPT = 'the on flag carried over: the status reads "watchdog on"';
@@ -1166,7 +1169,7 @@ export const checks = [
   {
     id: 'l3-band-cards',
     title:
-      'With notes, the band paints the divider, the count line and up to 3 cards with name, age and delivery state',
+      'With notes, the band paints the divider, the count line and up to 3 cards: the first sentence, then the status',
     source: BAND,
     kind: 'deterministic',
     scenario: 'tui-review',
@@ -1188,7 +1191,11 @@ export const checks = [
           'at least one card is painted': cards.length > 0,
           'at most 3 cards, then a "+N more" line':
             cards.length <= 3 && (rows.length <= 3 || /\+\d+ more/u.test(screen)),
-          'each card names the watchdog probe': cards.every((card) => card[2] === 'probe'),
+          // The tui-review roster has one watchdog, so no row names it (§13.1).
+          'no card names the watchdog: the roster has one': cards.every((card) => !card[2].startsWith('probe · ')),
+          'each status shows only what waits: no steered, nudged or age': cards.every(
+            (card) => !/\b(?:steered|nudged|turns? ago|just now)\b/u.test(card[3] ?? '')
+          ),
         },
         [
           `count line: ${count === null ? 'none' : `watchdog · ${count[1]}`}; note rows ${rows.length}`,
@@ -1207,7 +1214,7 @@ export const checks = [
     needs: [],
     verify: (obs) => {
       const screen = String(obs.screens?.on ?? '');
-      const card = /^\s*(?:[a-c]: [▸▾]\s+)?(BLOCKER|CONCERN|NIT)\s+\S+ · /mu.test(screen);
+      const card = new RegExp(BAND_CARD_SOURCE, 'mu').test(screen);
       return expectAll(
         {
           'the divider, then the count line "watchdog · no open notes"': new RegExp(

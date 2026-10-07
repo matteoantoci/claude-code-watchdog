@@ -127,7 +127,9 @@ const onBand: BandHook = async ($, e, next) => {
   const columns = e.props.bodyColumns;
   const trouble = await troubleText($, health, columns);
   const el = $.ui.resolve(e);
-  const tree = bandTree(el, { isOn, band, trouble, columns, onToggle: toggleCard });
+  // §13.1: a collapsed card names its watchdog only when 2 or more watchdogs are enabled.
+  const watchdogs = currentRoster().filter((watchdog) => watchdog.isEnabled).length;
+  const tree = bandTree(el, { isOn, band, trouble, columns, watchdogs, onToggle: toggleCard });
   if (tree === undefined) {
     return base;
   }

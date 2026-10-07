@@ -11,6 +11,7 @@ import {
 } from './fixtures/delivery';
 import { stateIn, stubState } from './fixtures/on-state';
 import { HEADLESS_START, HOME, NOW, SESSION_ID, START, typed } from './fixtures/session';
+import type { Band, Card } from '../hooks/band/cards';
 import type { OnEvents } from '../hooks/on';
 import type { BandProps, BandSurface } from './fixtures/band';
 import type { DeliveryEvents } from './fixtures/delivery';
@@ -158,7 +159,7 @@ const press = async ($: Engine, key: string): Promise<void> => {
 const onBoth = <T>(value: T): T[] => BAND_SURFACES.map(() => value);
 
 describe('band cards (§13.1)', () => {
-  test('the count line, then the 3 first notes by severity and newest, one row each with the first sentence, then +N more', async ($, on: Stubs) => {
+  test('the count line, then the 3 first notes by severity and newest, one row each with the first sentence and the status, then +N more', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
@@ -167,9 +168,9 @@ describe('band cards (§13.1)', () => {
       onBoth({
         'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
-        'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudge pending`,
-        'watchdog-card-1': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudge pending`,
-        'watchdog-card-2': `▸ CONCERN  default · ${OLD_CONCERN} · just now · nudge pending`,
+        'watchdog-card-0': `▸ BLOCKER  ${BLOCKER}  nudge pending`,
+        'watchdog-card-1': `▸ CONCERN  ${NEW_CONCERN}  nudge pending`,
+        'watchdog-card-2': `▸ CONCERN  ${OLD_CONCERN}  nudge pending`,
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
@@ -177,7 +178,7 @@ describe('band cards (§13.1)', () => {
     expect(await propsOf($, 'Markdown')).toEqual(onBoth([]));
   });
 
-  test('a card row is one line cut at the end: the first line of a listed note, then the age and the delivery state', async ($, on: Stubs) => {
+  test('a card row is one line: the first line of a listed note, cut at the end, then the status', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await listedNotes($);
@@ -185,14 +186,14 @@ describe('band cards (§13.1)', () => {
       onBoth({
         'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
-        'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudge pending',
-        'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudge pending',
-        'watchdog-card-2': '▸ CONCERN  default · parseDate drops the timezone · just now · nudge pending',
+        'watchdog-card-0': '▸ BLOCKER  The migration loses the users  nudge pending',
+        'watchdog-card-1': '▸ CONCERN  The new /export route is open  nudge pending',
+        'watchdog-card-2': '▸ CONCERN  parseDate drops the timezone  nudge pending',
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
-    expect(await textProps($, [/^ BLOCKER {2}default · The migration loses the users · /u])).toEqual(
-      onBoth([{ wrap: 'truncate-end' }])
+    expect(await textProps($, [/^ BLOCKER {2}The migration loses the users$/u, /^ {2}nudge pending$/u])).toEqual(
+      onBoth([{ wrap: 'truncate-end' }, { dimColor: true }])
     );
   });
 
@@ -218,14 +219,16 @@ describe('band cards (§13.1)', () => {
     );
   });
 
-  test('a card shows its age in turns and the delivery state its note has now', async ($, on: Stubs) => {
+  test('a steered note shows no status; its expanded header shows its age in turns and its delivery state', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await sendNote($, 'concern', NEW_CONCERN);
     await $.prompt.submit(TASK_NOTIFICATION);
     await $.turn.start({ text: TASK_NOTIFICATION.text, turnId: 't1' });
+    expect((await rows($)).map((shown) => shown['watchdog-card-0'])).toEqual(onBoth(`▸ CONCERN  ${NEW_CONCERN}`));
+    await press($, 'watchdog-expand-0');
     expect((await rows($)).map((shown) => shown['watchdog-card-0'])).toEqual(
-      onBoth(`▸ CONCERN  default · ${NEW_CONCERN} · 1 turn ago · steered`)
+      onBoth(`▾ CONCERN  default · 1 turn ago · steered${NEW_CONCERN}`)
     );
   });
 
@@ -238,7 +241,7 @@ describe('band cards (§13.1)', () => {
       onBoth({
         'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 blocker', 'a'),
-        'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudge pending`,
+        'watchdog-card-0': `▸ BLOCKER  ${BLOCKER}  nudge pending`,
       })
     );
   });
@@ -254,7 +257,7 @@ describe('band cards (§13.1)', () => {
       onBoth({
         'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 concern', 'a'),
-        'watchdog-card-0': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudge pending`,
+        'watchdog-card-0': `▸ CONCERN  ${NEW_CONCERN}  nudge pending`,
       })
     );
   });
@@ -357,9 +360,9 @@ describe('expand a card (§13.1)', () => {
   const COLLAPSED = {
     'watchdog-divider': divider(),
     'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
-    'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudge pending',
-    'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudge pending',
-    'watchdog-card-2': '▸ CONCERN  default · parseDate drops the timezone · just now · nudge pending',
+    'watchdog-card-0': '▸ BLOCKER  The migration loses the users  nudge pending',
+    'watchdog-card-1': '▸ CONCERN  The new /export route is open  nudge pending',
+    'watchdog-card-2': '▸ CONCERN  parseDate drops the timezone  nudge pending',
     'watchdog-more': '  +1 more: 1 nit',
   };
 
@@ -383,7 +386,7 @@ describe('expand a card (§13.1)', () => {
     expect(await propsOf($, 'Button', { bodyColumns: 75 })).toEqual(onBoth([]));
   });
 
-  test('a press expands the card: its header without the sentence, then its whole Markdown body, indented', async ($, on: Stubs) => {
+  test('a press expands the card: its header with every field, then its whole Markdown body, indented', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await listedNotes($);
@@ -427,14 +430,12 @@ describe('expand a card (§13.1)', () => {
       onBoth(`▾ BLOCKER  default · just now · nudged${BLOCKER}`)
     );
     await press($, 'watchdog-expand-0');
-    expect((await rows($)).map((shown) => shown['watchdog-card-0'])).toEqual(
-      onBoth(`▸ BLOCKER  default · ${BLOCKER} · just now · nudged`)
-    );
+    expect((await rows($)).map((shown) => shown['watchdog-card-0'])).toEqual(onBoth(`▸ BLOCKER  ${BLOCKER}`));
   });
 });
 
 describe('narrow band (§13.1)', () => {
-  test('below 80 bodyColumns, one line for each note: [<severity>] <text>', async ($, on: Stubs) => {
+  test('below 80 bodyColumns, one line for each note: [<severity>] <text>, then the status', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
@@ -442,26 +443,27 @@ describe('narrow band (§13.1)', () => {
       onBoth({
         'watchdog-divider': divider(75),
         'watchdog-count': 'watchdog · 1 blocker · 2 concerns · 1 nit',
-        'watchdog-card-0': `[blocker] ${BLOCKER}`,
-        'watchdog-card-1': `[concern] ${NEW_CONCERN}`,
-        'watchdog-card-2': `[concern] ${OLD_CONCERN}`,
+        'watchdog-card-0': `[blocker] ${BLOCKER}  nudge pending`,
+        'watchdog-card-1': `[concern] ${NEW_CONCERN}  nudge pending`,
+        'watchdog-card-2': `[concern] ${OLD_CONCERN}  nudge pending`,
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
   });
 
-  test('below 50 bodyColumns, the text is cut to min(40, bodyColumns - tag - 1) characters', async ($, on: Stubs) => {
+  test('below 50 bodyColumns, the text is cut to min(40, bodyColumns - tag - 1) characters less the status', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
-    // bodyColumns 45: `[blocker]` is 9 cells, so 35 characters, the last one `…`.
+    // bodyColumns 45: `[blocker]` is 9 cells, so 35 cells; `  nudge pending` takes 15, so 20 characters, the last
+    // one `…`.
     expect(await rows($, { bodyColumns: 45 })).toEqual(
       onBoth({
         'watchdog-divider': divider(45),
         'watchdog-count': 'watchdog · 4 notes',
-        'watchdog-card-0': '[blocker] The migration deletes the users ta…',
-        'watchdog-card-1': '[concern] The new /export route skips requir…',
-        'watchdog-card-2': '[concern] parseDate drops the timezone; the …',
+        'watchdog-card-0': '[blocker] The migration delet…  nudge pending',
+        'watchdog-card-1': '[concern] The new /export rou…  nudge pending',
+        'watchdog-card-2': '[concern] parseDate drops the…  nudge pending',
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
@@ -473,6 +475,157 @@ describe('narrow band (§13.1)', () => {
     await fourNotes($);
     expect(await rows($, { hasSurvey: true })).toEqual(onBoth({}));
     expect(await textProps($, [/./u], { hasSurvey: true })).toEqual(onBoth([{}]));
+  });
+});
+
+// A stored card (§14.6) of the default watchdog on the primary agent, 1 turn old in a band at turn 2.
+const storedCard = (seq: number, delivery: string, fields: Partial<Card> = {}): Card => ({
+  key: `k${seq}`,
+  seq,
+  name: 'default',
+  severity: 'blocker',
+  text: BLOCKER,
+  turn: 1,
+  delivery,
+  watchdog: 'default',
+  agentId: 'afake0001',
+  batchEdits: 0,
+  edits: 0,
+  ...fields,
+});
+
+// The `band` key as an earlier module instance wrote it, at turn 2.
+const storedBand = (cards: readonly Card[], expanded: string | null = null): Band => ({
+  cards,
+  turn: 2,
+  seq: cards.length,
+  expanded,
+});
+
+// The text of the card rows at `bodyColumns`, top to bottom.
+const cardRows = async ($: Engine, bodyColumns = WIDE): Promise<(string | undefined)[][]> =>
+  (await rows($, { bodyColumns })).map((shown) => LIST_KEYS.slice(0, -1).map((key) => shown[key]));
+
+// §4.3: a user `WATCHDOG.json` with the default watchdog and a second one, enabled unless `enabled` says not.
+const twoWatchdogs = (enabled = true): Parameters<typeof stubDelivery>[1] => ({
+  files: {
+    [`${HOME}/.claude/WATCHDOG.json`]: {
+      text: JSON.stringify({ watchdogs: [{ name: 'default' }, { name: 'security', enabled }] }),
+      mtimeMs: 1,
+    },
+  },
+});
+
+describe('card row status (§13.1, §11.3, §10.8)', () => {
+  const ON = { isOn: true, source: '/watchdog on' };
+
+  // A one-sentence note longer than any row.
+  const LONG = `${'The migration deletes the users table before it copies the rows and '.repeat(6)}then it ends.`;
+
+  test('a note the agent has shows no status; a note that waits shows its state', async ($, on: Stubs) => {
+    const band = storedBand([
+      storedCard(1, 'steered'),
+      storedCard(2, 'nudged', { text: NEW_CONCERN }),
+      storedCard(3, 'held', { text: NIT }),
+    ]);
+    stubBand(on, {}, { state: ON, band });
+    await $.session.start(START);
+    expect(await cardRows($)).toEqual(
+      onBoth([`▸ BLOCKER  ${NIT}  held`, `▸ BLOCKER  ${NEW_CONCERN}`, `▸ BLOCKER  ${BLOCKER}`])
+    );
+  });
+
+  test('`nudge pending` as it is, `aside on next prompt` as `aside`, the outdated mark short after the state', async ($, on: Stubs) => {
+    const band = storedBand([
+      storedCard(1, 'nudge pending'),
+      storedCard(2, 'aside on next prompt', { text: NEW_CONCERN }),
+      storedCard(3, 'held', { text: NIT, edits: 2 }),
+    ]);
+    stubBand(on, {}, { state: ON, band });
+    await $.session.start(START);
+    expect(await cardRows($)).toEqual(
+      onBoth([
+        `▸ BLOCKER  ${NIT}  held · outdated? 2 edits`,
+        `▸ BLOCKER  ${NEW_CONCERN}  aside`,
+        `▸ BLOCKER  ${BLOCKER}  nudge pending`,
+      ])
+    );
+  });
+
+  test('a note on a subagent shows its type first; a one-line card has it in its tag, and the status only when it fits', async ($, on: Stubs) => {
+    const band = storedBand([
+      storedCard(1, 'nudge pending', { subagent: 'Explore', subagentId: 'asub0001', edits: 1 }),
+    ]);
+    stubBand(on, {}, { state: ON, band });
+    await $.session.start(START);
+    expect(await cardRows($)).toEqual(
+      onBoth([`▸ BLOCKER  ${BLOCKER}  Explore · nudge pending · outdated? 1 edit`, undefined, undefined])
+    );
+    // bodyColumns 75: `[blocker · Explore]` and a blank leave 55 cells, the status and its gap 34, so 21 for the text.
+    expect((await cardRows($, 75)).map(([first]) => first)).toEqual(
+      onBoth(`[blocker · Explore] ${BLOCKER}  nudge pending · outdated? 1 edit`)
+    );
+    // bodyColumns 70: 16 cells, fewer than 20, so no status, and the row stays one row.
+    expect((await cardRows($, 70)).map(([first]) => first)).toEqual(onBoth(`[blocker · Explore] ${BLOCKER}`));
+  });
+
+  test('a row names the watchdog only when 2 or more watchdogs are enabled', async ($, on: Stubs) => {
+    stubBand(on, twoWatchdogs(), { state: ON, band: storedBand([storedCard(1, 'held')]) });
+    await $.session.start(START);
+    expect((await cardRows($)).map(([first]) => first)).toEqual(onBoth(`▸ BLOCKER  default · ${BLOCKER}  held`));
+    expect(await textProps($, [/^default$/u, /^ · $/u])).toEqual(onBoth([{ bold: true }, { dimColor: true }]));
+  });
+
+  test('a second watchdog that is not enabled leaves one on: the row does not name it', async ($, on: Stubs) => {
+    stubBand(on, twoWatchdogs(false), { state: ON, band: storedBand([storedCard(1, 'held')]) });
+    await $.session.start(START);
+    expect((await cardRows($)).map(([first]) => first)).toEqual(onBoth(`▸ BLOCKER  ${BLOCKER}  held`));
+  });
+
+  test('at 80 and 160 bodyColumns a long sentence is cut at the end; the status never shrinks and is never cut', async ($, on: Stubs) => {
+    stubBand(on, {}, { state: ON, band: storedBand([storedCard(1, 'held', { text: LONG, edits: 1 })]) });
+    await $.session.start(START);
+    const status = '  held · outdated? 1 edit';
+    const flexes = async (bodyColumns: number) =>
+      onBand($, { bodyColumns }, async (ui) =>
+        (await ui.findAll({ type: 'Box' }))
+          .filter((box) => box.props['flexShrink'] !== undefined)
+          .map((box) => ({ text: box.text, grow: box.props['flexGrow'], shrink: box.props['flexShrink'] }))
+      );
+    const expected = onBoth([
+      { text: ` BLOCKER  ${LONG}${status}`, grow: 1, shrink: 1 },
+      { text: ` BLOCKER  ${LONG}`, grow: 1, shrink: 1 },
+      { text: status, grow: undefined, shrink: 0 },
+    ]);
+    expect(await flexes(80)).toEqual(expected);
+    expect(await flexes(160)).toEqual(expected);
+    const texts = [/^ BLOCKER {2}The migration .* then it ends\.$/u, /^ {2}held · outdated\? 1 edit$/u];
+    expect(await textProps($, texts, { bodyColumns: 80 })).toEqual(
+      onBoth([{ wrap: 'truncate-end' }, { dimColor: true }])
+    );
+  });
+
+  test('an expanded card names every field: the watchdog, the subagent type, the age, the state, the whole mark', async ($, on: Stubs) => {
+    const expanded = storedCard(1, 'nudge pending', { subagent: 'Explore', subagentId: 'asub0001', edits: 1 });
+    stubBand(on, {}, { state: ON, band: storedBand([expanded], 'k1') });
+    await $.session.start(START);
+    expect((await cardRows($)).map(([first]) => first)).toEqual(
+      onBoth(`▾ BLOCKER  default · Explore · 1 turn ago · nudge pending · may be outdated: 1 edit since${BLOCKER}`)
+    );
+  });
+
+  test('below 50 bodyColumns the status takes its cells from the cut text, and goes when 20 would not stay', async ($, on: Stubs) => {
+    const band = storedBand([storedCard(1, 'held'), storedCard(2, 'nudge pending', { text: NEW_CONCERN, edits: 2 })]);
+    stubBand(on, {}, { state: ON, band });
+    await $.session.start(START);
+    // bodyColumns 45: 35 cells after `[blocker] `; `  held` leaves 29; `  nudge pending · outdated? 2 edits` 0.
+    expect(await cardRows($, 45)).toEqual(
+      onBoth([
+        '[blocker] The new /export route skips requir…',
+        '[blocker] The migration deletes the us…  held',
+        undefined,
+      ])
+    );
   });
 });
 
@@ -493,8 +646,7 @@ describe('band clear and off (§13.1, §5.2)', () => {
       onBoth({
         'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 nit', 'a'),
-        'watchdog-card-0':
-          '▸ NIT  default · The README still names the old CLI flag --legacy. · just now · aside on next prompt',
+        'watchdog-card-0': '▸ NIT  The README still names the old CLI flag --legacy.  aside',
       })
     );
   });
@@ -505,7 +657,7 @@ describe('band clear and off (§13.1, §5.2)', () => {
     await sendNote($, 'blocker', BLOCKER);
     await $.prompt.submit(TASK_NOTIFICATION);
     expect((await rows($)).map((shown) => shown['watchdog-card-0'])).toEqual(
-      onBoth(`▸ BLOCKER  default · ${BLOCKER} · just now · nudge pending`)
+      onBoth(`▸ BLOCKER  ${BLOCKER}  nudge pending`)
     );
   });
 
@@ -570,7 +722,7 @@ describe('band after a reload (§14.6, §11.3)', () => {
       onBoth({
         'watchdog-divider': divider(),
         'watchdog-count': hinted('watchdog · 1 blocker', 'a'),
-        'watchdog-card-0': `▸ BLOCKER  default · Explore · ${BLOCKER} · 1 turn ago · steered`,
+        'watchdog-card-0': `▸ BLOCKER  ${BLOCKER}  Explore`,
       })
     );
     expect((await rows($, { bodyColumns: 75 })).map((shown) => shown['watchdog-card-0'])).toEqual(

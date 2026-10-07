@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { firstSentence } from '../hooks/band/tree';
+import { firstSentence } from '../hooks/band/card-row';
 
 describe('the first sentence of a collapsed card (§13.1)', () => {
   test('a sentence ends at the first `.`, `?` or `!` that a space follows', () => {

@@ -20,16 +20,18 @@ starts when Claude.app bundles Claude Code 2.1.290 or later.
 
 Then run `/watchdog on` (reviews are off until you do) and ask Claude for a small change. The note shows as a
 `watchdog: [concern] …` line in the transcript and as a card, one line with its first sentence above the prompt box.
-Click the card's `▸`, or press ctrl+x tab and then its letter (`a`, `b`, `c`), to read the whole note; Esc gives the
-focus back to the prompt. Run `/watchdog status` to see each watchdog's reviews, notes, tokens and cost.
+Click the card's `▸`, or press ctrl+x tab and then its letter (`a`, `b`, `c`), to read the whole note with its
+watchdog, age and state; Esc gives the focus back to the prompt. Run `/watchdog status` to see each watchdog's reviews,
+notes, tokens and cost. A card names its watchdog when you run two or more.
 
-A card ends with the note's age and state: `steered` (Claude reads it after its next tool result), `nudge pending`
-and then `nudged` (the plugin starts a turn so that Claude reads it), `held` or `aside on next prompt` (Claude reads it
-with your next prompt). When Claude edited files after the review read its update, the card says
-`may be outdated: N edits since`, and Claude reads the same mark with the note. The next review of the same watchdog
-sees the edits and the note; when the note no longer holds, it retracts it: the card goes, and a note that waits
-never reaches Claude. A blocker that may be outdated and came after Claude's reply waits as `held` for that review
-before it nudges, so Claude does not go after a bug it already fixed.
+At its right end a card shows only what needs a look: the subagent type for a note on a subagent; the state while the
+note has not reached Claude yet, `nudge pending` (the plugin starts a turn so that Claude reads it), `held` or `aside`
+(Claude reads it with your next prompt); nothing once it is `steered` (Claude reads it after its next tool result) or
+`nudged`. When Claude edited files after the review read its update, the card says `outdated? N edits` (the open card
+says `may be outdated: N edits since`), and Claude reads the same mark with the note. The next review of the same
+watchdog sees the edits and the note; when the note no longer holds, it retracts it: the card goes, and a note that
+waits never reaches Claude. A blocker that may be outdated and came after Claude's reply waits as `held` for that
+review before it nudges, so Claude does not go after a bug it already fixed.
 
 ## What runs on your machine
 

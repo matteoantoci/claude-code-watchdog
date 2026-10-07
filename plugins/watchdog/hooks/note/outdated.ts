@@ -23,6 +23,12 @@ export const editsSince = (note: Batched): number => {
   return feed === undefined || note.batchEdits === null ? 0 : Math.max(feed.edits - note.batchEdits, 0);
 };
 
-// §10.8, §13.1, §7.7: the mark as the card and the recap show it; none at 0.
+const editCount = (edits: number): string => `${edits} ${edits === 1 ? 'edit' : 'edits'}`;
+
+// §10.8, §13.1, §7.7: the mark as an expanded card and the recap show it; none at 0.
 export const outdatedMark = (edits: number): string | undefined =>
-  edits > 0 ? `may be outdated: ${edits} ${edits === 1 ? 'edit' : 'edits'} since` : undefined;
+  edits > 0 ? `may be outdated: ${editCount(edits)} since` : undefined;
+
+// §10.8, §13.1: the mark in the status of a collapsed card row, in few cells: `outdated? 1 edit`; none at 0.
+export const shortOutdatedMark = (edits: number): string | undefined =>
+  edits > 0 ? `outdated? ${editCount(edits)}` : undefined;
