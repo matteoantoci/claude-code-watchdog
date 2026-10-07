@@ -51,7 +51,7 @@ const divider = (columns = WIDE): string => '┄'.repeat(columns);
 
 // §13.1: the count line over full cards: the title, then the focus hint flush right at `bodyColumns`.
 const hinted = (title: string, hotkeys: string, columns = WIDE): string => {
-  const hint = `ctrl+x tab · ${hotkeys}`;
+  const hint = `ctrl+x tab · ${hotkeys} · esc`;
   return `${title}${' '.repeat(columns - title.length - hint.length)}${hint}`;
 };
 
@@ -311,7 +311,7 @@ describe('band divider and count line (§13.1)', () => {
     expect(await shown(75)).toEqual(onBoth([divider(75), 'watchdog · 1 blocker · 2 concerns · 1 nit']));
     expect(await shown(50)).toEqual(onBoth([divider(50), 'watchdog · 1 blocker · 2 concerns · 1 nit']));
     expect(await shown(45)).toEqual(onBoth([divider(45), 'watchdog · 4 notes']));
-    expect(await textProps($, [/^┄+$/u, /^watchdog · $/u, /^ctrl\+x tab · a\/b\/c$/u])).toEqual(
+    expect(await textProps($, [/^┄+$/u, /^watchdog · $/u, /^ctrl\+x tab · a\/b\/c · esc$/u])).toEqual(
       onBoth([{ color: 'subtle' }, { dimColor: true }, { dimColor: true }])
     );
     expect(await textProps($, [/^watchdog · 1 blocker · 2 concerns · 1 nit +ctrl/u])).toEqual(
@@ -345,10 +345,10 @@ describe('band divider and count line (§13.1)', () => {
   });
 
   test('the hint needs 2 blank cells after the title; with less room it goes, before the title is cut', () => {
-    // The title is 53 cells and the hint `ctrl+x tab · a/b/c` 18.
+    // The title is 53 cells and the hint `ctrl+x tab · a/b/c · esc` 24.
     const title = 'watchdog · 1000 blockers · 1000 concerns · 10000 nits';
-    expect(hintGap(73, title, 'ctrl+x tab · a/b/c')).toBe(2);
-    expect(hintGap(72, title, 'ctrl+x tab · a/b/c')).toBeUndefined();
+    expect(hintGap(79, title, 'ctrl+x tab · a/b/c · esc')).toBe(2);
+    expect(hintGap(78, title, 'ctrl+x tab · a/b/c · esc')).toBeUndefined();
   });
 });
 

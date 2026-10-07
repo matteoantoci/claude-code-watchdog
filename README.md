@@ -20,8 +20,8 @@ starts when Claude.app bundles Claude Code 2.1.290 or later.
 
 Then run `/watchdog on` (reviews are off until you do) and ask Claude for a small change. The note shows as a
 `watchdog: [concern] …` line in the transcript and as a card, one line with its first sentence above the prompt box.
-Click the card's `▸`, or press ctrl+x tab and then its letter (`a`, `b`, `c`), to read the whole note. Run
-`/watchdog status` to see each watchdog's reviews, notes, tokens and cost.
+Click the card's `▸`, or press ctrl+x tab and then its letter (`a`, `b`, `c`), to read the whole note; Esc gives the
+focus back to the prompt. Run `/watchdog status` to see each watchdog's reviews, notes, tokens and cost.
 
 A card ends with the note's age and state: `steered` (Claude reads it after its next tool result), `nudge pending`
 and then `nudged` (the plugin starts a turn so that Claude reads it), `held` or `aside on next prompt` (Claude reads it

@@ -88,9 +88,9 @@ const countsOf = (cards: readonly Card[]): Counts => ({
   nit: cards.filter((card) => card.severity === 'nit').length,
 });
 
-// §13.1: the focus hint at the right end of the count line: the chord that gives the band the focus, then the
-// hotkeys of the shown cards.
-const focusHint = (cards: number): string => `ctrl+x tab · ${BAND_CARD_HOTKEYS.slice(0, cards).join('/')}`;
+// §13.1: the focus hint at the right end of the count line: the chord that gives the band the focus, the hotkeys of
+// the shown cards, then `esc`, the one key that gives the focus back to the prompt.
+const focusHint = (cards: number): string => `ctrl+x tab · ${BAND_CARD_HOTKEYS.slice(0, cards).join('/')} · esc`;
 
 // §13.1: the blank cells between the title and a focus hint that ends at `bodyColumns`; none when fewer than
 // `BAND_HINT_GAP` fit, so the hint goes before the title is cut.
