@@ -86,17 +86,30 @@ const totalsOf = (cards: readonly Card[]): Totals => ({
   nit: cards.filter((card) => card.severity === 'nit').length,
 });
 
+// §13.1: the focus hint at the right end of the count line: the chord that gives the band the focus, then the
+// hotkeys of the shown cards.
+const focusHint = (cards: number): string => `ctrl+x tab · ${BAND_CARD_HOTKEYS.slice(0, cards).join('/')}`;
+
+// §13.1: the dim rest of the rule after the title, `tail` cells with its first space: the focus hint when it fits
+// with a space and at least `BAND_RULE_EDGE` rule cells on each side, else the rule alone.
+const ruleTail = (tail: number, hint: string | undefined): string => {
+  const end = hint === undefined ? '' : ` ${hint} ${'─'.repeat(BAND_RULE_EDGE)}`;
+  const shown = tail - 1 - end.length < BAND_RULE_EDGE ? '' : end;
+  return ` ${'─'.repeat(tail - 1 - shown.length)}${shown}`;
+};
+
 // §13.1: a dim rule across `bodyColumns`: `BAND_RULE_EDGE` rule cells and a space, the title, a space and the rest
-// of the rule. A title with no room for `BAND_RULE_EDGE` rule cells on each side shows alone, cut at the end.
-const ruled = (el: BandElements, title: Title, columns: number): RenderElement => {
-  const tail = columns - (BAND_RULE_EDGE + 1) - (title.text.length + 1);
+// of the rule, which holds the focus hint when it fits. A title with no room for `BAND_RULE_EDGE` rule cells on
+// each side shows alone, cut at the end.
+const ruled = (el: BandElements, title: Title, at: { columns: number; hint?: string | undefined }): RenderElement => {
+  const tail = at.columns - (BAND_RULE_EDGE + 1) - title.text.length;
   const parts =
-    tail < BAND_RULE_EDGE
+    tail - 1 < BAND_RULE_EDGE
       ? title.parts
       : [
           el.Text({ dimColor: true, children: `${'─'.repeat(BAND_RULE_EDGE)} ` }),
           ...title.parts,
-          el.Text({ dimColor: true, children: ` ${'─'.repeat(tail)}` }),
+          el.Text({ dimColor: true, children: ruleTail(tail, at.hint) }),
         ];
   return el.Text({ wrap: 'truncate-end', children: parts });
 };
@@ -221,16 +234,22 @@ export const bandTree = (el: BandElements, view: BandView): RenderElement | unde
   if (view.isOn === false) {
     const off = 'watchdog · off · /watchdog on';
     const title = { text: off, parts: [el.Text({ dimColor: true, children: off })] };
-    return row(el, 'watchdog-off', ruled(el, title, view.columns));
+    return row(el, 'watchdog-off', ruled(el, title, { columns: view.columns }));
   }
   if (view.isOn !== true) {
     return undefined;
   }
   const mode = modeOf(view.columns);
+  // §13.1: the focus hint only over full cards, which have a Button each.
+  const buttons = mode === 'full' ? Math.min(view.band.cards.length, BAND_CARD_LIMIT) : 0;
+  const count = ruled(el, countTitle(el, view.band.totals, mode), {
+    columns: view.columns,
+    hint: buttons === 0 ? undefined : focusHint(buttons),
+  });
   return el.Box({
     flexDirection: 'column',
     children: [
-      row(el, 'watchdog-count', ruled(el, countTitle(el, view.band.totals, mode), view.columns)),
+      row(el, 'watchdog-count', count),
       view.trouble === undefined
         ? null
         : row(el, 'watchdog-trouble', el.Text({ color: 'error', wrap: 'truncate-end', children: view.trouble })),

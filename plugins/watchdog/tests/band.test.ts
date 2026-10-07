@@ -41,6 +41,12 @@ const WIDE = 115;
 // §13.1: the count line and the off line: a rule of `bodyColumns` cells, the title after the first 2.
 const ruled = (title: string, columns = WIDE): string => `── ${title} ${'─'.repeat(columns - title.length - 4)}`;
 
+// §13.1: the count line over full cards: the rule ends with the focus hint, a space and 2 rule cells.
+const hinted = (title: string, hotkeys: string, columns = WIDE): string => {
+  const hint = `ctrl+x tab · ${hotkeys}`;
+  return `── ${title} ${'─'.repeat(columns - title.length - hint.length - 8)} ${hint} ──`;
+};
+
 const stubBand = (on: Stubs, options: Parameters<typeof stubDelivery>[1] = {}, seed: StateSeed = {}): void => {
   stubDelivery(on, options);
   stubState(on, seed);
@@ -113,7 +119,7 @@ describe('band cards (§13.1)', () => {
     expect(await textProps($, [new RegExp(`^${ENGINE_BAND}$`, 'u')])).toEqual(onBoth([{}]));
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': ruled('watchdog · 1 blocker · 2 concerns · 1 nit'),
+        'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
         'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudged`,
         'watchdog-card-1': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudged`,
         'watchdog-card-2': `▸ CONCERN  default · ${OLD_CONCERN} · just now · nudged`,
@@ -131,7 +137,7 @@ describe('band cards (§13.1)', () => {
     await listedNotes($);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': ruled('watchdog · 1 blocker · 2 concerns · 1 nit'),
+        'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
         'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudged',
         'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudged',
         'watchdog-card-2': '▸ CONCERN  default · parseDate drops the timezone · just now · nudged',
@@ -183,7 +189,7 @@ describe('band cards (§13.1)', () => {
     await sendNote($, 'blocker', BLOCKER);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': ruled('watchdog · 1 blocker'),
+        'watchdog-count': hinted('watchdog · 1 blocker', 'a'),
         'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudged`,
       })
     );
@@ -197,7 +203,7 @@ describe('band cards (§13.1)', () => {
     await sendNote($, 'concern', NEW_CONCERN);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': ruled('watchdog · 1 concern · 1 nit'),
+        'watchdog-count': hinted('watchdog · 1 concern · 1 nit', 'a'),
         'watchdog-card-0': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudged`,
       })
     );
@@ -211,14 +217,30 @@ describe('band rule (§13.1)', () => {
     await fourNotes($);
     const counts = async (bodyColumns: number) =>
       (await rows($, { bodyColumns })).map((shown) => shown['watchdog-count']);
-    expect(await counts(80)).toEqual(onBoth(ruled('watchdog · 1 blocker · 2 concerns · 1 nit', 80)));
+    expect(await counts(80)).toEqual(onBoth(hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c', 80)));
     expect(await counts(75)).toEqual(onBoth(ruled('watchdog · 1 blocker · 2 concerns · 1 nit', 75)));
     expect(await counts(50)).toEqual(onBoth(ruled('watchdog · 1 blocker · 2 concerns · 1 nit', 50)));
     expect(await counts(45)).toEqual(onBoth(ruled('watchdog · 4 notes', 45)));
     expect((await counts(45)).map((count) => count?.length)).toEqual(onBoth(45));
-    expect(await textProps($, [/^── $/u, /^ ─+$/u, /^watchdog · $/u])).toEqual(
+    expect(await textProps($, [/^── $/u, /^ ─+ ctrl\+x tab · a\/b\/c ──$/u, /^watchdog · $/u])).toEqual(
       onBoth([{ dimColor: true }, { dimColor: true }, { dimColor: true }])
     );
+    expect(await textProps($, [/^ ─+$/u], { bodyColumns: 75 })).toEqual(onBoth([{ dimColor: true }]));
+  });
+
+  test('over full cards the rule ends with the focus hint; the hint goes before the title is cut', async ($, on: Stubs) => {
+    const card = { key: 'k', seq: 1, name: 'default', severity: 'blocker', text: BLOCKER, turn: 1, delivery: 'nudged' };
+    const totals = { blocker: 100_000, concern: 100_000, nit: 100_000 };
+    const band = { cards: [card], totals, turn: 1, seq: 1, expanded: null };
+    stubBand(on, {}, { state: { isOn: true, source: '/watchdog on' }, band });
+    await $.session.start(START);
+    const title = 'watchdog · 100000 blockers · 100000 concerns · 100000 nits';
+    const counts = async (bodyColumns: number) =>
+      (await rows($, { bodyColumns })).map((shown) => shown['watchdog-count']);
+    // The title is 58 cells and the hint `ctrl+x tab · a` 14: with 2 rule cells and a space on each side of both,
+    // the hint needs 82 columns.
+    expect(await counts(82)).toEqual(onBoth(hinted(title, 'a', 82)));
+    expect(await counts(81)).toEqual(onBoth(ruled(title, 81)));
   });
 
   test('with no room for 2 rule cells after the title, the title shows alone', async ($, on: Stubs) => {
@@ -238,7 +260,7 @@ describe('band rule (§13.1)', () => {
 describe('expand a card (§13.1)', () => {
   // The rows of `listedNotes` with each card collapsed.
   const COLLAPSED = {
-    'watchdog-count': ruled('watchdog · 1 blocker · 2 concerns · 1 nit'),
+    'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 1 nit', 'a/b/c'),
     'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudged',
     'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudged',
     'watchdog-card-2': '▸ CONCERN  default · parseDate drops the timezone · just now · nudged',
@@ -365,7 +387,7 @@ describe('band clear and off (§13.1, §5.2)', () => {
     await sendNote($, 'nit', 'The README still names the old CLI flag --legacy.');
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': ruled('watchdog · 1 blocker · 2 concerns · 2 nits'),
+        'watchdog-count': hinted('watchdog · 1 blocker · 2 concerns · 2 nits', 'a'),
         'watchdog-card-0':
           '▸ NIT  default · The README still names the old CLI flag --legacy. · just now · aside on next prompt',
       })
@@ -436,7 +458,7 @@ describe('band after a reload (§14.6, §11.3)', () => {
     await $.session.start(START);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': ruled('watchdog · 1 blocker'),
+        'watchdog-count': hinted('watchdog · 1 blocker', 'a'),
         'watchdog-card-0': `▸ BLOCKER  default · Explore · ${BLOCKER} · 1 turn ago · steered`,
       })
     );
