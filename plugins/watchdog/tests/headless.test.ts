@@ -2,6 +2,7 @@ import { describe, expect, test } from 'claude-code/testing';
 import { badValueWarning, envSwitch, settingsEnvWarning } from '../hooks/lifecycle/headless';
 import { dropBacklog, isUnboundReject, waitingUpdates } from '../hooks/review/backlog';
 import { REVIEW_SPAWN, sendNote, stubDelivery, wrapped } from './fixtures/delivery';
+import { HEADLESS_PROMPT_ROW, HEADLESS_SUBMIT } from './fixtures/engine/headless-prompt';
 import { stubOnState } from './fixtures/on-state';
 import {
   HEADLESS_START,
@@ -50,8 +51,8 @@ const ON_STATUS = 'watchdog on · nudge 0/1 · cooldown 0\non source: CLAUDE_WAT
 
 const END = { reason: 'other', sessionId: SESSION_ID, resume: { id: SESSION_ID } } as const;
 
-// The engine's prompt of a `-p` or SDK run: a person prompt (§10).
-const SDK_PROMPT = { text: 'Fix the parser.', wait: false, origin: { kind: 'sdk' } } as const;
+// The engine's prompt of a `-p` or SDK run: a person prompt (§10), in the recorded shape.
+const SDK_PROMPT = { ...HEADLESS_SUBMIT, text: 'Fix the parser.' };
 
 const CONCERN = 'parseDate drops the timezone';
 
@@ -248,9 +249,8 @@ describe('delivery in -p', () => {
 });
 
 describe('the person prompt of -p (§7.6, §7.7, §10)', () => {
-  // Over the 120-char one-line cut of a row that is not a person prompt.
-  const TYPED =
-    'Use the Read tool to read math.js, then read a.txt, one tool call at a time. Then tell me in one line what add(2, 3) returns.';
+  // The recorded prompt; over the 120-char one-line cut of a row that is not a person prompt.
+  const TYPED = HEADLESS_SUBMIT.text;
 
   test('its row, which the engine stamps unclassified, reaches the review uncut and in part 2', async ($, on: PromptStubs) => {
     const seen = stubSession(on, {
@@ -260,17 +260,11 @@ describe('the person prompt of -p (§7.6, §7.7, §10)', () => {
     // The engine appends the prompt's row while the `-p` prompt submits, with origin `unclassified` though the
     // submit's origin is `sdk` (live probe l3-headless-prompt).
     on('prompt.submit', async (_$, e) => {
-      const content = [{ type: 'text', text: e.text }];
-      await append($, {
-        uuid: 'u1',
-        door: 'prompt',
-        origin: { kind: 'unclassified' },
-        message: { type: 'user', role: 'user', content },
-      });
+      await append($, HEADLESS_PROMPT_ROW);
       return { text: e.text };
     });
     await $.session.start(HEADLESS_START);
-    await $.prompt.submit({ ...SDK_PROMPT, text: TYPED });
+    await $.prompt.submit(HEADLESS_SUBMIT);
     await append($, mainRow('a1', 'assistant', 'add(2, 3) returns -1.'));
     await $.turn.complete(turnEnd('t1'));
 
@@ -287,13 +281,7 @@ describe('the person prompt of -p (§7.6, §7.7, §10)', () => {
     on('prompt.submit', (_$, e) => ({ text: e.text }));
     await $.session.start(HEADLESS_START);
     await $.prompt.submit({ ...SDK_PROMPT, text: 'Read math.js.' });
-    const content = [{ type: 'text', text: TYPED }];
-    await append($, {
-      uuid: 'u1',
-      door: 'prompt',
-      origin: { kind: 'unclassified' },
-      message: { type: 'user', role: 'user', content },
-    });
+    await append($, HEADLESS_PROMPT_ROW);
     await $.turn.complete(turnEnd('t1'));
 
     expect(seen.spawns[0]?.prompt).toMatch(/^### Session update\n\n\[unclassified\] Use the Read tool.{80,}…$/u);

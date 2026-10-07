@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { REVIEW_SPAWN } from './fixtures/delivery';
+import { STATUS_OUTPUT } from './fixtures/engine/status-output';
+import { BESIDE, allowlistDeny } from './fixtures/recorded';
 import { REVIEW_AGENT, START, mainRow, stubSession, subagentId, turnEnd, typed } from './fixtures/session';
 import {
   DESKTOP,
@@ -33,7 +35,7 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     stubRender(on);
     await runReview($, OPUS_USAGE);
     const reply = await $.command.run(typed('status'));
-    await expectTable(await mountOutput($, { args: 'status', text: shown(reply.text, 'wdprobe+watchdog') }, TERMINAL));
+    await expectTable(await mountOutput($, { args: 'status', text: shown(reply.text, BESIDE) }, TERMINAL));
   });
 
   test('a bare /watchdog draws the table too; below 80 columns a row is `name state $`', async ($, on: Stubs) => {
@@ -73,7 +75,7 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     // A full model id: the preflight reject of an alias is left to the review-time compare (§12.2).
     const roster = JSON.stringify({ watchdogs: [{ name: 'pinned', model: 'claude-opus-4-5' }] });
     const files = { '/repo/WATCHDOG.json': { text: roster, mtimeMs: 1 } };
-    stubSession(on, { preflightDeny: 'model claude-opus-4-5 is not in availableModels', files });
+    stubSession(on, { preflightDeny: allowlistDeny('claude-opus-4-5'), files });
     stubRender(on);
     await $.session.start(START);
     await $.command.run(typed('on'));
@@ -82,14 +84,14 @@ describe('/watchdog status table through command.run (§13.3)', () => {
     const colors = async (text: string | RegExp) =>
       (await ui.findAll({ type: 'Text', text })).map((element) => element.props['color']);
     expect(await colors('no_model')).toContain('error');
-    expect(await colors(/not in availableModels$/u)).toContain('error');
+    expect(await colors(/is not in this organization's allowlist$/u)).toContain('error');
   });
 
   test('a status row of no known run (before a reload) is the engine row', async ($, on: Stubs) => {
     stubSession(on);
     stubRender(on);
     await $.session.start(START);
-    const ui = await mountOutput($, { args: 'status', text: shown('watchdog on · nudge 0/1 · cooldown 0') }, TERMINAL);
+    const ui = await mountOutput($, STATUS_OUTPUT, TERMINAL);
     expect(await ui.find({ text: 'engine row' })).toBeDefined();
   });
 });
@@ -137,7 +139,7 @@ describe('/watchdog dump row (§13.4)', () => {
     expect(reply.text).toMatch(/^watchdog dump: \/home\/me\/\.claude\/watchdog\/dumps\/.+\.md$/u);
     const path = (reply.text ?? '').replace('watchdog dump: ', '');
     rendered.copies.length = 0;
-    const ui = await mountOutput($, { args: 'dump', text: shown(reply.text, 'wdprobe+watchdog') }, DESKTOP);
+    const ui = await mountOutput($, { args: 'dump', text: shown(reply.text, BESIDE) }, DESKTOP);
     expect((await ui.find({ type: 'Button' }))?.text).toBe('copy path');
     await ui.press({ key: 'copy-path' });
     expect(rendered.copies).toEqual([{ text: path, surface: 'desktop' }]);

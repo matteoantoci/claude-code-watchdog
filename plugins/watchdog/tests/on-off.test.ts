@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { REVIEW_SPAWN } from './fixtures/delivery';
+import { allowlistDeny, allowlistReject } from './fixtures/recorded';
 import { REVIEW_AGENT, START, USAGE, mainRow, stubAfterAtOnce, stubSession, turnEnd, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
 import type { SessionEvents, SessionStubs } from './fixtures/session';
@@ -84,22 +85,22 @@ describe('/watchdog on', () => {
   });
 
   test('a preflight the engine refuses puts a full-id watchdog in no_model with the reason and one row', async ($, on: DelayStubs) => {
-    const seen = stubSession(on, { preflightDeny: 'model claude-opus-4-5 is not in availableModels', files: PINNED });
+    const seen = stubSession(on, { preflightDeny: allowlistDeny('claude-opus-4-5'), files: PINNED });
     on('clock.after', () => ({ value: undefined }));
     await $.session.start(START);
     await $.command.run(typed('on'));
-    const status = await $.command.run(typed('status'));
-    expect(status.text).toMatch(
-      /^watchdog on · nudge 0\/1 · cooldown 0\non source: \/watchdog on\npinned no_model: .*model claude-opus-4-5 is not in availableModels · \.\/WATCHDOG\.json$/u
+    const reason = allowlistReject('claude-opus-4-5');
+    expect((await $.command.run(typed('status'))).text).toBe(
+      `${ON_HEAD}\npinned no_model: ${reason} · ./WATCHDOG.json`
     );
-    expect(seen.logs).toEqual([expect.stringMatching(/^watchdog: pinned no_model: .*not in availableModels$/u)]);
+    expect(seen.logs).toEqual([`watchdog: pinned no_model: ${reason}`]);
   });
 
   test('a preflight reject of an alias leaves it to the review-time compare, which takes the stepped-down model', async ($, on: DelayStubs) => {
     const roster = { watchdogs: [{ name: 'probe', model: 'sonnet' }] };
     const files = { '/repo/WATCHDOG.json': { text: JSON.stringify(roster), mtimeMs: 1 } };
-    // The engine's reject under an `availableModels` allowlist (live probe rf-stepdown-review).
-    const seen = stubSession(on, { preflightDeny: `model "sonnet" is not in this organization's allowlist`, files });
+    // The engine's reject under an `availableModels` allowlist, as recorded (live probe rf-allow-settings).
+    const seen = stubSession(on, { preflightDeny: allowlistDeny('sonnet'), files });
     stubAfterAtOnce(on);
     await $.session.start(START);
     await $.command.run(typed('on'));

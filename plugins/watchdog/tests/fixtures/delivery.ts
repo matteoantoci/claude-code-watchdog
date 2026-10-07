@@ -1,6 +1,7 @@
 // Stubs for an L2 test of the delivery routes (spec §10): a watched session on a clock the test moves, the
 // prompts that reach the engine (the person's and the mod's nudge), and the main-loop `turn.start`.
 import { mock } from 'claude-code/testing';
+import { COMPOSER_SUBMIT } from './engine/composer-prompt';
 import { GUIDANCE, NOW, REVIEW_AGENT, START, stubSession, typed } from './session';
 import type { OnEvents } from '../../hooks/on';
 import type { Seen, SessionEvents } from './session';
@@ -29,8 +30,8 @@ export const REVIEW_SPAWN: AgentSpawnInput = {
   fork: false,
 };
 
-// §10: the kit stamps no origin, so each prompt names its own.
-export const PERSON_PROMPT = { text: 'Fix the parser.', wait: false, origin: { kind: 'composer' } } as const;
+// §10: the kit stamps no origin, so each prompt names its own. A typed prompt in the recorded shape.
+export const PERSON_PROMPT = { ...COMPOSER_SUBMIT, text: 'Fix the parser.' };
 
 export const TASK_NOTIFICATION = {
   text: '<task-notification><task-id>bsub0001</task-id>done</task-notification>',

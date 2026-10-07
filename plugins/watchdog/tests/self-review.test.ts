@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'claude-code/testing';
 import { isOwnLoop, isOwnPrompt, isOwnRow, isOwnSend, isOwnSpawn, isOwnToolCall } from '../hooks/agents/self-review';
+import { COMPOSER_PROMPT_ROW } from './fixtures/engine/composer-prompt';
+import { HEADLESS_PROMPT_ROW } from './fixtures/engine/headless-prompt';
+import { LOG_NOTICE_ROW } from './fixtures/engine/log-notice';
+import { withText } from './fixtures/recorded';
 
 const WATCHDOG = 'a1b2c3d4e5f6a7b8c';
 const OTHER = 'aa00bb11cc22dd33e';
@@ -11,13 +15,6 @@ const MODEL_ID = 'toolu_01Koq5WS2oCWoqTNpb6ZSpFe';
 const textRow = (text: string) => ({
   door: 'response',
   origin: { kind: 'model', model: 'claude-opus-4-5' },
-  message: { content: [{ type: 'text', text }] },
-});
-
-// The engine's main-loop row for a `$.ui.log` line, led by the logging plugin's name.
-const noticeRow = (text: string) => ({
-  door: 'notice',
-  origin: { kind: 'engine' },
   message: { content: [{ type: 'text', text }] },
 });
 
@@ -77,9 +74,9 @@ describe('self-review filter, item 3: the delivered notes', () => {
   });
 
   test("the engine's notice echo of the mod's own $.ui.log row is its own; another plugin's notice is not", () => {
-    expect(isOwnRow(noticeRow('watchdog: [concern] probe: add() returns a - b (nudged)'), IDLE)).toBe(true);
-    expect(isOwnRow(noticeRow('linter: 0 problems'), IDLE)).toBe(false);
-    expect(isOwnRow(noticeRow('watchdog-extra: hello'), IDLE)).toBe(false);
+    expect(isOwnRow(LOG_NOTICE_ROW, IDLE)).toBe(true);
+    expect(isOwnRow(withText(LOG_NOTICE_ROW, 'n2', 'linter: 0 problems'), IDLE)).toBe(false);
+    expect(isOwnRow(withText(LOG_NOTICE_ROW, 'n3', 'watchdog-extra: hello'), IDLE)).toBe(false);
   });
 });
 
@@ -157,12 +154,8 @@ describe('self-review filter, item 6: the stop prompt of a watchdog agent', () =
 describe('self-review filter: the primary agent work stays', () => {
   test('a model row, a person prompt and a model tool call are not its own', () => {
     expect(isOwnRow(textRow('I will fix the parser.'), IDLE)).toBe(false);
-    const prompt = {
-      door: 'prompt',
-      origin: { kind: 'composer' },
-      message: { content: [{ type: 'text', text: 'fix it' }] },
-    };
-    expect(isOwnRow(prompt, SPAWNING)).toBe(false);
+    expect(isOwnRow(COMPOSER_PROMPT_ROW, SPAWNING)).toBe(false);
+    expect(isOwnRow(HEADLESS_PROMPT_ROW, SPAWNING)).toBe(false);
     expect(isOwnToolCall({ tool: 'Read', tool_use_id: MODEL_ID, file_path: 'a.ts' }, SPAWNING)).toBe(false);
   });
 });

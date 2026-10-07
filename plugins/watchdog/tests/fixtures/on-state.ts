@@ -1,6 +1,7 @@
 // Stubs for the `$.state` sources of an L2 test: the keys `on` (spec §5.1), `health` (§12.3) and `band`
 // (§13.1), and the Desktop events. Use with `stubSession` of ./session, which stubs the session id and the
 // `$.store`.
+import { COMPOSER_SUBMIT } from './engine/composer-prompt';
 import { SESSION_ID } from './session';
 import type { OnEvents } from '../../hooks/on';
 import type { SessionStubs } from './session';
@@ -57,7 +58,8 @@ export const DESKTOP_START: SessionStartInput = { cwd: '/repo', surface: null, i
 
 export const DESKTOP_ATTACH = { surface: 'desktop', clientId: 'desktop:default' } as const;
 
-export const PROMPT = { text: 'fix the bug', wait: false, origin: { kind: 'composer' } } as const;
+// A typed prompt in the recorded shape.
+export const PROMPT = { ...COMPOSER_SUBMIT, text: 'fix the bug' };
 
 // `$.state` alone, for a test whose other fixture stubs the prompts. A read gets the last write of its key in
 // the session now, else the seed.

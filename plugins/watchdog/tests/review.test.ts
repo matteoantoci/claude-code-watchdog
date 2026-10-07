@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing';
+import { LOG_NOTICE_ROW } from './fixtures/engine/log-notice';
+import { noticeRow, withText } from './fixtures/recorded';
 import { REVIEW_AGENT, SESSION_ID, START, USAGE, mainRow, stubSession, turnEnd, typed } from './fixtures/session';
 import type { SessionStubs } from './fixtures/session';
 import type { AgentSpawnInput, ApiMessage, SessionAppendInput, TurnStepInput } from 'claude-code';
@@ -35,14 +37,6 @@ const SPAWN: AgentSpawnInput = {
 const agentRow = (uuid: string, text: string): SessionAppendInput => ({
   ...mainRow(uuid, 'assistant', text),
   agentId: REVIEW_AGENT,
-});
-
-// The engine appends each `$.ui.log` line to the main conversation as a notice led by the plugin's name.
-const noticeRow = (uuid: string, text: string): SessionAppendInput => ({
-  uuid,
-  door: 'notice',
-  origin: { kind: 'engine' },
-  message: { type: 'system', content: [{ type: 'text', text }] },
 });
 
 const reviewEnd = { ...turnEnd('r1'), agentId: REVIEW_AGENT, usage: USAGE } as const;
@@ -181,14 +175,15 @@ describe('one review at a time, and no self-review', () => {
     await $.tool.call({ tool: 'mcp__watchdog__note', agentId: REVIEW_AGENT, note: 'Check null.', severity: 'concern' });
     await $.turn.complete(reviewEnd);
     expect(seen.logs).toEqual(['[concern] default: Check null. (nudged)']);
-    await append($, noticeRow('n1', `watchdog: ${seen.logs[0] ?? ''}`));
-    await append($, noticeRow('n2', 'linter: 0 problems'));
+    // The engine's echo of that row, and another plugin's log row, in the recorded notice shape.
+    await append($, noticeRow('n1', seen.logs[0] ?? ''));
+    await append($, withText(LOG_NOTICE_ROW, 'n2', 'linter: 0 problems'));
     await append($, mainRow('u2', 'user', 'Second task.'));
     await $.turn.complete(turnEnd('t2'));
 
     const prompt = seen.spawns.at(-1)?.prompt ?? '';
     expect(prompt).toContain('Second task.');
-    expect(prompt).toContain('[notice] linter: 0 problems');
+    expect(prompt).toContain('[notice informational] linter: 0 problems');
     expect(prompt).not.toContain('watchdog: [concern] default: Check null.');
   });
 });

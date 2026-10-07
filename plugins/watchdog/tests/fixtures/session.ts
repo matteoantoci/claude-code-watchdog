@@ -1,6 +1,8 @@
 // Stubs for an L2 test of a watched session: every `$` call and engine event the mod reaches.
 import { REVIEW_TIMEOUT_MS } from '../../hooks/constants';
+import { COMPOSER_PROMPT_ROW } from './engine/composer-prompt';
 import { FRAGMENTS } from './prompts';
+import { withText } from './recorded';
 import type { OnEvents } from '../../hooks/on';
 import type {
   AgentSpawnInput,
@@ -400,14 +402,18 @@ export const stubAfterAtOnce = (on: OnEvents<'clock.after'>, delays: number[] = 
   return delays;
 };
 
-// A main-loop row as the engine appends it. The kit has nothing beneath the plugins for
-// `session.append`, so the call rejects after the mod's hooks saw the row.
-export const mainRow = (uuid: string, role: 'user' | 'assistant', text: string): SessionAppendInput => ({
-  uuid,
-  door: role === 'user' ? 'prompt' : 'response',
-  origin: role === 'user' ? { kind: 'composer' } : { kind: 'model', model: 'claude-opus-4-5' },
-  message: { type: role, role, content: [{ type: 'text', text }] },
-});
+// A main-loop row as the engine appends it: a person prompt in the recorded shape of a typed one, or a model
+// response. The kit has nothing beneath the plugins for `session.append`, so the call rejects after the mod's
+// hooks saw the row.
+export const mainRow = (uuid: string, role: 'user' | 'assistant', text: string): SessionAppendInput =>
+  role === 'user'
+    ? withText(COMPOSER_PROMPT_ROW, uuid, text)
+    : {
+        uuid,
+        door: 'response',
+        origin: { kind: 'model', model: 'claude-opus-4-5' },
+        message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text }] },
+      };
 
 export const turnEnd = (turnId: string) =>
   ({ turnId, reason: 'answer', answer: 'done', durationMs: 5, isAborted: false }) as const;

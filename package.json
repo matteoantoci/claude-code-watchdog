@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "validate": "claude plugin validate --strict plugins/watchdog",
     "test": "claude plugin test plugins/watchdog",
-    "check": "npm run fmt:check && npm run lint && npm run typecheck && npm run validate && npm run test"
+    "rules": "node scripts/check-plugin-rules.mjs",
+    "check": "npm run rules && npm run fmt:check && npm run lint && npm run typecheck && npm run validate && npm run test"
   },
   "devDependencies": {
     "husky": "9.1.7",

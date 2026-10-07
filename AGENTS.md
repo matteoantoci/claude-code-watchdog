@@ -1,3 +1,5 @@
+Plugin code or tests: read `docs/plugin-dev.md` first. Review: apply `CODING_STANDARDS.md`.
+
 ## Agent skills
 
 ### Issue tracker

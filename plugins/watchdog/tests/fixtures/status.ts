@@ -3,6 +3,8 @@
 // the row as a surface draws it.
 import { expect } from 'claude-code/testing';
 import { REVIEW_SPAWN } from './delivery';
+import { STATUS_OUTPUT } from './engine/status-output';
+import { ALONE } from './recorded';
 import { REVIEW_AGENT, START, mainRow, stubAfterAtOnce, turnEnd, typed } from './session';
 import type { OnEvents } from '../../hooks/on';
 import type { SessionEvents } from './session';
@@ -49,8 +51,8 @@ export const runReview = async ($: Engine, usage: typeof OPUS_USAGE): Promise<vo
   await $.turn.complete({ ...turnEnd('r1'), agentId: REVIEW_AGENT, usage });
 };
 
-// The output row of one run on one surface, `columns` wide: `requestId` names the row, so two mounts of
-// one id are one row on two surfaces.
+// The output row of one run on one surface, `columns` wide: the recorded props with the run's args and text.
+// `requestId` names the row, so two mounts of one id are one row on two surfaces.
 export const mountOutput = async (
   $: Engine,
   row: { args: string; text: string | undefined; requestId?: string },
@@ -60,15 +62,13 @@ export const mountOutput = async (
     plugin: 'watchdog',
     surface: view.surface,
     component: 'CommandOutput',
-    props: { command: 'watchdog', args: row.args, text: row.text ?? '', isErrored: false },
+    props: { ...STATUS_OUTPUT, args: row.args, text: row.text ?? '' },
     viewport: { columns: view.columns, rows: 40 },
     ...(row.requestId === undefined ? {} : { requestId: row.requestId }),
   });
 
-// d.ts `CommandOutput` `text`: the engine draws the `text` a hook answered under its plugin's name, and under
-// each plugin's name whose `command.run` hook the run passed (live probe l3-status-table:
-// `wdprobe+watchdog: watchdog on · …`).
-export const shown = (reply: string | undefined, names = 'watchdog'): string => `${names}: ${reply ?? ''}`;
+// The row text of a reply: the engine draws it after the plugin names, as recorded (./recorded `ALONE`, `BESIDE`).
+export const shown = (reply: string | undefined, lead = ALONE): string => `${lead}${reply ?? ''}`;
 
 export const TERMINAL = { surface: 'terminal', columns: 120 } as const;
 
