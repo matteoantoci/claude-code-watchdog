@@ -19,7 +19,8 @@ starts when Claude.app bundles Claude Code 2.1.290 or later.
 ```
 
 Then run `/watchdog on` (reviews are off until you do) and ask Claude for a small change. The note shows as a
-`watchdog: [concern] …` line in the transcript and as a card, the plugin's note box above the prompt box. Run
+`watchdog: [concern] …` line in the transcript and as a card, one line with its first sentence above the prompt box.
+Click the card's `▸`, or press ctrl+x tab and then its letter (`a`, `b`, `c`), to read the whole note. Run
 `/watchdog status` to see each watchdog's reviews, notes, tokens and cost.
 
 ## What runs on your machine

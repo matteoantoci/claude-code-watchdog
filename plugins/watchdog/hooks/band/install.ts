@@ -4,7 +4,7 @@ import { currentMode } from '../lifecycle/mode';
 import { isInteractiveSession } from '../lifecycle/on-order';
 import { watchHeldNotes } from '../note/notes';
 import { isPersonPrompt } from '../person';
-import { EMPTY_BAND, bandState, changeCard, clearCards, restoreBand } from './cards';
+import { EMPTY_BAND, bandState, changeCard, clearCards, restoreBand, toggleCard } from './cards';
 import { troubleLine } from './problems';
 import { bandTree } from './tree';
 import type { OnEvents } from '../on';
@@ -70,6 +70,13 @@ const afterCommand: Hook<'command.run'> = async ($, e, next) => {
   return result;
 };
 
+// §13.1: a press on a card's Button expands or collapses it beneath, in its `onPress`; the band is written after.
+const afterPress: Hook<'ui.press'> = async ($, e, next) => {
+  const result = await next(e);
+  await writeBand($);
+  return result;
+};
+
 // §14.6: at module load the cards come back from `$.state`, so a reload keeps the band.
 const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
   const result = await next(e);
@@ -120,7 +127,7 @@ const onBand: BandHook = async ($, e, next) => {
   const columns = e.props.bodyColumns;
   const trouble = await troubleText($, health, columns);
   const el = $.ui.resolve(e);
-  const tree = bandTree(el, { isOn, band, trouble, columns, maxRows: e.props.maxRows });
+  const tree = bandTree(el, { isOn, band, trouble, columns, onToggle: toggleCard });
   return tree === undefined ? base : el.Box({ key: 'watchdog-band', flexDirection: 'column', children: [base, tree] });
 };
 
@@ -128,7 +135,14 @@ const onBand: BandHook = async ($, e, next) => {
 // The matchers only tell these `on()` from the other areas'.
 export const installBand = (
   on: OnEvents<
-    'tool.call' | 'turn.start' | 'turn.complete' | 'prompt.submit' | 'command.run' | 'session.start' | 'ui.render'
+    | 'tool.call'
+    | 'turn.start'
+    | 'turn.complete'
+    | 'prompt.submit'
+    | 'command.run'
+    | 'session.start'
+    | 'ui.render'
+    | 'ui.press'
   >
 ): void => {
   watchHeldNotes(changeCard);
@@ -139,4 +153,5 @@ export const installBand = (
   on('command.run', { command: /^watchdog$/u }, afterCommand);
   on('session.start', { cwd: /./u }, onSessionStart);
   on('ui.render', { component: 'AbovePrompt' }, onBand);
+  on('ui.press', { plugin: 'watchdog', element: /^watchdog-expand-/u }, afterPress);
 };

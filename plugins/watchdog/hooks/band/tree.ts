@@ -1,47 +1,47 @@
 import {
-  BAND_CARD_GAP,
+  BAND_CARD_HOTKEYS,
   BAND_CARD_INDENT,
   BAND_CARD_LIMIT,
   BAND_LINE_COLUMNS,
+  BAND_RULE_EDGE,
   BAND_TINY_COLUMNS,
   BAND_TINY_TEXT_MAX,
 } from '../constants';
 import { severityRank } from '../note/tool';
-import { fitBand, wrappedRows } from './fit';
 import type { Severity } from '../note/tool';
 import type { Band, Card } from './cards';
-import type { BandFit } from './fit';
 import type { Elements, RenderChildren, RenderElement } from 'claude-code';
 
-// §13.1: only `Box`, `Text` and `Markdown`; the terminal and the desktop tables both have them.
-export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text' | 'Markdown'>;
+// §13.1: only `Box`, `Text`, `Markdown` and `Button`; the terminal and the desktop tables have all four.
+export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text' | 'Markdown' | 'Button'>;
 
 // What the band draws: the on flag (undefined before any), the cards, the failure line (§12.5),
-// `props.bodyColumns` and `props.maxRows` (undefined on a surface that does not give it).
+// `props.bodyColumns`, and what a press on a full card runs, with the card's `key`.
 export type BandView = {
   readonly isOn: boolean | undefined;
   readonly band: Band;
   readonly trouble: string | undefined;
   readonly columns: number;
-  readonly maxRows: number | undefined;
+  readonly onToggle: (key: string) => void;
 };
 
-// §13.1: full cards, one line for each note below 80 `bodyColumns`, the cut text below 50.
+// §13.1: full cards, one line `[<severity>] <text>` for each note below 80 `bodyColumns`, the cut text below 50.
 type Mode = 'full' | 'line' | 'tiny';
 
-// How one card draws: `isCut` cuts a full card's body to one line to fit `maxRows`.
-type CardView = { readonly mode: Mode; readonly columns: number; readonly turn: number; readonly isCut: boolean };
-
-// §13.1: one line for each note is never cut further, and has no blank row between the notes.
-const LINE_FIT: BandFit = { cut: [], hasGaps: false };
-
 type Totals = Band['totals'];
+
+// §13.1: a rule title as text, for its width, and as the elements that draw it.
+type Title = { readonly text: string; readonly parts: readonly RenderChildren[] };
 
 // §13.1: the count line and the `+N more` line name the severities in this order.
 const SEVERITIES: readonly Severity[] = ['blocker', 'concern', 'nit'];
 
 // §13.1: theme keys, not raw colors (prototype `SEV_COLOR`): red, yellow, gray.
 const COLORS: Readonly<Record<Severity, string>> = { blocker: 'error', concern: 'warning', nit: 'inactive' };
+
+// §13.1: the first sentence of a note's first line: up to the first `.`, `?` or `!` that a space follows, outside a
+// code span.
+const SENTENCE = /^(?:`[^`]*`|[^`])*?[.!?](?= )/u;
 
 const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`;
 
@@ -53,6 +53,12 @@ const flat = (text: string): string =>
     .replace(/\s+/gu, ' ')
     .trim();
 
+// §13.1: the text of a collapsed full card: the first sentence of the note, flat; with none, its whole first line.
+export const firstSentence = (text: string): string => {
+  const [line = ''] = text.trim().split('\n');
+  return flat(SENTENCE.exec(line)?.[0] ?? line);
+};
+
 // §10.7: the age of a note in main-loop turns (prototype `ago`).
 const ago = (turn: number, now: number): string => {
   const turns = now - turn;
@@ -62,12 +68,17 @@ const ago = (turn: number, now: number): string => {
 const severityText = (el: BandElements, severity: Severity, text: string): RenderElement =>
   el.Text({ color: COLORS[severity], bold: severity !== 'nit', dimColor: severity === 'nit', children: text });
 
-// `1 blocker · 3 concerns · 1 nit`, each in its color; a severity with no note is left out.
+// `1 blocker · 3 concerns · 1 nit`; a severity with no note is left out. The rule measures this text, so its
+// width and the drawn counts (`severityParts`) come from one list.
+const counted = (totals: Totals): { readonly severity: Severity; readonly text: string }[] =>
+  SEVERITIES.filter((severity) => totals[severity] > 0).map((severity) => ({
+    severity,
+    text: plural(totals[severity], severity),
+  }));
+
+// The counts of `counted`, each in its color.
 const severityParts = (el: BandElements, totals: Totals): RenderChildren[] =>
-  SEVERITIES.filter((severity) => totals[severity] > 0).flatMap((severity, index) => [
-    index === 0 ? '' : ' · ',
-    severityText(el, severity, plural(totals[severity], severity)),
-  ]);
+  counted(totals).flatMap(({ severity, text }, index) => [index === 0 ? '' : ' · ', severityText(el, severity, text)]);
 
 const totalsOf = (cards: readonly Card[]): Totals => ({
   blocker: cards.filter((card) => card.severity === 'blocker').length,
@@ -75,54 +86,94 @@ const totalsOf = (cards: readonly Card[]): Totals => ({
   nit: cards.filter((card) => card.severity === 'nit').length,
 });
 
-// §13.1: the first row counts the notes of the session; the cut form only their number.
-const countLine = (el: BandElements, totals: Totals, mode: Mode): RenderElement => {
-  const total = totals.blocker + totals.concern + totals.nit;
-  if (mode === 'tiny') {
-    return el.Text({ dimColor: true, wrap: 'truncate-end', children: `watchdog · ${plural(total, 'note')}` });
-  }
-  const parts = total === 0 ? [el.Text({ dimColor: true, children: 'no notes' })] : severityParts(el, totals);
-  return el.Text({ wrap: 'truncate-end', children: [el.Text({ dimColor: true, children: 'watchdog · ' }), ...parts] });
+// §13.1: a dim rule across `bodyColumns`: `BAND_RULE_EDGE` rule cells and a space, the title, a space and the rest
+// of the rule. A title with no room for `BAND_RULE_EDGE` rule cells on each side shows alone, cut at the end.
+const ruled = (el: BandElements, title: Title, columns: number): RenderElement => {
+  const tail = columns - (BAND_RULE_EDGE + 1) - (title.text.length + 1);
+  const parts =
+    tail < BAND_RULE_EDGE
+      ? title.parts
+      : [
+          el.Text({ dimColor: true, children: `${'─'.repeat(BAND_RULE_EDGE)} ` }),
+          ...title.parts,
+          el.Text({ dimColor: true, children: ` ${'─'.repeat(tail)}` }),
+        ];
+  return el.Text({ wrap: 'truncate-end', children: parts });
 };
 
-// §13.1, §11.3: the severity badge (a colored background with `inverseText`), the watchdog, a subagent's
-// type, the age and the delivery state.
-const header = (el: BandElements, card: Card, turn: number): RenderElement => {
-  const color = COLORS[card.severity];
+// §13.1: the first row counts the notes of the session; the cut form only their number.
+const countTitle = (el: BandElements, totals: Totals, mode: Mode): Title => {
+  const total = totals.blocker + totals.concern + totals.nit;
+  if (mode === 'tiny') {
+    const text = `watchdog · ${plural(total, 'note')}`;
+    return { text, parts: [el.Text({ dimColor: true, children: text })] };
+  }
+  const counts = counted(totals).map(({ text }) => text);
+  const lead = el.Text({ dimColor: true, children: 'watchdog · ' });
+  return total === 0
+    ? { text: 'watchdog · no notes', parts: [lead, el.Text({ dimColor: true, children: 'no notes' })] }
+    : { text: `watchdog · ${counts.join(' · ')}`, parts: [lead, ...severityParts(el, totals)] };
+};
+
+// §13.1, §11.3: the severity badge (a colored background with `inverseText`), the watchdog, a subagent's type,
+// the first sentence of a collapsed card, the age (from the band's `turn`) and the delivery state, on one line cut
+// at the end.
+const header = (el: BandElements, card: Card, at: { turn: number; sentence: string | undefined }): RenderElement => {
   const badge = el.Text({
-    backgroundColor: color,
+    backgroundColor: COLORS[card.severity],
     color: 'inverseText',
     bold: card.severity !== 'nit',
     children: ` ${card.severity.toUpperCase()} `,
   });
-  const facts = [...(card.subagent === undefined ? [] : [card.subagent]), ago(card.turn, turn), card.delivery];
+  const dim = (text: string): RenderElement => el.Text({ dimColor: true, children: text });
   return el.Text({
     wrap: 'truncate-end',
     children: [
       badge,
       ' ',
       el.Text({ bold: true, children: card.name }),
-      el.Text({ dimColor: true, children: ` · ${facts.join(' · ')}` }),
+      ...(card.subagent === undefined ? [] : [dim(` · ${card.subagent}`)]),
+      ...(at.sentence === undefined ? [] : [dim(' · '), at.sentence]),
+      dim(` · ${ago(card.turn, at.turn)} · ${card.delivery}`),
     ],
   });
 };
 
-// §13.1: a full card, or one line `[<severity>] <text>`; below 50 columns the text is cut to
-// `min(40, bodyColumns - tag - 1)` characters, so the row fills `bodyColumns`.
-const cardOf = (el: BandElements, card: Card, view: CardView): RenderElement => {
-  if (view.mode === 'full') {
-    // A body cut to fit `maxRows` is one line of the flat text, ending in `…`: with no Markdown, the cut splits
-    // no code span or link.
-    const text = view.isCut
-      ? el.Text({ wrap: 'truncate-end', children: flat(card.text) })
-      : el.Markdown({ text: card.text });
-    const body = el.Box({ marginLeft: BAND_CARD_INDENT, children: [text] });
-    return el.Box({ flexDirection: 'column', children: [header(el, card, view.turn), body] });
+// §13.1: a full card is one row: a plain Button with its letter hotkey (Enter under the focus or a click presses it
+// too), then the header. A press expands the card: its header without the sentence, then its whole Markdown body,
+// indented; a press on it again collapses it. `index` is the card's place among the shown cards.
+const fullCard = (el: BandElements, { card, index }: { card: Card; index: number }, view: BandView): RenderElement => {
+  const isExpanded = card.key === view.band.expanded;
+  const toggle = el.Button({
+    key: `watchdog-expand-${index}`,
+    label: isExpanded ? '▾' : '▸',
+    hotkey: BAND_CARD_HOTKEYS[index],
+    plain: true,
+    dimColor: true,
+    onPress: () => {
+      view.onToggle(card.key);
+    },
+  });
+  const sentence = isExpanded ? undefined : firstSentence(card.text);
+  const line = el.Box({
+    flexDirection: 'row',
+    columnGap: 1,
+    children: [toggle, header(el, card, { turn: view.band.turn, sentence })],
+  });
+  if (!isExpanded) {
+    return line;
   }
+  const body = el.Box({ marginLeft: BAND_CARD_INDENT, children: [el.Markdown({ text: card.text })] });
+  return el.Box({ flexDirection: 'column', children: [line, body] });
+};
+
+// §13.1: one line `[<severity>] <text>`; below 50 columns the text is cut to `min(40, bodyColumns - tag - 1)`
+// characters, so the row fills `bodyColumns`.
+const lineCard = (el: BandElements, card: Card, { mode, columns }: { mode: Mode; columns: number }): RenderElement => {
   const tag = `[${[card.severity, ...(card.subagent === undefined ? [] : [card.subagent])].join(' · ')}]`;
   const text = flat(card.text);
-  const max = Math.min(BAND_TINY_TEXT_MAX, view.columns - tag.length - 1);
-  const shown = view.mode === 'tiny' && text.length > max ? `${text.slice(0, Math.max(0, max - 1))}…` : text;
+  const max = Math.min(BAND_TINY_TEXT_MAX, columns - tag.length - 1);
+  const shown = mode === 'tiny' && text.length > max ? `${text.slice(0, Math.max(0, max - 1))}…` : text;
   return el.Text({ wrap: 'truncate-end', children: [severityText(el, card.severity, tag), ` ${shown}`] });
 };
 
@@ -136,14 +187,24 @@ const modeOf = (columns: number): Mode => {
   return columns < BAND_LINE_COLUMNS ? 'line' : 'full';
 };
 
-// §13.1: the first 3 notes by severity then newest, and `+N more: <severities>`. In a full band a blank row
-// stands between two of them, and the cards below the top one are cut to fit `maxRows` (`fitBand`).
+// §13.1: the first 3 notes by severity then newest, and `+N more: <severities>`, one row each but an expanded card.
 const cardList = (el: BandElements, view: BandView, mode: Mode): RenderElement[] => {
   const sorted = view.band.cards.toSorted(
     (a, b) => severityRank(b.severity) - severityRank(a.severity) || b.seq - a.seq
   );
-  const shown = sorted.slice(0, BAND_CARD_LIMIT);
   const hidden = sorted.slice(BAND_CARD_LIMIT);
+  const cards = sorted
+    .slice(0, BAND_CARD_LIMIT)
+    .map((card, index) =>
+      row(
+        el,
+        `watchdog-card-${index}`,
+        mode === 'full' ? fullCard(el, { card, index }, view) : lineCard(el, card, { mode, columns: view.columns })
+      )
+    );
+  if (hidden.length === 0) {
+    return cards;
+  }
   const more = el.Text({
     wrap: 'truncate-end',
     children: [
@@ -151,32 +212,16 @@ const cardList = (el: BandElements, view: BandView, mode: Mode): RenderElement[]
       ...severityParts(el, totalsOf(hidden)),
     ],
   });
-  const items = shown.length + (hidden.length === 0 ? 0 : 1);
-  // Each body in its indented width; the count line, the failure line, a card header and `+N more` are one row.
-  const rows = {
-    bodies: shown.map((card) => wrappedRows(card.text, view.columns - BAND_CARD_INDENT)),
-    lines: 1 + (view.trouble === undefined ? 0 : 1) + items,
-    gaps: Math.max(0, items - 1),
-  };
-  const fit = mode === 'full' ? fitBand(rows, view.maxRows) : LINE_FIT;
-  const cardView = { mode, columns: view.columns, turn: view.band.turn };
-  const list = [
-    ...shown.map((card, index) => ({
-      key: `watchdog-card-${index}`,
-      child: cardOf(el, card, { ...cardView, isCut: fit.cut[index] === true }),
-    })),
-    ...(hidden.length === 0 ? [] : [{ key: 'watchdog-more', child: more }]),
-  ];
-  return list.map(({ key, child }, index) =>
-    el.Box({ key, flexDirection: 'column', marginTop: index > 0 && fit.hasGaps ? BAND_CARD_GAP : 0, children: [child] })
-  );
+  return [...cards, row(el, 'watchdog-more', more)];
 };
 
 // §13.1, §12.5, §5.2: the count line, the failure line, then the cards; one dim line after `/watchdog off`;
 // nothing before the session was ever on.
 export const bandTree = (el: BandElements, view: BandView): RenderElement | undefined => {
   if (view.isOn === false) {
-    return row(el, 'watchdog-off', el.Text({ dimColor: true, children: 'watchdog · off · /watchdog on' }));
+    const off = 'watchdog · off · /watchdog on';
+    const title = { text: off, parts: [el.Text({ dimColor: true, children: off })] };
+    return row(el, 'watchdog-off', ruled(el, title, view.columns));
   }
   if (view.isOn !== true) {
     return undefined;
@@ -185,7 +230,7 @@ export const bandTree = (el: BandElements, view: BandView): RenderElement | unde
   return el.Box({
     flexDirection: 'column',
     children: [
-      row(el, 'watchdog-count', countLine(el, view.band.totals, mode)),
+      row(el, 'watchdog-count', ruled(el, countTitle(el, view.band.totals, mode), view.columns)),
       view.trouble === undefined
         ? null
         : row(el, 'watchdog-trouble', el.Text({ color: 'error', wrap: 'truncate-end', children: view.trouble })),

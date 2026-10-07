@@ -9,7 +9,13 @@ export type Band = PluginState['watchdog']['band'];
 
 export type Card = Band['cards'][number];
 
-export const EMPTY_BAND: Band = { cards: [], totals: { blocker: 0, concern: 0, nit: 0 }, turn: 0, seq: 0 };
+export const EMPTY_BAND: Band = {
+  cards: [],
+  totals: { blocker: 0, concern: 0, nit: 0 },
+  turn: 0,
+  seq: 0,
+  expanded: null,
+};
 
 // The live band is module memory; `$.state` key `band` keeps a copy, which the band hook draws.
 const memory: { band: Band } = { band: EMPTY_BAND };
@@ -68,18 +74,34 @@ export const changeCard = (before: HeldNote | undefined, after: HeldNote): void 
 };
 
 // §9.4, §11.4: a note that goes undelivered (displaced, or a late repeat on a subagent) leaves the band; the
-// totals keep it, as the session totals count each admitted note.
+// totals keep it, as the session totals count each admitted note. An expanded card collapses as it leaves.
 export const removeCard = (note: HeldNote): void => {
   const key = cardKey(note);
-  memory.band = { ...memory.band, cards: memory.band.cards.filter((card) => card.key !== key) };
+  const { band } = memory;
+  memory.band = {
+    ...band,
+    cards: band.cards.filter((card) => card.key !== key),
+    expanded: band.expanded === key ? null : band.expanded,
+  };
 };
 
-// §13.1, §5.2: a person prompt and `/watchdog off` clear the cards; the totals stay for the count line.
+// §13.1, §5.2: a person prompt and `/watchdog off` clear the cards and collapse the expanded one; the totals stay
+// for the count line.
 export const clearCards = (): void => {
-  memory.band = { ...memory.band, cards: [] };
+  memory.band = { ...memory.band, cards: [], expanded: null };
 };
 
-// §14.6: at module load the band comes back from `$.state`.
+// §13.1: a press on a card expands its whole body and collapses the card expanded before; a press on the expanded
+// card collapses it. A press on a card that left the band since it was drawn changes nothing.
+export const toggleCard = (key: string): void => {
+  const { band } = memory;
+  if (!band.cards.some((card) => card.key === key)) {
+    return;
+  }
+  memory.band = { ...band, expanded: band.expanded === key ? null : key };
+};
+
+// §14.6: at module load the band comes back from `$.state`, the expanded card with it.
 export const restoreBand = (band: Band): void => {
   memory.band = band;
 };

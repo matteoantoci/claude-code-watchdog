@@ -23,8 +23,7 @@ const NIT = '.env.example still lists STRIPE_SECRET; config.ts reads STRIPE_SECR
 const BLOCKER = 'The migration deletes the users table before it copies the rows.';
 const NEW_CONCERN = 'The new /export route skips requireAuth; every other admin route has it.';
 
-// §13.1: notes of 3 rows each as Markdown, a line and a list of 2 items. With a nit, 3 cards and `+N more` take
-// 17 rows: the count line, 3 headers and `+N more`, 3 blank rows and 3 bodies.
+// §13.1: notes of a line and a list of 2 items; a collapsed card shows the first line.
 const LISTED_BLOCKER =
   'The migration loses the users\n- `up()` drops `users` at line 12\n- the copy reads `users` at line 30';
 const LISTED_NEW = 'The new /export route is open\n- it skips `requireAuth`\n- every other admin route has it';
@@ -36,9 +35,11 @@ const LIST_KEYS = ['watchdog-card-0', 'watchdog-card-1', 'watchdog-card-2', 'wat
 // The keyed rows of the watchdog's band, top to bottom.
 const ROW_KEYS = ['watchdog-band', 'watchdog-off', 'watchdog-count', 'watchdog-trouble', ...LIST_KEYS];
 
-// §13.1: the blank rows above each row of the card list: one between two cards and above `+N more`, or none.
-const SPACED = { 'watchdog-card-0': 0, 'watchdog-card-1': 1, 'watchdog-card-2': 1, 'watchdog-more': 1 };
-const TIGHT = { 'watchdog-card-0': 0, 'watchdog-card-1': 0, 'watchdog-card-2': 0, 'watchdog-more': 0 };
+// `bodyColumns` of the fixture band (§13.1 width facts: a terminal of 120 columns).
+const WIDE = 115;
+
+// §13.1: the count line and the off line: a rule of `bodyColumns` cells, the title after the first 2.
+const ruled = (title: string, columns = WIDE): string => `── ${title} ${'─'.repeat(columns - title.length - 4)}`;
 
 const stubBand = (on: Stubs, options: Parameters<typeof stubDelivery>[1] = {}, seed: StateSeed = {}): void => {
   stubDelivery(on, options);
@@ -91,35 +92,55 @@ const textProps = async ($: Engine, texts: readonly RegExp[], props: BandProps =
     Promise.all(texts.map(async (text) => (await ui.find({ type: 'Text', text }))?.props))
   );
 
-// The blank rows above each row of the card list (its `marginTop`), by key; a row not drawn is absent.
-const gaps = async ($: Engine, props: BandProps = {}): Promise<Record<string, number>[]> =>
-  onBand($, props, async (ui) => {
-    const found = await Promise.all(
-      LIST_KEYS.map(async (key) => [key, (await ui.find({ key }))?.props['marginTop']] as const)
-    );
-    return Object.fromEntries(
-      found.filter((entry): entry is readonly [string, number] => typeof entry[1] === 'number')
-    );
-  });
+// The props of every element of one type, top to bottom.
+const propsOf = async ($: Engine, type: string, props: BandProps = {}) =>
+  onBand($, props, async (ui) => (await ui.findAll({ type })).map((found) => found.props));
+
+// A person's press on the Button keyed `key`, on the terminal only: a press on each surface would toggle it twice.
+const press = async ($: Engine, key: string): Promise<void> => {
+  const ui = await $.ui.mount(bandTarget('terminal'));
+  await ui.press({ key });
+  await ui.unmount();
+};
 
 const onBoth = <T>(value: T): T[] => BAND_SURFACES.map(() => value);
 
 describe('band cards (§13.1)', () => {
-  test('the count line, then the 3 first notes by severity and newest, a blank row between, then +N more', async ($, on: Stubs) => {
+  test('the count line, then the 3 first notes by severity and newest, one row each with the first sentence, then +N more', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
     expect(await textProps($, [new RegExp(`^${ENGINE_BAND}$`, 'u')])).toEqual(onBoth([{}]));
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': 'watchdog · 1 blocker · 2 concerns · 1 nit',
-        'watchdog-card-0': ` BLOCKER  default · just now · nudged${BLOCKER}`,
-        'watchdog-card-1': ` CONCERN  default · just now · nudged${NEW_CONCERN}`,
-        'watchdog-card-2': ` CONCERN  default · just now · nudged${OLD_CONCERN}`,
+        'watchdog-count': ruled('watchdog · 1 blocker · 2 concerns · 1 nit'),
+        'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudged`,
+        'watchdog-card-1': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudged`,
+        'watchdog-card-2': `▸ CONCERN  default · ${OLD_CONCERN} · just now · nudged`,
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
-    expect(await gaps($)).toEqual(onBoth(SPACED));
+    // No blank row between the rows, and no body under a collapsed card.
+    expect((await propsOf($, 'Box')).map((boxes) => boxes.filter((box) => 'marginTop' in box))).toEqual(onBoth([]));
+    expect(await propsOf($, 'Markdown')).toEqual(onBoth([]));
+  });
+
+  test('a card row is one line cut at the end: the first line of a listed note, then the age and the delivery state', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await listedNotes($);
+    expect(await rows($)).toEqual(
+      onBoth({
+        'watchdog-count': ruled('watchdog · 1 blocker · 2 concerns · 1 nit'),
+        'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudged',
+        'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudged',
+        'watchdog-card-2': '▸ CONCERN  default · parseDate drops the timezone · just now · nudged',
+        'watchdog-more': '  +1 more: 1 nit',
+      })
+    );
+    expect(await textProps($, [/^ BLOCKER {2}default · The migration loses the users · /u])).toEqual(
+      onBoth([{ wrap: 'truncate-end' }])
+    );
   });
 
   test('a badge is a theme-key background with inverseText; the count line colors each severity', async ($, on: Stubs) => {
@@ -151,7 +172,7 @@ describe('band cards (§13.1)', () => {
     await $.prompt.submit(TASK_NOTIFICATION);
     await $.turn.start({ text: TASK_NOTIFICATION.text, turnId: 't1' });
     expect((await rows($)).map((shown) => shown['watchdog-card-0'])).toEqual(
-      onBoth(` CONCERN  default · 1 turn ago · steered${NEW_CONCERN}`)
+      onBoth(`▸ CONCERN  default · ${NEW_CONCERN} · 1 turn ago · steered`)
     );
   });
 
@@ -162,8 +183,8 @@ describe('band cards (§13.1)', () => {
     await sendNote($, 'blocker', BLOCKER);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': 'watchdog · 1 blocker',
-        'watchdog-card-0': ` BLOCKER  default · just now · nudged${BLOCKER}`,
+        'watchdog-count': ruled('watchdog · 1 blocker'),
+        'watchdog-card-0': `▸ BLOCKER  default · ${BLOCKER} · just now · nudged`,
       })
     );
   });
@@ -176,84 +197,138 @@ describe('band cards (§13.1)', () => {
     await sendNote($, 'concern', NEW_CONCERN);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': 'watchdog · 1 concern · 1 nit',
-        'watchdog-card-0': ` CONCERN  default · just now · nudged${NEW_CONCERN}`,
+        'watchdog-count': ruled('watchdog · 1 concern · 1 nit'),
+        'watchdog-card-0': `▸ CONCERN  default · ${NEW_CONCERN} · just now · nudged`,
       })
     );
   });
 });
 
-describe('band fit to maxRows (§13.1)', () => {
-  const WHOLE = {
-    'watchdog-count': 'watchdog · 1 blocker · 2 concerns · 1 nit',
-    'watchdog-card-0': ` BLOCKER  default · just now · nudged${LISTED_BLOCKER}`,
-    'watchdog-card-1': ` CONCERN  default · just now · nudged${LISTED_NEW}`,
-    'watchdog-card-2': ` CONCERN  default · just now · nudged${LISTED_OLD}`,
+describe('band rule (§13.1)', () => {
+  test('the count line is a dim rule that fills bodyColumns in each mode; the counts keep their colors', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await fourNotes($);
+    const counts = async (bodyColumns: number) =>
+      (await rows($, { bodyColumns })).map((shown) => shown['watchdog-count']);
+    expect(await counts(80)).toEqual(onBoth(ruled('watchdog · 1 blocker · 2 concerns · 1 nit', 80)));
+    expect(await counts(75)).toEqual(onBoth(ruled('watchdog · 1 blocker · 2 concerns · 1 nit', 75)));
+    expect(await counts(50)).toEqual(onBoth(ruled('watchdog · 1 blocker · 2 concerns · 1 nit', 50)));
+    expect(await counts(45)).toEqual(onBoth(ruled('watchdog · 4 notes', 45)));
+    expect((await counts(45)).map((count) => count?.length)).toEqual(onBoth(45));
+    expect(await textProps($, [/^── $/u, /^ ─+$/u, /^watchdog · $/u])).toEqual(
+      onBoth([{ dimColor: true }, { dimColor: true }, { dimColor: true }])
+    );
+  });
+
+  test('with no room for 2 rule cells after the title, the title shows alone', async ($, on: Stubs) => {
+    stubBand(on);
+    await startReview($);
+    await fourNotes($);
+    // `watchdog · 4 notes` is 18 cells: 24 columns hold it with 2 rule cells and a space on each side.
+    expect((await rows($, { bodyColumns: 24 })).map((shown) => shown['watchdog-count'])).toEqual(
+      onBoth('── watchdog · 4 notes ──')
+    );
+    expect((await rows($, { bodyColumns: 23 })).map((shown) => shown['watchdog-count'])).toEqual(
+      onBoth('watchdog · 4 notes')
+    );
+  });
+});
+
+describe('expand a card (§13.1)', () => {
+  // The rows of `listedNotes` with each card collapsed.
+  const COLLAPSED = {
+    'watchdog-count': ruled('watchdog · 1 blocker · 2 concerns · 1 nit'),
+    'watchdog-card-0': '▸ BLOCKER  default · The migration loses the users · just now · nudged',
+    'watchdog-card-1': '▸ CONCERN  default · The new /export route is open · just now · nudged',
+    'watchdog-card-2': '▸ CONCERN  default · parseDate drops the timezone · just now · nudged',
     'watchdog-more': '  +1 more: 1 nit',
   };
 
-  // A cut card shows one line of the flat text: no code ticks, a list item after a `; `.
-  const CUT_NEW =
-    ' CONCERN  default · just now · nudgedThe new /export route is open; it skips requireAuth; every other admin route has it';
-  const CUT_OLD =
-    ' CONCERN  default · just now · nudgedparseDate drops the timezone; date.spec.ts:40 passes only in UTC; CI runs in UTC';
-
-  test('a band of at most maxRows rows shows every card whole, a blank row between', async ($, on: Stubs) => {
+  test('each full card has a plain Button with a letter hotkey, never a digit; none below 80 bodyColumns', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await listedNotes($);
-    expect(await rows($, { maxRows: 17 })).toEqual(onBoth(WHOLE));
-    expect(await gaps($, { maxRows: 17 })).toEqual(onBoth(SPACED));
+    const buttons = await propsOf($, 'Button');
+    expect(buttons).toEqual(
+      onBoth(
+        ['a', 'b', 'c'].map((hotkey, index) => ({
+          key: `watchdog-expand-${index}`,
+          label: '▸',
+          hotkey,
+          plain: true,
+          dimColor: true,
+        }))
+      )
+    );
+    expect(buttons.flat().filter((button) => /\d/u.test(String(button['hotkey'])))).toEqual([]);
+    expect(await propsOf($, 'Button', { bodyColumns: 75 })).toEqual(onBoth([]));
   });
 
-  test('a taller band cuts the cards below the top one to one line, the last card first', async ($, on: Stubs) => {
+  test('a press expands the card: its header without the sentence, then its whole Markdown body, indented', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await listedNotes($);
-    expect(await rows($, { maxRows: 16 })).toEqual(onBoth({ ...WHOLE, 'watchdog-card-2': CUT_OLD }));
-    expect(await textProps($, [/^parseDate drops the timezone; /u], { maxRows: 16 })).toEqual(
-      onBoth([{ wrap: 'truncate-end' }])
+    await press($, 'watchdog-expand-1');
+    expect(await rows($)).toEqual(
+      onBoth({ ...COLLAPSED, 'watchdog-card-1': `▾ CONCERN  default · just now · nudged${LISTED_NEW}` })
     );
-    expect(await rows($, { maxRows: 14 })).toEqual(
-      onBoth({ ...WHOLE, 'watchdog-card-1': CUT_NEW, 'watchdog-card-2': CUT_OLD })
-    );
-    expect(await gaps($, { maxRows: 14 })).toEqual(onBoth(SPACED));
+    expect(await propsOf($, 'Markdown')).toEqual(onBoth([{ text: LISTED_NEW }]));
+    expect(
+      await onBand($, {}, async (ui) =>
+        (await ui.findAll({ type: 'Box' })).filter((box) => box.props['marginLeft'] === 2).map((box) => box.text)
+      )
+    ).toEqual(onBoth([LISTED_NEW]));
   });
 
-  test('the top card is never cut: the blank rows go, and a band still too tall scrolls', async ($, on: Stubs) => {
+  test('a press on another card collapses the first; a press on the expanded card collapses it', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await listedNotes($);
-    expect(await rows($, { maxRows: 3 })).toEqual(
-      onBoth({ ...WHOLE, 'watchdog-card-1': CUT_NEW, 'watchdog-card-2': CUT_OLD })
+    await press($, 'watchdog-expand-1');
+    await press($, 'watchdog-expand-0');
+    expect(await rows($)).toEqual(
+      onBoth({ ...COLLAPSED, 'watchdog-card-0': `▾ BLOCKER  default · just now · nudged${LISTED_BLOCKER}` })
     );
-    expect(await gaps($, { maxRows: 3 })).toEqual(onBoth(TIGHT));
+    await press($, 'watchdog-expand-0');
+    expect(await rows($)).toEqual(onBoth(COLLAPSED));
   });
 
-  test('a surface that gives no maxRows shows every card whole, a blank row between', async ($, on: Stubs) => {
-    stubBand(on);
-    await startReview($);
-    await listedNotes($);
-    expect(await rows($, { maxRows: undefined })).toEqual(onBoth(WHOLE));
-    expect(await gaps($, { maxRows: undefined })).toEqual(onBoth(SPACED));
+  test('the band keeps the expanded card in $.state: a reload shows it expanded (§14.6)', async ($, on: Stubs) => {
+    const key = `default\n\n${BLOCKER.toLowerCase()}`;
+    const band = {
+      cards: [{ key, seq: 1, name: 'default', severity: 'blocker', text: BLOCKER, turn: 1, delivery: 'nudged' }],
+      totals: { blocker: 1, concern: 0, nit: 0 },
+      turn: 1,
+      seq: 1,
+      expanded: key,
+    };
+    stubBand(on, {}, { state: { isOn: true, source: '/watchdog on' }, band });
+    await $.session.start(START);
+    expect((await rows($)).map((shown) => shown['watchdog-card-0'])).toEqual(
+      onBoth(`▾ BLOCKER  default · just now · nudged${BLOCKER}`)
+    );
+    await press($, 'watchdog-expand-0');
+    expect((await rows($)).map((shown) => shown['watchdog-card-0'])).toEqual(
+      onBoth(`▸ BLOCKER  default · ${BLOCKER} · just now · nudged`)
+    );
   });
 });
 
 describe('narrow band (§13.1)', () => {
-  test('below 80 bodyColumns, one line for each note: [<severity>] <text>, no blank row', async ($, on: Stubs) => {
+  test('below 80 bodyColumns, one line for each note: [<severity>] <text>', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
     expect(await rows($, { bodyColumns: 75 })).toEqual(
       onBoth({
-        'watchdog-count': 'watchdog · 1 blocker · 2 concerns · 1 nit',
+        'watchdog-count': ruled('watchdog · 1 blocker · 2 concerns · 1 nit', 75),
         'watchdog-card-0': `[blocker] ${BLOCKER}`,
         'watchdog-card-1': `[concern] ${NEW_CONCERN}`,
         'watchdog-card-2': `[concern] ${OLD_CONCERN}`,
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
-    expect(await gaps($, { bodyColumns: 75 })).toEqual(onBoth(TIGHT));
   });
 
   test('below 50 bodyColumns, the text is cut to min(40, bodyColumns - tag - 1) characters', async ($, on: Stubs) => {
@@ -263,7 +338,7 @@ describe('narrow band (§13.1)', () => {
     // bodyColumns 45: `[blocker]` is 9 cells, so 35 characters, the last one `…`.
     expect(await rows($, { bodyColumns: 45 })).toEqual(
       onBoth({
-        'watchdog-count': 'watchdog · 4 notes',
+        'watchdog-count': ruled('watchdog · 4 notes', 45),
         'watchdog-card-0': '[blocker] The migration deletes the users ta…',
         'watchdog-card-1': '[concern] The new /export route skips requir…',
         'watchdog-card-2': '[concern] parseDate drops the timezone; the …',
@@ -290,9 +365,9 @@ describe('band clear and off (§13.1, §5.2)', () => {
     await sendNote($, 'nit', 'The README still names the old CLI flag --legacy.');
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': 'watchdog · 1 blocker · 2 concerns · 2 nits',
+        'watchdog-count': ruled('watchdog · 1 blocker · 2 concerns · 2 nits'),
         'watchdog-card-0':
-          ' NIT  default · just now · aside on next promptThe README still names the old CLI flag --legacy.',
+          '▸ NIT  default · The README still names the old CLI flag --legacy. · just now · aside on next prompt',
       })
     );
   });
@@ -303,16 +378,19 @@ describe('band clear and off (§13.1, §5.2)', () => {
     await sendNote($, 'blocker', BLOCKER);
     await $.prompt.submit(TASK_NOTIFICATION);
     expect((await rows($)).map((shown) => shown['watchdog-card-0'])).toEqual(
-      onBoth(` BLOCKER  default · just now · nudged${BLOCKER}`)
+      onBoth(`▸ BLOCKER  default · ${BLOCKER} · just now · nudged`)
     );
   });
 
-  test('/watchdog off makes the band one dim line', async ($, on: Stubs) => {
+  test('/watchdog off makes the band one dim rule', async ($, on: Stubs) => {
     stubBand(on);
     await startReview($);
     await fourNotes($);
     await $.command.run(typed('off'));
-    expect(await rows($)).toEqual(onBoth({ 'watchdog-off': 'watchdog · off · /watchdog on' }));
+    expect(await rows($)).toEqual(onBoth({ 'watchdog-off': ruled('watchdog · off · /watchdog on') }));
+    expect(await rows($, { bodyColumns: 45 })).toEqual(
+      onBoth({ 'watchdog-off': ruled('watchdog · off · /watchdog on', 45) })
+    );
     expect(await textProps($, [/^watchdog · off · \/watchdog on$/u])).toEqual(onBoth([{ dimColor: true }]));
   });
 
@@ -350,6 +428,7 @@ describe('band after a reload (§14.6, §11.3)', () => {
     totals: { blocker: 1, concern: 0, nit: 0 },
     turn: 2,
     seq: 1,
+    expanded: null,
   };
 
   test('the cards come back from $.state; a note on a subagent shows its type', async ($, on: Stubs) => {
@@ -357,8 +436,8 @@ describe('band after a reload (§14.6, §11.3)', () => {
     await $.session.start(START);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': 'watchdog · 1 blocker',
-        'watchdog-card-0': ` BLOCKER  default · Explore · 1 turn ago · steered${BLOCKER}`,
+        'watchdog-count': ruled('watchdog · 1 blocker'),
+        'watchdog-card-0': `▸ BLOCKER  default · Explore · ${BLOCKER} · 1 turn ago · steered`,
       })
     );
     expect((await rows($, { bodyColumns: 75 })).map((shown) => shown['watchdog-card-0'])).toEqual(
@@ -384,7 +463,7 @@ describe('failure line (§12.5)', () => {
     await $.session.start(START);
     expect(await rows($)).toEqual(
       onBoth({
-        'watchdog-count': 'watchdog · no notes',
+        'watchdog-count': ruled('watchdog · no notes'),
         'watchdog-trouble': 'watchdog halted · retry in 12 min · /watchdog on to retry now',
       })
     );

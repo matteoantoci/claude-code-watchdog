@@ -40,7 +40,7 @@ describe('a reload on the Desktop (§5.3, §14.6)', () => {
     const seen = await reload($, on, ['desktop']);
     await sendNote($, 'concern', CONCERN);
     expect(seen.logs.at(-1)).toBe(`[concern] default: ${CONCERN} (nudged)`);
-    expect(await firstCards($)).toEqual(BAND_SURFACES.map(() => ` CONCERN  default · just now · nudged${CONCERN}`));
+    expect(await firstCards($)).toEqual(BAND_SURFACES.map(() => `▸ CONCERN  default · ${CONCERN} · just now · nudged`));
   });
 
   test('no surface is a -p run: a late concern waits as an aside on the next prompt and no card is drawn', async ($, on: Stubs) => {

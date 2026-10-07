@@ -111,8 +111,11 @@ export const STATUS_DETAIL_INDENT = 2;
 // §13.3: the status snapshots that wait for their `CommandOutput` render or stay for a redraw, oldest out.
 export const STATUS_SNAPSHOT_CAP = 20;
 
-// §13.1: the band shows this many cards, then `+N more`.
-export const BAND_CARD_LIMIT = 3;
+// §13.1, §13: the hotkeys of the full cards, top to bottom: letters, never a digit, as a bare digit in an empty
+// composer presses a band Button (d.ts 9071-9073). The band shows one card for each, then `+N more`.
+export const BAND_CARD_HOTKEYS = ['a', 'b', 'c'] as const;
+
+export const BAND_CARD_LIMIT = BAND_CARD_HOTKEYS.length;
 
 // §13.1, §12.5: below this many `bodyColumns`, one line for each note and the short failure line.
 export const BAND_LINE_COLUMNS = 80;
@@ -123,11 +126,12 @@ export const BAND_TINY_COLUMNS = 50;
 // §13.1: the longest note text of the cut form.
 export const BAND_TINY_TEXT_MAX = 40;
 
-// §13.1: the note text of a full card indents this many columns under its header.
+// §13.1: the body of an expanded card indents this many columns under its header.
 export const BAND_CARD_INDENT = 2;
 
-// §13.1: the blank rows between two cards of a full band, and above its `+N more` line.
-export const BAND_CARD_GAP = 1;
+// §13.1: the rule cells of the count line and the off line before the title, and the fewest after it; with no
+// room for them, the title shows alone.
+export const BAND_RULE_EDGE = 2;
 
 // §12.5: the halt's next try shows in whole minutes.
 export const MINUTE_MS = 60_000;

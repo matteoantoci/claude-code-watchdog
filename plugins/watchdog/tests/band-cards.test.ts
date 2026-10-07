@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { EMPTY_BAND, addCard, bandState, changeCard, restoreBand } from '../hooks/band/cards';
+import {
+  EMPTY_BAND,
+  addCard,
+  bandState,
+  changeCard,
+  clearCards,
+  removeCard,
+  restoreBand,
+  toggleCard,
+} from '../hooks/band/cards';
 import type { HeldNote } from '../hooks/note/notes';
 
 const EXPLORE = { agentId: 'asub0001', type: 'Explore' };
@@ -25,5 +34,41 @@ describe('band cards (§13.1, §11.3)', () => {
       { subagent: undefined, delivery: 'steered' },
     ]);
     expect(bandState(3)).toMatchObject({ totals: { blocker: 0, concern: 2, nit: 0 }, turn: 3, seq: 2 });
+  });
+});
+
+describe('expanded card (§13.1)', () => {
+  const other: HeldNote = { ...held(), text: 'The cache key drops the locale.' };
+
+  // A band of two cards, from module memory; their keys in the order they came.
+  const twoCards = (): readonly string[] => {
+    restoreBand(EMPTY_BAND);
+    addCard(held());
+    addCard(other);
+    return bandState(1).cards.map((card) => card.key);
+  };
+
+  test('a press expands a card and collapses the one expanded before; a press on it again collapses it', () => {
+    const [first = '', second = ''] = twoCards();
+    toggleCard(first);
+    expect(bandState(1).expanded).toBe(first);
+    toggleCard(second);
+    expect(bandState(1).expanded).toBe(second);
+    toggleCard(second);
+    expect(bandState(1).expanded).toBeNull();
+  });
+
+  test('the expanded card collapses as it leaves, and when the cards clear; a press on a gone card changes nothing', () => {
+    const [first = '', second = ''] = twoCards();
+    toggleCard(first);
+    removeCard(held());
+    expect(bandState(1)).toMatchObject({ cards: [{ key: second }], expanded: null });
+    toggleCard(second);
+    removeCard(held());
+    expect(bandState(1).expanded).toBe(second);
+    toggleCard(first);
+    expect(bandState(1).expanded).toBe(second);
+    clearCards();
+    expect(bandState(1)).toMatchObject({ cards: [], expanded: null });
   });
 });
