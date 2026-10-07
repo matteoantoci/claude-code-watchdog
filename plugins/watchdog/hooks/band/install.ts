@@ -128,7 +128,12 @@ const onBand: BandHook = async ($, e, next) => {
   const trouble = await troubleText($, health, columns);
   const el = $.ui.resolve(e);
   const tree = bandTree(el, { isOn, band, trouble, columns, onToggle: toggleCard });
-  return tree === undefined ? base : el.Box({ key: 'watchdog-band', flexDirection: 'column', children: [base, tree] });
+  if (tree === undefined) {
+    return base;
+  }
+  // §13.1: one blank row parts the band from the transcript above it.
+  const spaced = el.Box({ marginTop: 1, flexDirection: 'column', children: [tree] });
+  return el.Box({ key: 'watchdog-band', flexDirection: 'column', children: [base, spaced] });
 };
 
 // Install first, so that these hooks sit above the note, delivery and command hooks that change the cards.

@@ -126,8 +126,9 @@ describe('band cards (§13.1)', () => {
         'watchdog-more': '  +1 more: 1 nit',
       })
     );
-    // No blank row between the rows, and no body under a collapsed card.
-    expect((await propsOf($, 'Box')).map((boxes) => boxes.filter((box) => 'marginTop' in box))).toEqual(onBoth([]));
+    // One blank row above the band, none between its rows, and no body under a collapsed card.
+    const margins = (await propsOf($, 'Box')).map((boxes) => boxes.filter((box) => 'marginTop' in box));
+    expect(margins).toEqual(onBoth([{ marginTop: 1, flexDirection: 'column' }]));
     expect(await propsOf($, 'Markdown')).toEqual(onBoth([]));
   });
 
