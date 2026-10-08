@@ -49,6 +49,16 @@ describe('failure line (§12.5)', () => {
     );
   });
 
+  test('a watchdog blocked by auto mode: switch the permission mode, or /watchdog on', () => {
+    const autoMode: Trouble = { name: 'default', problem: { state: 'blocked', reason: 'auto mode' } };
+    expect(troubleLine([autoMode], { ...WIDE, isAlone: true })).toBe(
+      'watchdog: default blocked · auto mode · switch the permission mode, or /watchdog on to retry'
+    );
+    expect(troubleLine([halted('security', 12), autoMode], WIDE)).toBe(
+      'watchdog: default blocked · auto mode · security halted · retry in 12 min · /watchdog status'
+    );
+  });
+
   test('below 80 bodyColumns the line counts the watchdogs in trouble', () => {
     expect(troubleLine([halted('security', 12), noModel('default')], { ...WIDE, columns: 75 })).toBe(
       'watchdog: 2 problems · /watchdog status'

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing';
+import { SPAWN_CHECK } from './fixtures/engine/spawn-check';
 import { stubState } from './fixtures/on-state';
 import { REVIEW_AGENT, START, stubSession, typed } from './fixtures/session';
 import type { OnEvents } from '../hooks/on';
@@ -195,5 +196,41 @@ describe('the read scope', () => {
     stubState(on, { state: { isOn: true, source: '/watchdog on' }, values: new Map([['denies', { default: 2 }]]) });
     await $.session.start(START);
     expect((await $.command.run(typed('status'))).text?.split('\n')).toContain('default read-scope denies: 2');
+  });
+});
+
+// §6.1: core's verdict on every check: `ask`, or the deny of an `Agent(watchdog:default)` rule.
+const stubVerdict = (on: Stubs, decision: 'ask' | 'deny') => {
+  on('tool.check', () =>
+    decision === 'ask'
+      ? { decision }
+      : { decision, reason: 'denied by permission rule', rule: 'Agent(watchdog:default)' }
+  );
+  return stubSession(on);
+};
+
+describe('the own review spawn in tool.check', () => {
+  test('an ask of the mod spawn becomes allow, so no mode decider sees it', async ($, on: Stubs) => {
+    stubVerdict(on, 'ask');
+    await startReview($);
+    expect(await $.tool.check(SPAWN_CHECK)).toEqual({ decision: 'allow' });
+  });
+
+  test('a deny of the mod spawn stands', async ($, on: Stubs) => {
+    stubVerdict(on, 'deny');
+    await startReview($);
+    expect(await $.tool.check(SPAWN_CHECK)).toEqual({
+      decision: 'deny',
+      reason: 'denied by permission rule',
+      rule: 'Agent(watchdog:default)',
+    });
+  });
+
+  test('an Agent call of another type, and a subagent Agent call of a watchdog type, keep the ask', async ($, on: Stubs) => {
+    stubVerdict(on, 'ask');
+    await startReview($);
+    const explore = { ...SPAWN_CHECK, input: { ...SPAWN_CHECK.input, subagent_type: 'Explore' } };
+    expect(await $.tool.check(explore)).toEqual({ decision: 'ask' });
+    expect(await $.tool.check({ ...SPAWN_CHECK, agentId: SUBAGENT })).toEqual({ decision: 'ask' });
   });
 });

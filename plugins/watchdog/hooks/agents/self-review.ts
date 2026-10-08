@@ -74,3 +74,16 @@ export const isOwnToolCall = (call: ToolCall, own: OwnContext, originPlugin = 'e
   }
   return call.tool === 'TaskStop' && originPlugin === PLUGIN;
 };
+
+// A tool.check input: its `input` holds the tool's arguments, which a tool.call spreads on the event.
+type ToolCheck = { readonly tool: string; readonly input: unknown; readonly agentId?: string };
+
+// §6.1, §6.5: the tool.check of the mod's own review spawn: the main loop's `Agent` call of a watchdog type, as
+// item 4 matches its tool.call. A subagent's check, and an `Agent` call of any other type, is not.
+export const isOwnSpawnCheck = ({ tool, input, agentId }: ToolCheck): boolean =>
+  agentId === undefined &&
+  tool === 'Agent' &&
+  typeof input === 'object' &&
+  input !== null &&
+  'subagent_type' in input &&
+  isOwnSpawn(input.subagent_type);

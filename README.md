@@ -47,6 +47,8 @@ review before it nudges, so Claude does not go after a bug it already fixed.
 - By default a reviewer gets `Read`, `Grep` and `Glob`. A project `WATCHDOG.json` can grant no more; only
   `<config>/WATCHDOG.json` can grant other tools and `mcp__*` tools. `Bash`, `Edit`, `Write`, `NotebookEdit`, `Agent`,
   `SendMessage`, `AskUserQuestion` and `ToolSearch` are always refused. A reviewer never asks you for a permission.
+- The mod allows its own review spawn (the `Agent` call of a `watchdog:*` type) when Claude Code would ask, so no
+  dialog or Auto-mode classifier sees it. A permission rule that denies `Agent` still wins.
 
 ## Cost and off switch
 

@@ -4,7 +4,7 @@ import { traceError, traceOf } from '../log/log';
 import { changeBacklog, watchedFeeds } from '../review/backlogs';
 import { setSlot, slotOf } from '../review/slots';
 import { applyBacklog } from './backlog';
-import { reviewOutcome } from './classify';
+import { AUTO_MODE_HINT, isAutoModeBlock, reviewOutcome } from './classify';
 import { NO_FAILURES, afterOutcome } from './health';
 import type { Watchdog } from '../agents/roster';
 import type { Problem, RunningReview, Slot } from '../review/slots';
@@ -199,13 +199,14 @@ export const restoreHealth = (health: Health, watchdogs: readonly Watchdog[]): v
 
 const clockTime = (time: number): string => new Date(time).toISOString().replace(/^.*T(\d\d:\d\d).*$/u, '$1 UTC');
 
-// §12.4, §13.3: the parts the status line of a watchdog adds after its state: the next try of a halt,
-// `fail N/3` after 1 or 2 failures, and the refusals.
+// §12.4, §13.3: the parts the status line of a watchdog adds after its state: the next try of a halt, what to do
+// about a `blocked` that auto mode gave (§12.2), `fail N/3` after 1 or 2 failures, and the refusals.
 export const healthParts = (slug: string): string[] => {
   const slot = slotOf(slug);
   const { failures, refused } = countersOf(slug);
   return [
     ...(slot.state === 'halted' ? [`retry after ${clockTime(slot.nextTryAt)}`] : []),
+    ...(isAutoModeBlock(slot) ? [AUTO_MODE_HINT] : []),
     ...(failures > 0 && problemOf(slot) === undefined ? [`fail ${failures}/${MAX_FAILED_REVIEWS}`] : []),
     ...(refused > 0 ? [`refused ${refused}`] : []),
   ];

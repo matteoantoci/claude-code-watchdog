@@ -3,7 +3,7 @@ import { registeredSpec, setRegisteredSpec } from '../agents/registered';
 import { currentRoster } from '../agents/roster';
 import { agentType, reviewDescription } from '../agents/spec';
 import { errorText } from '../errors';
-import { classifySpawnError } from '../failure/classify';
+import { spawnOutcome } from '../failure/classify';
 import { dueTry } from '../failure/health';
 import { applyOutcome, endOutcome, setLastError } from '../failure/state';
 import { addServerToolUses, currentFeed, setFeed, unreviewedCalls } from '../feed/feed';
@@ -110,15 +110,15 @@ const dropUnbound = async ($: EngineInterface, watchdog: Watchdog, failure: Spaw
   return true;
 };
 
-// §12.2: a spawn that started no agent gives `blocked`, a cap (no failure, no record: it retries at each boundary,
-// and the 100-record log keeps the reviews) or 1 failure; the error goes to `last error`. The `-p` unbind is §7.5.
+// §12.2: a spawn that started no agent gives `blocked` (also an auto-mode deny), a cap (no failure; no record, so the
+// 100-record log keeps the reviews; it retries at each boundary) or 1 failure, its error in `last error`. `-p`: §7.5.
 const spawnFailed = async ($: EngineInterface, watchdog: Watchdog, failure: SpawnFailure): Promise<void> => {
   setSlot(watchdog.slug, failure.from ?? IDLE);
   if (await dropUnbound($, watchdog, failure)) {
     return;
   }
   const time = await $.clock.now();
-  const outcome = { kind: classifySpawnError(failure.error), error: failure.error };
+  const outcome = spawnOutcome(failure.error);
   const { from, batchEnd, subagent } = failure;
   applyOutcome(watchdog.slug, outcome, { from, notes: 0, now: time, batchEnd, subagent });
   setLastError(watchdog.name, failure.error);

@@ -1,8 +1,17 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { isOwnLoop, isOwnPrompt, isOwnRow, isOwnSend, isOwnSpawn, isOwnToolCall } from '../hooks/agents/self-review';
+import {
+  isOwnLoop,
+  isOwnPrompt,
+  isOwnRow,
+  isOwnSend,
+  isOwnSpawn,
+  isOwnSpawnCheck,
+  isOwnToolCall,
+} from '../hooks/agents/self-review';
 import { COMPOSER_PROMPT_ROW } from './fixtures/engine/composer-prompt';
 import { HEADLESS_PROMPT_ROW } from './fixtures/engine/headless-prompt';
 import { LOG_NOTICE_ROW } from './fixtures/engine/log-notice';
+import { SPAWN_CHECK } from './fixtures/engine/spawn-check';
 import { withText } from './fixtures/recorded';
 
 const WATCHDOG = 'a1b2c3d4e5f6a7b8c';
@@ -94,6 +103,14 @@ describe('self-review filter, item 4: main-loop echoes of a mod spawn', () => {
   test('a plugin Agent call is matched by the spawn, not by the id prefix alone', () => {
     const call = { tool: 'Agent', tool_use_id: PLUGIN_ID, subagent_type: 'other-plugin:runner' };
     expect(isOwnToolCall(call, IDLE)).toBe(false);
+  });
+
+  test('the tool.check of the mod spawn is the main-loop Agent check of a watchdog type only', () => {
+    expect(isOwnSpawnCheck(SPAWN_CHECK)).toBe(true);
+    expect(isOwnSpawnCheck({ ...SPAWN_CHECK, agentId: OTHER })).toBe(false);
+    expect(isOwnSpawnCheck({ ...SPAWN_CHECK, input: { ...SPAWN_CHECK.input, subagent_type: 'Explore' } })).toBe(false);
+    expect(isOwnSpawnCheck({ ...SPAWN_CHECK, tool: 'SendMessage' })).toBe(false);
+    expect(isOwnSpawnCheck({ ...SPAWN_CHECK, input: null })).toBe(false);
   });
 
   test('a SendMessage or session.send to a watchdog id is its own', () => {

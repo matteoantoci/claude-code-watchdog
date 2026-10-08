@@ -23,12 +23,15 @@ export const classifyError = (text: string): ErrorClass =>
   ERROR_TEXTS.find(([, phrases]) => phrases.some((phrase) => text.includes(phrase)))?.[0] ?? 'unmatched';
 
 // §12.2 spawn errors: a reject or a `{ deny }` of `$.agent.spawn`.
-export type SpawnErrorClass = 'blocked' | 'capped' | 'failed';
+export type SpawnErrorClass = 'blocked' | 'auto_mode' | 'capped' | 'failed';
 
 // The reject of `permissions.deny: ["Agent"]`, and the deny of `["Agent(watchdog:<slug>)"]`.
 const isPermissionDeny = (text: string): boolean =>
   text.includes('$.tool.call: no tool named "Agent" in this session') ||
   (text.startsWith("Agent type 'watchdog:") && text.includes('has been denied by permission rule'));
+
+// A deny of the auto-mode classifier: `The server-side auto mode classifier gave no verdict for Agent: …`.
+const AUTO_MODE_TEXT = /auto mode classifier/iu;
 
 // The cap for each plugin rejects; the cap for the session resolves a deny.
 const isCap = (text: string): boolean =>
@@ -39,8 +42,20 @@ export const classifySpawnError = (text: string): SpawnErrorClass => {
   if (isPermissionDeny(text)) {
     return 'blocked';
   }
+  if (AUTO_MODE_TEXT.test(text)) {
+    return 'auto_mode';
+  }
   return isCap(text) ? 'capped' : 'failed';
 };
+
+// §12.2, §12.5: the reason of a `blocked` that auto mode gave, and what the person can do about it.
+export const AUTO_MODE_REASON = 'auto mode';
+
+export const AUTO_MODE_HINT = 'switch the permission mode, or /watchdog on to retry';
+
+// §12.2: a slot or a problem that is a `blocked` that auto mode gave.
+export const isAutoModeBlock = (slot: { readonly state: string }): boolean =>
+  slot.state === 'blocked' && 'reason' in slot && slot.reason === AUTO_MODE_REASON;
 
 // §12.2: an alias matches any model id that contains it; a full id matches only an equal id.
 export const isSameModel = (roster: string, ran: string): boolean =>
@@ -64,6 +79,13 @@ export type Outcome = {
     | 'blocked'
     | 'capped';
   readonly error: string | null;
+};
+
+// §12.2: what a spawn that started no agent does. An auto-mode deny is `blocked` with the reason `auto mode`,
+// and counts no failure; the spawn's own text still goes to `last error` and the dump.
+export const spawnOutcome = (text: string): Outcome => {
+  const kind = classifySpawnError(text);
+  return kind === 'auto_mode' ? { kind: 'blocked', error: AUTO_MODE_REASON } : { kind, error: text };
 };
 
 // What the mod saw of one review: its end, the text of its last synthetic row, its `turn.step` count, whether

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing';
-import { classifyError, classifySpawnError, isSameModel } from '../hooks/failure/classify';
+import { classifyError, classifySpawnError, isSameModel, spawnOutcome } from '../hooks/failure/classify';
+import { AUTO_MODE_DENY } from './fixtures/engine/auto-mode-deny';
 
 // The row texts of spec §12.2, as the agent's synthetic `session.append` row holds them.
 describe('§12.2 classification by text', () => {
@@ -50,6 +51,16 @@ describe('§12.2 spawn errors', () => {
   test('any other reject or deny counts one failure', () => {
     expect(classifySpawnError('<tool_use_error>InputValidationError: model')).toBe('failed');
     expect(classifySpawnError('no session is bound in this process')).toBe('failed');
+  });
+
+  test('an auto-mode classifier text, in any case, is blocked by auto mode and counts no failure', () => {
+    expect(classifySpawnError(AUTO_MODE_DENY)).toBe('auto_mode');
+    expect(classifySpawnError('the Auto Mode Classifier judged this action dangerous')).toBe('auto_mode');
+    expect(spawnOutcome(AUTO_MODE_DENY)).toEqual({ kind: 'blocked', error: 'auto mode' });
+    expect(spawnOutcome('no session is bound in this process')).toEqual({
+      kind: 'failed',
+      error: 'no session is bound in this process',
+    });
   });
 });
 

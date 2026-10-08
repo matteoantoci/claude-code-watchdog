@@ -1,4 +1,5 @@
 import { BAND_LINE_COLUMNS, MINUTE_MS } from '../constants';
+import { AUTO_MODE_HINT, AUTO_MODE_REASON, isAutoModeBlock } from '../failure/classify';
 import type { Problem } from '../review/slots';
 
 // §12.5: one watchdog in a problem state, by its display name.
@@ -27,9 +28,19 @@ const single = ({ name, problem }: Trouble, view: TroubleView): string => {
     halted: `${retry(problem, view.now)} · /watchdog on to retry now`,
     limited: retry(problem, view.now),
     no_model: 'fix WATCHDOG.json, then /watchdog on',
-    blocked: '/watchdog status, then /watchdog on',
+    blocked: isAutoModeBlock(problem)
+      ? `${AUTO_MODE_REASON} · ${AUTO_MODE_HINT}`
+      : '/watchdog status, then /watchdog on',
   };
   return `${who} ${problem.state} · ${hints[problem.state]}`;
+};
+
+// §12.5: the short part of one watchdog in a line of several.
+const part = ({ name, problem }: Trouble, now: number): string => {
+  if (problem.state === 'halted') {
+    return `${name} halted · ${retry(problem, now)}`;
+  }
+  return isAutoModeBlock(problem) ? `${name} blocked · ${AUTO_MODE_REASON}` : `${name} ${problem.state}`;
 };
 
 // §12.5: the red band line while any watchdog is in trouble; undefined when none is. Below 80 `bodyColumns`
@@ -43,9 +54,6 @@ export const troubleLine = (troubles: readonly Trouble[], view: TroubleView): st
   if (view.columns < BAND_LINE_COLUMNS) {
     return `watchdog: ${sorted.length} problem${sorted.length === 1 ? '' : 's'} · /watchdog status`;
   }
-  // §12.5: one short part for each watchdog in a line of several.
-  const parts = sorted.map(({ name, problem }) =>
-    problem.state === 'halted' ? `${name} halted · ${retry(problem, view.now)}` : `${name} ${problem.state}`
-  );
+  const parts = sorted.map((trouble) => part(trouble, view.now));
   return sorted.length === 1 ? single(first, view) : `watchdog: ${parts.join(' · ')} · /watchdog status`;
 };

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing';
+import { AUTO_MODE_DENY } from './fixtures/engine/auto-mode-deny';
 import { PROMPT, stateIn, stubOnState } from './fixtures/on-state';
 import {
   NOW,
@@ -347,5 +348,36 @@ describe('§12.2, §12.3: the other ends', () => {
     await append($, mainRow('u2', 'user', 'Task 2.'));
     await $.turn.complete(turnEnd('t2'));
     expect(reviews(seen)).toHaveLength(1);
+  });
+
+  test('an auto-mode deny of the spawn gives `blocked` by auto mode with a hint; no failure counts', async ($, on: Stubs) => {
+    const seen = stub(on, { spawnDeny: AUTO_MODE_DENY });
+    const blockedLines = [
+      'default blocked: auto mode · switch the permission mode, or /watchdog on to retry',
+      `last error: default: ${AUTO_MODE_DENY}`,
+    ];
+    const boundary = async (n: number): Promise<void> => {
+      await append($, mainRow(`u${n}`, 'user', `Task ${n}.`));
+      await $.turn.complete(turnEnd(`t${n}`));
+    };
+    await startOn($);
+    await boundary(1);
+
+    expect(seen.logs.at(-1)).toBe('watchdog: default blocked: auto mode');
+    expect(seen.logWrites.at(-1)).toContainEqual(
+      expect.objectContaining({ kind: 'error', error: `review spawn failed: ${AUTO_MODE_DENY}` })
+    );
+    expect((await status($)).slice(2)).toEqual(blockedLines);
+    await boundary(2);
+    await boundary(3);
+    await boundary(4);
+    expect(reviews(seen)).toHaveLength(1);
+
+    // §12.3 item 6: only `/watchdog on` tries again, at the next boundary; a second deny is `blocked` again, never
+    // `halted`, and the hint stays.
+    await $.command.run(typed('on'));
+    await boundary(5);
+    expect(reviews(seen)).toHaveLength(2);
+    expect((await status($)).slice(2)).toEqual(blockedLines);
   });
 });

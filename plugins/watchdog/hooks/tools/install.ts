@@ -1,6 +1,6 @@
 import { ownContext, watchdogOf } from '../agents/ids';
 import { watchdogBySlug } from '../agents/roster';
-import { isOwnToolCall } from '../agents/self-review';
+import { isOwnSpawnCheck, isOwnToolCall } from '../agents/self-review';
 import { addStatusLines } from '../command/status';
 import { guardDeny } from './guard';
 import {
@@ -72,10 +72,15 @@ const onRead: ReadHook = async ($, e, next) => {
   return result;
 };
 
+// §6.1: an `ask` of the mod's own review spawn becomes `allow`, so no mode's decider (the dialog, the auto-mode
+// classifier) sees it; a deny of it stands (§12.2 `blocked`).
 // §6.5 items 1-3, 6-8: an engine `allow` or `deny` of a watchdog call stands; an `ask` becomes `allow` for
 // a call in the allow set, else a deny that the watchdog's count records.
 const onCheck: Hook<'tool.check'> = async ($, e, next) => {
   const verdict = await next(e);
+  if (verdict.decision === 'ask' && isOwnSpawnCheck(e)) {
+    return { decision: 'allow' };
+  }
   const slug = watchdogOf(e.agentId);
   if (verdict.decision !== 'ask' || !isScopedCheck(e.tool, next.origin.plugin, slug !== undefined)) {
     return verdict;
