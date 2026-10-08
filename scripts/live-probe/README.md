@@ -45,7 +45,7 @@ requires. oxfmt still formats the folder. `npm run check` does not run the probe
 
 Desktop support starts when Claude.app bundles Claude Code 2.1.290 or later. The probe cannot drive the desktop app, so
 run this list by hand on that version and keep your notes beside the probe report (spec §16.3, §16.5). Install from the
-marketplace first (`/plugin marketplace add matteoantoci/claude-code-watchdog`, `/plugin install watchdog@matteoantoci`)
+marketplace first (`/plugin marketplace add matteoantoci/claude-plugins`, `/plugin install watchdog@matteoantoci-plugins`)
 and open a small git repo with a `WATCHDOG.json` of one `haiku` watchdog.
 
 - [ ] `/watchdog` draws the status table, not `unsupported`: the bundled engine is 2.1.290 or later.

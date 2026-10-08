@@ -19,8 +19,8 @@ Check `claude --version` first. If it is below 2.1.290, move to the npm `latest`
 ## Quick start
 
 ```
-/plugin marketplace add matteoantoci/claude-code-watchdog
-/plugin install watchdog@matteoantoci
+/plugin marketplace add matteoantoci/claude-plugins
+/plugin install watchdog@matteoantoci-plugins
 ```
 
 Then run `/watchdog on` (reviews are off until you do) and ask Claude for a small change. The note shows as a
@@ -63,7 +63,7 @@ review before it nudges, so Claude does not go after a bug it already fixed.
 - Each review is one more agent, on `opus` with `medium` effort by default (in the demo: 3 reviews, 37.2k tokens,
   $0.07). The built-in "You should know" mod, when on, runs its own side agent too; turn it off in `/plugin` to pay
   for one only.
-- `/watchdog off` stops reviews for this session. `/plugin uninstall watchdog@matteoantoci` removes the plugin.
+- `/watchdog off` stops reviews for this session. `/plugin uninstall watchdog@matteoantoci-plugins` removes the plugin.
 - Settings, in `/plugin` (Installed, Watchdog, Configure options) or `/config`: `onByDefault` (default `false`) turns
   reviews on in each new interactive session. `immuneTurns` (0 to 5, default `3`) is the number of turns after a nudge
   before the next nudge for a concern; a nudge is a turn that the plugin starts so that Claude reads a note that came

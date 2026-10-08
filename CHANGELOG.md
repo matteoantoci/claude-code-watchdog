@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- The plugin moved to the `matteoantoci-plugins` marketplace (`matteoantoci/claude-plugins`). The `matteoantoci`
+  marketplace in this repo is gone. To move: `/plugin marketplace remove matteoantoci`, then
+  `/plugin marketplace add matteoantoci/claude-plugins` and `/plugin install watchdog@matteoantoci-plugins`.
+
 ## 0.2.0 - 2026-10-08
 
 - Compact band: each card is one row with the note's first sentence and a dim status that shows only what waits. Click
