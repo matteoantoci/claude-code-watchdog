@@ -116,7 +116,13 @@ const cardList = (el: BandElements, view: BandView, mode: Mode): RenderElement[]
   );
   const hidden = sorted.slice(BAND_CARD_LIMIT);
   const { expanded, turn } = view.band;
-  const full = { expanded, turn, isNamed: view.watchdogs >= BAND_NAMED_WATCHDOGS, onToggle: view.onToggle };
+  const full = {
+    expanded,
+    turn,
+    isNamed: view.watchdogs >= BAND_NAMED_WATCHDOGS,
+    columns: view.columns,
+    onToggle: view.onToggle,
+  };
   const cards = sorted
     .slice(0, BAND_CARD_LIMIT)
     .map((card, index) =>

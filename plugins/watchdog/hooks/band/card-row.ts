@@ -6,7 +6,7 @@ import {
   BAND_STATUS_MIN_TEXT,
   BAND_TINY_TEXT_MAX,
 } from '../constants';
-import { outdatedMark, shortOutdatedMark } from '../note/outdated';
+import { bareOutdatedMark, outdatedMark, shortOutdatedMark } from '../note/outdated';
 import type { DeliveryState } from '../note/notes';
 import type { Severity } from '../note/tool';
 import type { Card } from './cards';
@@ -19,11 +19,12 @@ export type BandElements = Pick<Elements['terminal'], 'Box' | 'Text' | 'Markdown
 export type Mode = 'full' | 'line' | 'tiny';
 
 // What a full card reads of the band: the key of the expanded card, the band's turn, whether a collapsed card names
-// its watchdog, and what a press runs, with the card's `key`.
+// its watchdog, `bodyColumns`, and what a press runs, with the card's `key`.
 export type FullCardView = {
   readonly expanded: string | null;
   readonly turn: number;
   readonly isNamed: boolean;
+  readonly columns: number;
   readonly onToggle: (key: string) => void;
 };
 
@@ -40,6 +41,11 @@ const SHORT_STATES: Readonly<Record<string, string>> = {
   steered: '',
   nudged: '',
   'aside on next prompt': 'aside',
+} satisfies Partial<Record<DeliveryState, string>>;
+
+// §13.1: the delivery states that a collapsed full card row shortens further when its sentence needs the cells.
+const TIGHT_STATES: Readonly<Record<string, string>> = {
+  'nudge pending': 'pending',
 } satisfies Partial<Record<DeliveryState, string>>;
 
 export const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`;
@@ -70,20 +76,39 @@ export const severityText = (el: BandElements, severity: Severity, text: string)
 const dim = (el: BandElements, text: string): RenderElement => el.Text({ dimColor: true, children: text });
 
 // §13.1: the severity badge, a colored background with `inverseText`.
+const badgeText = (severity: Severity): string => ` ${severity.toUpperCase()} `;
+
 const badge = (el: BandElements, severity: Severity): RenderElement =>
   el.Text({
     backgroundColor: COLORS[severity],
     color: 'inverseText',
     bold: severity !== 'nit',
-    children: ` ${severity.toUpperCase()} `,
+    children: badgeText(severity),
   });
 
-// §13.1, §11.3, §10.8: the status of a collapsed card row holds only what needs a look: a subagent's type (not on a
-// one-line card, whose tag has it), a delivery state that has not reached the agent, the short outdated mark.
-const statusOf = (card: Card, { hasType }: { hasType: boolean }): string =>
-  [hasType ? card.subagent : undefined, SHORT_STATES[card.delivery] ?? card.delivery, shortOutdatedMark(card.edits)]
-    .filter((part): part is string => part !== undefined && part !== '')
-    .join(' · ');
+// §13.1: the parts of a status, joined by ` · `; a missing or empty part is left out.
+const joined = (parts: readonly (string | undefined)[]): string =>
+  parts.filter((part): part is string => part !== undefined && part !== '').join(' · ');
+
+// §13.1: whether a status leaves at least `BAND_STATUS_MIN_TEXT` cells of text in `room` cells, after its gap.
+const fits = (room: number, status: string): boolean => room - BAND_STATUS_GAP - status.length >= BAND_STATUS_MIN_TEXT;
+
+// §13.1, §11.3, §10.8: the status of a collapsed full card row holds only what needs a look: a subagent's type, a
+// delivery state that has not reached the agent, the short outdated mark. When the sentence would keep fewer than
+// `BAND_STATUS_MIN_TEXT` of the `room` cells, the least needed goes first: the type (the expanded header has it),
+// then `nudge pending` shortens to `pending`, then the mark to `outdated?`; with still too few cells, no status.
+const fullStatus = (card: Card, room: number): string => {
+  const state = SHORT_STATES[card.delivery] ?? card.delivery;
+  const tight = TIGHT_STATES[state] ?? state;
+  const mark = shortOutdatedMark(card.edits);
+  const steps = [
+    joined([card.subagent, state, mark]),
+    joined([state, mark]),
+    joined([tight, mark]),
+    joined([tight, bareOutdatedMark(card.edits)]),
+  ];
+  return steps.find((status) => status === '' || fits(room, status)) ?? '';
+};
 
 // §13.1: a card row: the lead, cut at the end to the cells the row leaves it, then the dim status flush right at
 // `bodyColumns`, never cut, at least `BAND_STATUS_GAP` blank cells after the lead. The lead alone with no status.
@@ -100,6 +125,9 @@ const withStatus = (el: BandElements, lead: RenderElement, status: string): Rend
   });
 };
 
+// §13.1: the watchdog and its ` · ` of a collapsed card's lead, when the band names it.
+const NAME_SEPARATOR = ' · ';
+
 // §13.1: a collapsed card's lead: the badge, the watchdog when the band names it, then the first sentence of the note.
 const collapsedLead = (el: BandElements, card: Card, isNamed: boolean): RenderElement =>
   el.Text({
@@ -107,10 +135,15 @@ const collapsedLead = (el: BandElements, card: Card, isNamed: boolean): RenderEl
     children: [
       badge(el, card.severity),
       ' ',
-      ...(isNamed ? [el.Text({ bold: true, children: card.name }), dim(el, ' · ')] : []),
+      ...(isNamed ? [el.Text({ bold: true, children: card.name }), dim(el, NAME_SEPARATOR)] : []),
       firstSentence(card.text),
     ],
   });
+
+// §13.1: the cells of a collapsed full card row before its sentence: the Button as the terminal draws a plain one
+// (`a: ▸`, d.ts ButtonProps `plain`), the gap after it, the badge and its blank, the watchdog and ` · ` when named.
+const sentenceStart = (card: Card, toggle: string, isNamed: boolean): number =>
+  toggle.length + 1 + badgeText(card.severity).length + 1 + (isNamed ? card.name.length + NAME_SEPARATOR.length : 0);
 
 // §13.1, §11.3, §10.8: an expanded card's header holds every field: the badge, the watchdog, a subagent's type, the
 // age (from the band's `turn`), the delivery state and the outdated mark, on one line cut at the end.
@@ -138,10 +171,12 @@ export const fullCard = (
   view: FullCardView
 ): RenderElement => {
   const isExpanded = card.key === view.expanded;
+  const label = isExpanded ? '▾' : '▸';
+  const hotkey = BAND_CARD_HOTKEYS[index];
   const toggle = el.Button({
     key: `watchdog-expand-${index}`,
-    label: isExpanded ? '▾' : '▸',
-    hotkey: BAND_CARD_HOTKEYS[index],
+    label,
+    hotkey,
     plain: true,
     dimColor: true,
     onPress: () => {
@@ -149,7 +184,9 @@ export const fullCard = (
     },
   });
   if (!isExpanded) {
-    const row = withStatus(el, collapsedLead(el, card, view.isNamed), statusOf(card, { hasType: true }));
+    const drawn = hotkey === undefined ? label : `${hotkey}: ${label}`;
+    const status = fullStatus(card, view.columns - sentenceStart(card, drawn, view.isNamed));
+    const row = withStatus(el, collapsedLead(el, card, view.isNamed), status);
     return el.Box({ flexDirection: 'row', columnGap: 1, children: [toggle, row] });
   }
   const line = el.Box({ flexDirection: 'row', columnGap: 1, children: [toggle, expandedHeader(el, card, view.turn)] });
@@ -167,8 +204,8 @@ export const lineCard = (
 ): RenderElement => {
   const tag = `[${[card.severity, ...(card.subagent === undefined ? [] : [card.subagent])].join(' · ')}]`;
   const room = columns - tag.length - 1;
-  const wanted = statusOf(card, { hasType: false });
-  const status = room - BAND_STATUS_GAP - wanted.length >= BAND_STATUS_MIN_TEXT ? wanted : '';
+  const wanted = joined([SHORT_STATES[card.delivery] ?? card.delivery, shortOutdatedMark(card.edits)]);
+  const status = fits(room, wanted) ? wanted : '';
   const text = flat(card.text);
   const max = Math.min(BAND_TINY_TEXT_MAX, room - (status === '' ? 0 : BAND_STATUS_GAP + status.length));
   const shown = mode === 'tiny' && text.length > max ? `${text.slice(0, Math.max(0, max - 1))}…` : text;

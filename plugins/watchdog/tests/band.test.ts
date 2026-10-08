@@ -605,6 +605,53 @@ describe('card row status (§13.1, §11.3, §10.8)', () => {
     );
   });
 
+  // The longest status: a subagent's type, `nudge pending`, a 2-digit mark; the 3 watchdog names push the sentence
+  // further right, from `a: ▸  BLOCKER  security · ` (26 cells) to 43 cells.
+  const WORST = storedBand(
+    ['database-migration-review', 'migrations-review', 'security'].map((name, index) =>
+      storedCard(index + 1, 'nudge pending', {
+        name,
+        text: LONG,
+        subagent: 'general-purpose',
+        subagentId: 'asub0001',
+        edits: 12,
+      })
+    )
+  );
+  const named = (name: string, status: string): string =>
+    `▸ BLOCKER  ${name} · ${LONG}${status === '' ? '' : `  ${status}`}`;
+
+  test('a full card row keeps 20 cells of sentence: the type goes, then `pending`, then `outdated?`, then the status', async ($, on: Stubs) => {
+    stubBand(on, twoWatchdogs(), { state: ON, band: WORST });
+    await $.session.start(START);
+    // bodyColumns 80: 54, 45 and 37 cells after each name; `pending · outdated? 12 edits` and its gap leave 24 of 54,
+    // `pending · outdated?` 24 of 45, and 16 of 37, so no status.
+    expect(await cardRows($, 80)).toEqual(
+      onBoth([
+        named('security', 'pending · outdated? 12 edits'),
+        named('migrations-review', 'pending · outdated?'),
+        named('database-migration-review', ''),
+      ])
+    );
+    // bodyColumns 85: 59, 50 and 42 cells; `nudge pending · outdated? 12 edits` leaves 23 of 59.
+    expect(await cardRows($, 85)).toEqual(
+      onBoth([
+        named('security', 'nudge pending · outdated? 12 edits'),
+        named('migrations-review', 'pending · outdated? 12 edits'),
+        named('database-migration-review', 'pending · outdated?'),
+      ])
+    );
+  });
+
+  test('at 160 bodyColumns a full card row shows every status item', async ($, on: Stubs) => {
+    stubBand(on, twoWatchdogs(), { state: ON, band: WORST });
+    await $.session.start(START);
+    const status = 'general-purpose · nudge pending · outdated? 12 edits';
+    expect(await cardRows($, 160)).toEqual(
+      onBoth(['security', 'migrations-review', 'database-migration-review'].map((name) => named(name, status)))
+    );
+  });
+
   test('an expanded card names every field: the watchdog, the subagent type, the age, the state, the whole mark', async ($, on: Stubs) => {
     const expanded = storedCard(1, 'nudge pending', { subagent: 'Explore', subagentId: 'asub0001', edits: 1 });
     stubBand(on, {}, { state: ON, band: storedBand([expanded], 'k1') });

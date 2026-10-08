@@ -138,7 +138,8 @@ export const BAND_HINT_GAP = 2;
 // §13.1: the fewest blank cells between a card row's lead and its status, which ends flush right at `bodyColumns`.
 export const BAND_STATUS_GAP = 2;
 
-// §13.1: below 80 `bodyColumns`, a one-line card shows its status only when this many cells of note text stay.
+// §13.1: the fewest cells of note text that a card row's status leaves: a one-line card shows its status only then;
+// a collapsed full card drops and shortens status items until they stay, else shows none.
 export const BAND_STATUS_MIN_TEXT = 20;
 
 // §13.1: a collapsed full card names its watchdog only when at least this many watchdogs of the roster are enabled.
