@@ -2,10 +2,14 @@ name: claude-latest
 
 # The mods API changes between Claude Code releases. Each week, run the checks on the latest release, so a break
 # shows here before users hit it. A failure opens one issue; later failures comment on it.
+# The run on a push of this file checks the workflow itself.
 on:
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/claude-latest.yml
 
 permissions:
   contents: read
