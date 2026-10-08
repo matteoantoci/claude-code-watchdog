@@ -1,0 +1,43 @@
+name: claude-latest
+
+# The mods API changes between Claude Code releases. Each week, run the checks on the latest release, so a break
+# shows here before users hit it. A failure opens one issue; later failures comment on it.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # npm blocks the postinstall script of Claude Code, so run it by hand.
+      - run: npm install --no-save --ignore-scripts @anthropic-ai/claude-code@latest
+      - run: node node_modules/@anthropic-ai/claude-code/install.cjs
+      - id: version
+        run: echo "version=$(npx claude --version)" >> "$GITHUB_OUTPUT"
+      - run: npm run check
+      - if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="npm run check fails on Claude Code ${VERSION:-unknown}: $RUN_URL"
+          open=$(gh issue list --state open --label claude-latest --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "$body"
+          else
+            gh label create claude-latest --color D93F0B --force
+            gh issue create --title "Checks fail on the latest Claude Code" --label claude-latest --body "$body"
+          fi
