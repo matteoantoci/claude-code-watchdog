@@ -109,7 +109,7 @@ Rules:
 
 - The mod's own `$.agent.spawn` resolves with no `agentId`, and the mod's `agent.spawn` hook sees the Agent tool shape (`subagent_type`). Teach the id by firing the whole `AgentSpawnInput` (`REVIEW_SPAWN` in `delivery.ts`).
 - A fake `turn.complete` sets `usage.model` to the roster model (`USAGE` in `session.ts`). Else §12.2 puts the review in `no_model`.
-- The kit's `$.session.append` changed between releases: 2.1.290 rejects every call (the mod's own and a test's, after the mod's hooks saw the row); 2.1.293 accepts it. Catch a test's append. A test that needs a refused append stubs `session.append` to return `{ deny }` (see `tests/steer.test.ts`).
+- The kit's `$.session.append` changed between releases. On 2.1.290 every append rejects, and the mod's own append never reaches a test's `session.append` stub (`no implementation for session.append`). On 2.1.293 an append resolves, and the mod's own append goes to the stubs. Catch a test's append. A test that needs a refused steer append stubs `session.append` to return `{ deny }` and asserts only that the append failed, not the reason (see `tests/steer.test.ts`).
 - The kit stamps no `origin` and no `wait` on `prompt.submit`. Give both.
 - A `ui.render` stub returns a tree element, not a string: `$.ui.resolve(e).Text({ children: '…' })`.
 - `find({ key })` works only on an element that takes `key`: put `key` on a `Box`. Find a `Text` by its text.

@@ -26,11 +26,11 @@ const SPAWN: AgentSpawnInput = {
   fork: false,
 };
 
-// §10.1: a refused steer append. The tests deny it beneath the mod, so they do not depend on whether the kit has an
-// engine beneath the plugins for `session.append` (2.1.290 rejected the call; 2.1.293 accepts it).
-const APPEND_DENY = 'the engine refused the row';
+// §10.1: a refused steer append. On 2.1.293 the kit sends the mod's own append to the stubs, so the test denies it;
+// on 2.1.290 the mod's own append never reaches a stub and the kit rejects it (`no implementation for
+// session.append`). Either way the append is refused, with a reason that differs by release.
 const denyAppend = (on: OnEvents<'session.append'>): void => {
-  on('session.append', () => ({ deny: APPEND_DENY }));
+  on('session.append', () => ({ deny: 'the engine refused the row' }));
 };
 
 // The test's `$` has no `state` noun: a `state.set` hook beneath keeps each value the mod writes.
@@ -81,7 +81,7 @@ const expectOneSteerError = (written: Written, time = NOW): void => {
   expect(errors.length).toBe(1);
   expect(errors[0]).toMatchObject({ kind: 'error', watchdog: 'default', time });
   const [record] = errors;
-  expect(record?.kind === 'error' ? record.error : undefined).toBe(`steer append failed: ${APPEND_DENY}`);
+  expect(record?.kind === 'error' ? record.error : undefined).toMatch(/^steer append failed: \S/u);
 };
 
 const NOTE_ELEMENT = '<note severity="concern">parseDate drops the timezone</note>';
