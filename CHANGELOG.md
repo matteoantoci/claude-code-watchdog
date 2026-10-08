@@ -4,7 +4,9 @@
 
 - The plugin moved to the `matteoantoci-plugins` marketplace (`matteoantoci/claude-plugins`). The `matteoantoci`
   marketplace in this repo is gone. To move: `/plugin marketplace remove matteoantoci`, then
-  `/plugin marketplace add matteoantoci/claude-plugins` and `/plugin install watchdog@matteoantoci-plugins`.
+  `/plugin marketplace add matteoantoci/claude-plugins` and `/plugin install watchdog@matteoantoci-plugins`. Plugin
+  options are stored per plugin id, so set `onByDefault` and `immuneTurns` again in `/plugin` (or pass
+  `--config onByDefault=true` to `claude plugin install`).
 
 ## 0.2.0 - 2026-10-08
 
