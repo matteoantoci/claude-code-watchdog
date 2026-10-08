@@ -116,6 +116,10 @@ Rules:
 - The kit draws `AbovePrompt` on `vscode` and `mobile` too. Mount it only on `terminal` and `desktop` (`BAND_SURFACES`).
 - A test has 5000 ms unless it sets `timeoutMs`. It has no fs, network, process or model.
 
+## Release
+
+Claude Code offers a plugin update only when the `version` in `plugins/watchdog/.claude-plugin/plugin.json` changes; new commits alone show "already at the latest version". Raise the version in the commit that ships a change under `plugins/watchdog/`.
+
 ## Lint traps
 
 - **Slow lint.** A call through the full `On` type costs `typescript/no-misused-promises` about 26 s of CPU per file. Call `on(...)` only through an `OnEvents<E>` type. A test body's `on` defaults to `On`, so type it. When lint takes more than a few seconds, look for an untyped `on`.
