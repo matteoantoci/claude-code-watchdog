@@ -28,7 +28,7 @@ type FallbackStubs = SessionStubs & StateStubs & OnEvents<'clock.after'>;
 const TIMEOUT_ERROR = 'the review ran for more than 10 min';
 const DROPPED = 'Dropped: the review was stopped.';
 
-// The kit has nothing beneath the plugins for `session.append`: the call rejects after the hooks saw the row.
+// The kit's `session.append` rejects on 2.1.290 and accepts on 2.1.293: catch it, after the hooks saw the row.
 const append = async ($: Engine, row: SessionAppendInput): Promise<void> => {
   await $.session.append(row).catch(() => undefined);
 };

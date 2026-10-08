@@ -14,7 +14,7 @@ type Stubs = DeliveryStubs & StateStubs & SwitchStubs;
 const NEW_ID = 'c0ffee00-0000-4000-8000-000000000002';
 const THIRD_ID = 'c0ffee00-0000-4000-8000-000000000003';
 
-// The kit has nothing beneath the plugins for `session.append`: the call rejects after the hooks saw the row.
+// The kit's `session.append` rejects on 2.1.290 and accepts on 2.1.293: catch it, after the hooks saw the row.
 const append = async ($: Engine, row: SessionAppendInput): Promise<void> => {
   await $.session.append(row).catch(() => undefined);
 };

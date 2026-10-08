@@ -6,7 +6,7 @@ import type { SessionStubs } from './fixtures/session';
 import type { AgentSpawnInput, ApiMessage, SessionAppendInput, TurnStepInput } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
-// The kit has nothing beneath the plugins for `session.append`: the call rejects after the hooks saw the row.
+// The kit's `session.append` rejects on 2.1.290 and accepts on 2.1.293: catch it, after the hooks saw the row.
 const append = async ($: Engine, row: SessionAppendInput): Promise<void> => {
   await $.session.append(row).catch(() => undefined);
 };

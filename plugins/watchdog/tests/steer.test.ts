@@ -7,9 +7,9 @@ import type { SessionStubs } from './fixtures/session';
 import type { AgentSpawnInput, PluginState } from 'claude-code';
 import type { Engine } from 'claude-code/testing';
 
-type Stubs = SessionStubs & OnEvents<'turn.start' | 'state.set'>;
+type Stubs = SessionStubs & OnEvents<'turn.start' | 'state.set' | 'session.append'>;
 
-type LateStubs = OnEvents<DeliveryEvents | 'state.set'>;
+type LateStubs = OnEvents<DeliveryEvents | 'state.set' | 'session.append'>;
 
 const NOTE = 'mcp__watchdog__note';
 const GUIDANCE_PATH = '/prompts/boundary-guidance.md';
@@ -24,6 +24,13 @@ const SPAWN: AgentSpawnInput = {
   parentModel: 'claude-opus-4-5',
   background: true,
   fork: false,
+};
+
+// §10.1: a refused steer append. The tests deny it beneath the mod, so they do not depend on whether the kit has an
+// engine beneath the plugins for `session.append` (2.1.290 rejected the call; 2.1.293 accepts it).
+const APPEND_DENY = 'the engine refused the row';
+const denyAppend = (on: OnEvents<'session.append'>): void => {
+  on('session.append', () => ({ deny: APPEND_DENY }));
 };
 
 // The test's `$` has no `state` noun: a `state.set` hook beneath keeps each value the mod writes.
@@ -46,6 +53,7 @@ const keepWritten = (on: OnEvents<'state.set'>): Written => {
 const stubSteer = (on: Stubs) => {
   const seen = stubSession(on);
   on('turn.start', (_$, e) => ({ turnId: e.turnId }));
+  denyAppend(on);
   return { seen, written: keepWritten(on) };
 };
 
@@ -67,20 +75,21 @@ const mainBash = async ($: Engine) => $.tool.call({ tool: 'Bash', command: 'npm 
 const nudges = (seen: DeliverySeen): string[] =>
   seen.prompts.filter((prompt) => prompt.text.startsWith('<watchdog-notes>')).map((prompt) => prompt.text);
 
-// §10.1: the steer append of the note rejects in the kit; the review log gets one error for it, at `time`.
+// §10.1: the steer append of the note is refused; the review log gets one error for it, at `time`.
 const expectOneSteerError = (written: Written, time = NOW): void => {
   const errors = written.log.filter((record) => record.kind === 'error');
   expect(errors.length).toBe(1);
   expect(errors[0]).toMatchObject({ kind: 'error', watchdog: 'default', time });
   const [record] = errors;
-  expect(record?.kind === 'error' ? record.error : undefined).toContain('steer append failed');
+  expect(record?.kind === 'error' ? record.error : undefined).toBe(`steer append failed: ${APPEND_DENY}`);
 };
 
 const NOTE_ELEMENT = '<note severity="concern">parseDate drops the timezone</note>';
 
 describe('steer delivery', () => {
-  test('a concern takes the steer route; the kit rejects the append, so the note takes the late-note route and goes out as the nudge', async ($, on: LateStubs) => {
+  test('a concern takes the steer route; a refused append sends the note on the late-note route, out as the nudge', async ($, on: LateStubs) => {
     const seen = stubDelivery(on);
+    denyAppend(on);
     const written = keepWritten(on);
     await startReview($);
     await sendNote($, 'concern');
@@ -103,8 +112,9 @@ describe('steer delivery', () => {
     expectOneSteerError(written);
   });
 
-  test('after the nudge turn the cooldown holds a concern: a steer whose append rejects waits as an aside on the next person prompt', async ($, on: LateStubs) => {
+  test('after the nudge turn the cooldown holds a concern: a steer whose append is refused waits as an aside on the next person prompt', async ($, on: LateStubs) => {
     const seen = stubDelivery(on);
+    denyAppend(on);
     const written = keepWritten(on);
     await startReview($);
     // A blocker steered with no tool result is late at the turn end: it takes a blocker nudge.

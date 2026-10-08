@@ -403,8 +403,7 @@ export const stubAfterAtOnce = (on: OnEvents<'clock.after'>, delays: number[] = 
 };
 
 // A main-loop row as the engine appends it: a person prompt in the recorded shape of a typed one, or a model
-// response. The kit has nothing beneath the plugins for `session.append`, so the call rejects after the mod's
-// hooks saw the row.
+// response. The kit's `session.append` rejects on 2.1.290 and accepts on 2.1.293, after the mod's hooks saw the row.
 export const mainRow = (uuid: string, role: 'user' | 'assistant', text: string): SessionAppendInput =>
   role === 'user'
     ? withText(COMPOSER_PROMPT_ROW, uuid, text)
