@@ -1,6 +1,6 @@
 {
   "name": "rf-overflow",
   "version": "0.0.1",
-  "description": "Replaces a watchdog Read of overflow.txt with a payload past the context limit",
+  "description": "Watchdog test fixture, not a mod to install. live probe: replaces a watchdog Read of overflow.txt with a payload past the context limit",
   "author": { "name": "watchdog live probe" }
 }

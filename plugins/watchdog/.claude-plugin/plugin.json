@@ -2,7 +2,7 @@
   "name": "watchdog",
   "displayName": "Watchdog",
   "version": "0.2.0",
-  "description": "Watchdog agents review each update of the agent you work with and push short notes to it.",
+  "description": "Watchdog agents review each update of the agent you work with and push short notes to it. It spawns review subagents and auto-allows only its own review spawn and reviewer reads of files the main agent already read.",
   "author": { "name": "Matteo Antoci" },
   "license": "Apache-2.0",
   "userConfig": {

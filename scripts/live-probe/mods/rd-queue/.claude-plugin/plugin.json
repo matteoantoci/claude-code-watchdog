@@ -1,6 +1,6 @@
 {
   "name": "rd-queue",
   "version": "0.0.1",
-  "description": "release-delivery probe: hold one main turn.complete and time the next turn's hooks",
+  "description": "Watchdog test fixture, not a mod to install. release-delivery probe: hold one main turn.complete and time the next turn's hooks",
   "author": { "name": "watchdog live probe" }
 }

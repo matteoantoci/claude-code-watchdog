@@ -2,5 +2,11 @@
   "name": "matteoantoci",
   "description": "Claude Code plugins by Matteo Antoci.",
   "owner": { "name": "matteoantoci" },
-  "plugins": [{ "name": "watchdog", "source": "./plugins/watchdog" }]
+  "plugins": [
+    {
+      "name": "watchdog",
+      "source": "./plugins/watchdog",
+      "description": "Watchdog agents review each update of the agent you work with and push short notes to it. It spawns review subagents and auto-allows only its own review spawn and reviewer reads of files the main agent already read."
+    }
+  ]
 }

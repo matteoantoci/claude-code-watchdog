@@ -1,7 +1,7 @@
 {
   "name": "fcreload",
   "version": "0.0.1",
-  "description": "first-check probe: what survives a userConfig reload ($.state, $.store, module variables, timers)",
+  "description": "Watchdog test fixture, not a mod to install. first-check probe: what survives a userConfig reload ($.state, $.store, module variables, timers)",
   "author": { "name": "watchdog live probe" },
   "userConfig": {
     "mark": {

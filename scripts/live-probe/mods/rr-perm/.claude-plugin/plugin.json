@@ -1,6 +1,6 @@
 {
   "name": "rrperm",
   "version": "0.0.1",
-  "description": "live probe: parent permission mode and Edit versus Write",
+  "description": "Watchdog test fixture, not a mod to install. live probe: parent permission mode and Edit versus Write",
   "author": { "name": "watchdog live probe" }
 }

@@ -1,6 +1,6 @@
 {
   "name": "rd-uilog",
   "version": "0.0.1",
-  "description": "release-delivery probe: $.ui.log rows of 5000 and 10000 characters",
+  "description": "Watchdog test fixture, not a mod to install. release-delivery probe: $.ui.log rows of 5000 and 10000 characters",
   "author": { "name": "watchdog live probe" }
 }

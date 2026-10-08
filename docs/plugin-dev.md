@@ -120,6 +120,8 @@ Rules:
 
 Claude Code offers a plugin update only when the `version` in `plugins/watchdog/.claude-plugin/plugin.json` changes; new commits alone show "already at the latest version". Raise the version in the commit that ships a change under `plugins/watchdog/`.
 
+Add the version's section to `CHANGELOG.md` in the same change. When CI passes on that commit, tag it `vX.Y.Z`, push the tag, and run `gh release create vX.Y.Z` with the changelog section as the notes.
+
 ## Lint traps
 
 - **Slow lint.** A call through the full `On` type costs `typescript/no-misused-promises` about 26 s of CPU per file. Call `on(...)` only through an `OnEvents<E>` type. A test body's `on` defaults to `On`, so type it. When lint takes more than a few seconds, look for an untyped `on`.

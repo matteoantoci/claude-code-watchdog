@@ -1,5 +1,7 @@
 # watchdog
 
+[![CI](https://github.com/matteoantoci/claude-code-watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/matteoantoci/claude-code-watchdog/actions/workflows/ci.yml)
+
 A second model reviews each step that Claude Code takes and sends it short notes while it works: `nit`, `concern` or
 `blocker`.
 
@@ -10,6 +12,9 @@ A second model reviews each step that Claude Code takes and sends it short notes
 Claude Code 2.1.290 or later. Watchdog is a mod: a plugin whose code Claude Code runs inside your session. The npm
 `stable` channel (2.1.285 on 2026-10-06) has no mods. Below 2.1.290 the plugin shows `unsupported`. Desktop support
 starts when Claude.app bundles Claude Code 2.1.290 or later.
+
+Check `claude --version` first. If it is below 2.1.290, move to the npm `latest` channel:
+`npm install -g @anthropic-ai/claude-code@latest`.
 
 ## Quick start
 
@@ -49,6 +54,9 @@ review before it nudges, so Claude does not go after a bug it already fixed.
   `SendMessage`, `AskUserQuestion` and `ToolSearch` are always refused. A reviewer never asks you for a permission.
 - The mod allows its own review spawn (the `Agent` call of a `watchdog:*` type) when Claude Code would ask, so no
   dialog or Auto-mode classifier sees it. A permission rule that denies `Agent` still wins.
+- A project `WATCHDOG.json` or `WATCHDOG.md` sets the number of reviewers, their model, effort and instructions. In a
+  repo you did not write, read these files before `/watchdog on`. Once on, `/watchdog status` lists each watchdog with
+  its model, effort and file.
 
 ## Cost and off switch
 

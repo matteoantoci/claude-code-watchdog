@@ -1,6 +1,6 @@
 {
   "name": "rd-sub",
   "version": "0.0.1",
-  "description": "release-delivery probe: notes appended into a subagent during a tool call and after its answer, then a resume",
+  "description": "Watchdog test fixture, not a mod to install. release-delivery probe: notes appended into a subagent during a tool call and after its answer, then a resume",
   "author": { "name": "watchdog live probe" }
 }

@@ -1,6 +1,6 @@
 {
   "name": "fcscope",
   "version": "0.0.1",
-  "description": "first-check probe: log the engine tool.check verdict and the response row fields, change nothing",
+  "description": "Watchdog test fixture, not a mod to install. first-check probe: log the engine tool.check verdict and the response row fields, change nothing",
   "author": { "name": "watchdog live probe" }
 }
