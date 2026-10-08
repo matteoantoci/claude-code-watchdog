@@ -3,8 +3,9 @@
 # `haiku`, the default watchdog reviews on `opus`. The note the watchdog sends differs from run to run.
 # FontSize 14 keeps the band (its divider and count line, one row for each card, and the expanded note below its card)
 # readable beside the transcript.
-# The committed GIF is re-encoded at 8 frames a second and 40 colors to stay under 2 MB (about 29 s, 1.9 MB):
-#   ffmpeg -i demo.gif -vf "fps=8,split[a][b];[a]palettegen=max_colors=40:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" out.gif
+# The committed GIF is re-encoded at 10 frames a second with one full 256-color palette and no dither, which keeps the
+# colors of the vhs output: the badges, the dim text and the dotted divider (about 29 s, 2.9 MB):
+#   ffmpeg -i demo.gif -vf "fps=10,split[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];[b][p]paletteuse=dither=none:diff_mode=rectangle" out.gif
 
 Output docs/assets/demo.gif
 Require claude
