@@ -1,7 +1,7 @@
 {
   "name": "watchdog",
   "displayName": "Watchdog",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Watchdog agents review each update of the agent you work with and push short notes to it.",
   "author": { "name": "Matteo Antoci" },
   "license": "Apache-2.0",
